@@ -1,0 +1,2 @@
+{"ts":1764258495.648197,"host":"172.31.0.10","port_num":5432,"port_proto":"tcp","service":["POSTGRESQL"]}
+{"ts":1764258495.650738,"host":"172.31.0.10","port_num":5432,"port_proto":"tcp","service":["SSL"]}
