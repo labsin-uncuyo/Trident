@@ -1,0 +1,32 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Trident symbol with cyber theme -->
+  <defs>
+    <linearGradient id="tridentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00D9FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7B2CBF;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Center prong -->
+  <path d="M24 6 L24 38" stroke="url(#tridentGradient)" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Left prong -->
+  <path d="M14 10 L14 28 L24 38" stroke="url(#tridentGradient)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Right prong -->
+  <path d="M34 10 L34 28 L24 38" stroke="url(#tridentGradient)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Top decorative elements -->
+  <circle cx="14" cy="8" r="2" fill="#00D9FF"/>
+  <circle cx="24" cy="4" r="2.5" fill="#00D9FF"/>
+  <circle cx="34" cy="8" r="2" fill="#00D9FF"/>
+
+  <!-- Handle base -->
+  <rect x="21" y="38" width="6" height="6" rx="1" fill="url(#tridentGradient)"/>
+
+  <!-- Cyber accent lines -->
+  <path d="M18 18 L12 18" stroke="#39FF14" stroke-width="1" opacity="0.6"/>
+  <path d="M30 18 L36 18" stroke="#39FF14" stroke-width="1" opacity="0.6"/>
+  <path d="M18 24 L10 24" stroke="#39FF14" stroke-width="1" opacity="0.6"/>
+  <path d="M30 24 L38 24" stroke="#39FF14" stroke-width="1" opacity="0.6"/>
+</svg>
