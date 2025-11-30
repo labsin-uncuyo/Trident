@@ -92,17 +92,11 @@ if ('loading' in HTMLImageElement.prototype) {
 // Add custom CSS to make animations faster
 const fasterAnimationsCSS = `
   [data-aos] {
-    transition-duration: 200ms !important;
     transition-delay: 0ms !important;
   }
 
   .txt-fx .letter {
-    transition-duration: 100ms !important;
     transition-delay: 0ms !important;
-  }
-
-  .aos-animate {
-    animation-duration: 200ms !important;
   }
 `;
 
