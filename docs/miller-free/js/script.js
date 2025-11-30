@@ -64,8 +64,8 @@
     $('.txt-fx').each(function () {
       var newstr = '';
       var count = 0;
-      var delay = 50;
-      var stagger = 5;
+      var delay = 0;
+      var stagger = 10;
       var words = this.textContent.split(/\s/);
       var arrWords = new Array();
       
@@ -139,7 +139,7 @@
 
   
     AOS.init({
-      duration: 400,
+      duration: 1200,
       once: true,
       delay: 0
     })
