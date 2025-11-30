@@ -1,0 +1,5 @@
+fastapi==0.110.0
+uvicorn==0.27.1
+requests==2.31.0
+pytest==8.2.0
+paramiko==3.4.0

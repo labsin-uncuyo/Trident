@@ -1,0 +1,188 @@
+services:
+  router:
+    build: ./images/router
+    image: lab/router:latest
+    container_name: lab_router
+    privileged: true
+    environment:
+      - RUN_ID=${RUN_ID}
+    volumes:
+      - ./outputs:/outputs
+    networks:
+      lab_net_a:
+        ipv4_address: 172.30.0.1
+      lab_net_b:
+        ipv4_address: 172.31.0.1
+    healthcheck:
+      test: ["CMD-SHELL", "sysctl net.ipv4.ip_forward | grep -q ' = 1'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # switch remains available for future mirroring experiments, but SLIPS now
+  # consumes PCAPs directly from the shared volume so this component is optional.
+  switch:
+    build: ./images/switch
+    image: lab/switch:latest
+    container_name: lab_switch
+    privileged: true
+    environment:
+      - RUN_ID=${RUN_ID}
+    volumes:
+      - ./outputs:/outputs
+    networks:
+      lab_net_a:
+        ipv4_address: 172.30.0.2
+    depends_on:
+      - router
+    restart: unless-stopped
+
+  slips_defender:
+    build: ./images/slips_defender
+    image: lab/slips_defender:latest
+    container_name: lab_slips_defender
+    environment:
+      - RUN_ID=${RUN_ID}
+      - DEFENDER_PORT=${DEFENDER_PORT:-8000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LAB_PASSWORD=${LAB_PASSWORD}
+      - SLIPS_PROCESS_ACTIVE=${SLIPS_PROCESS_ACTIVE:-1}
+      - SLIPS_ACTIVE_STABLE_SECS=${SLIPS_ACTIVE_STABLE_SECS:-3}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+    volumes:
+      - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
+      - ./outputs/${RUN_ID}/slips_output:/StratosphereLinuxIPS/output
+      - ./outputs:/outputs
+      - ./images/slips_defender:/opt/lab
+      - ./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml
+      - slips_redis_data:/var/lib/redis
+      - slips_ti_data:/StratosphereLinuxIPS/modules/threat_intelligence/remote_data_files
+      - auto_responder_ssh_keys:/root/.ssh
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+    command: ["/bin/bash", "/opt/lab/slips_entrypoint.sh"]
+    restart: unless-stopped
+    depends_on:
+      router:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:${DEFENDER_PORT:-8000}/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  compromised:
+    build: ./images/compromised
+    image: lab/compromised:latest
+    container_name: lab_compromised
+    environment:
+      - LAB_PASSWORD=${LAB_PASSWORD}
+      - RUN_ID=${RUN_ID}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL}
+    volumes:
+      - ./outputs:/outputs
+      - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro
+    #  - ./GHOSTS:/opt/GHOSTS:ro
+    #  - ./GHOSTS/agents/john_scott/config:/opt/ghosts_config:ro
+    #  - ./GHOSTS/agents/john_scott/scripts:/home/labuser/ghosts_scripts:ro
+    ports:
+      - "2223:22"
+    networks:
+      lab_net_a:
+        ipv4_address: 172.30.0.10
+    depends_on:
+      server:
+        condition: service_healthy
+      router:
+        condition: service_healthy
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q ':22'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ghosts_driver:
+    build:
+      context: .
+      dockerfile: images/ghosts_driver/Dockerfile
+    image: lab/ghosts_driver:latest
+    container_name: lab_ghosts_driver
+    environment:
+      - RUN_ID=${RUN_ID}
+      - JOHN_SCOTT_MODE=${JOHN_SCOTT_MODE:-dummy}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL:-qwen3-coder}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
+    volumes:
+      - ./outputs:/outputs
+    networks:
+      lab_net_a:
+        ipv4_address: 172.30.0.20
+    depends_on:
+      compromised:
+        condition: service_healthy
+    restart: unless-stopped
+
+  server:
+    build: ./images/server
+    image: lab/server:latest
+    container_name: lab_server
+    privileged: true
+    environment:
+      - RUN_ID=${RUN_ID}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+    volumes:
+      - ./outputs:/outputs
+      - opencode_data:/root/.opencode
+      - postgres_data:/var/lib/postgresql
+    ports:
+      - "8080:80"
+      - "5432:5432"
+    networks:
+      lab_net_b:
+        ipv4_address: 172.31.0.10
+    depends_on:
+      router:
+        condition: service_healthy
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:80 >/dev/null && pg_isready -q || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  opencode_data:
+  postgres_data:
+  slips_redis_data:
+  slips_ti_data:
+  auto_responder_ssh_keys:
+
+networks:
+  lab_net_a:
+    name: lab_net_a
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+          gateway: 172.30.0.254
+  lab_net_b:
+    name: lab_net_b
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+          gateway: 172.31.0.254

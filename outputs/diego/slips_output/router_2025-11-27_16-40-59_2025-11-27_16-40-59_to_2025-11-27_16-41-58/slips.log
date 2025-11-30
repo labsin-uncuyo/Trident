@@ -1,0 +1,110 @@
+2025/11/27 16:42:27.533232 [Main] Storing Slips logs in output/router_2025-11-27_16-40-59.pcap_2025-11-27_16:42:27/
+2025/11/27 16:42:28.575183 [Main] Using redis server on port: 6379
+2025/11/27 16:42:28.575307 [Main] Started Main process [PID 13557]
+2025/11/27 16:42:28.907464 [Main] Starting modules
+2025/11/27 16:42:31.893837 [Main] 		Starting the module ARP (Detect ARP attacks) [PID 13578]
+2025/11/27 16:42:32.250969 [Main] 		Starting the module Flow Alerts (Alerts about flows: long connection, successful ssh, password guessing, self-signed certificate, data exfiltration, etc.) [PID 13580]
+2025/11/27 16:42:32.291771 [Main] 		Starting the module Flow ML Detection (Train or test a Machine Learning model to detect malicious flows) [PID 13582]
+2025/11/27 16:42:32.334278 [Main] 		Starting the module HTTP Analyzer (Analyze HTTP flows) [PID 13583]
+2025/11/27 16:42:32.598177 [Main] 		Starting the module IP Info (Get different info about an IP/MAC address) [PID 13584]
+2025/11/27 16:42:32.616335 [Main] 		Starting the module Network Discovery (Detect Horizonal, Vertical, ICMP and DHCP Scans.) [PID 13585]
+2025/11/27 16:42:32.657314 [Main] 		Starting the module Risk IQ (Module to get passive DNS info about IPs from RiskIQ) [PID 13586]
+2025/11/27 16:42:32.698840 [Main] 		Starting the module RNN C&C Detection (Detect C&C channels based on behavioral letters) [PID 13587]
+2025/11/27 16:42:32.744173 [Main] 		Starting the module Threat Intelligence (Check if the source IP or destination IP are in a malicious list of IPs) [PID 13597]
+2025/11/27 16:42:32.787153 [Main] 		Starting the module Timeline (Creates kalipso timeline of what happened in the network based on flows and available data) [PID 13599]
+2025/11/27 16:42:33.092665 [Main] 		Starting the module Update Manager (Update Threat Intelligence files) [PID 13600]
+2025/11/27 16:42:33.100215 [Update Manager] Checking if we need to download TI files.
+2025/11/27 16:42:33.135795 [Main] 		Starting the module Virustotal (IP, domain and file hash lookup on Virustotal) [PID 13601]
+2025/11/27 16:42:33.636497 [Main] Disabled Modules: ['template', 'exporting_alerts', 'p2ptrust', 'fidesModule', 'irisModule', 'cesnet', 'blocking', 'arp_poisoner', 'leak_detector', 'cyst']
+2025/11/27 16:42:33.914899 [Main] Started Evidence Process [PID 13602]
+2025/11/27 16:42:33.921512 [EvidenceHandler] Using threshold: 0.25
+2025/11/27 16:42:34.196234 [Main] Started Profiler Process [PID 13610]
+2025/11/27 16:42:34.200940 [Main] Metadata added to output/router_2025-11-27_16-40-59.pcap_2025-11-27_16:42:27/metadata
+2025/11/27 16:42:34.240718 [Main] Started Input Process [PID 13614]
+2025/11/27 16:42:34.250451 [Input] Storing zeek log files in output/router_2025-11-27_16-40-59.pcap_2025-11-27_16:42:27/zeek_files
+2025/11/27 16:42:34.254872 [Main] Warning: Slips may generate a large amount of traffic by querying TI sites.
+2025/11/27 16:42:37.320190 [Profiler] Used local network: 172.16.0.0/12
+2025/11/27 16:42:38.302018 [EvidenceHandler] 2025/11/27 15:49:21.343887 IP 172.30.0.10 detected as malicious in timewindow 1 (start 2025/11/27 15:48:15, stop 2025/11/27 16:48:15) given the following evidence:
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: high.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: high.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: high.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: high.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: high.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: high.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: high.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: medium.
+	- Detected Connecting to private IP: 172.31.0.10 on destination port: 5432 threat level: info.
+	- Detected Connection to unknown destination port 5432/TCP destination IP 172.31.0.10. threat level: high.
+
+2025/11/27 16:43:07.262075 [Input] Done reading all flows. Stopping the input process. Sent 380 lines for the profiler process.
+2025/11/27 16:43:07.263025 [Input] Telling Profiler to stop because no more input is arriving.
+2025/11/27 16:43:07.263396 [Input] Waiting for Profiler to stop.
+2025/11/27 16:43:07.265608 [Profiler] Stopping. Total lines read: 380
+2025/11/27 16:43:07.265942 [Profiler] Marking Profiler as done processing.
+2025/11/27 16:43:07.266350 [Profiler] Profiler is done processing.
+2025/11/27 16:43:07.266573 [Profiler] Profiler is done telling input.py that it's done processing.
+2025/11/27 16:43:07.266588 [Input] Input is done processing.
+2025/11/27 16:43:07.272427 [Input] Stopping. Total lines read: 380
+2025/11/27 16:43:09.362445 [Main] 
+---------------------------
+2025/11/27 16:43:09.362610 [Main] Stopping Slips
+2025/11/27 16:43:09.367293 [Main] Total flows read (without altflows): 14
+2025/11/27 16:43:09.368207 [Main] Killing modules that took more than 0.0 mins to finish.
+2025/11/27 16:43:12.375272 [Main] 	Update Manager       	Stopped. 12 left.
+2025/11/27 16:43:12.379767 [Main] 	HTTP Analyzer        	Stopped. 11 left.
+2025/11/27 16:43:12.383868 [Main] 	Timeline             	Stopped. 10 left.
+2025/11/27 16:43:12.388290 [Main] 	Input                	Stopped. 9 left.
+2025/11/27 16:43:15.394749 [Main] 	IP Info              	Stopped. 8 left.
+2025/11/27 16:43:18.400017 [Main] 	EvidenceHandler      	Stopped. 7 left.
+2025/11/27 16:43:18.403613 [Main] 	RNN C&C Detection    	Stopped. 6 left.
+2025/11/27 16:43:18.407043 [Main] 	Threat Intelligence  	Stopped. 5 left.
+2025/11/27 16:43:18.410334 [Main] 	Flow ML Detection    	Stopped. 4 left.
+2025/11/27 16:43:18.413601 [Main] 	Network Discovery    	Stopped. 3 left.
+2025/11/27 16:43:18.416767 [Main] 	ARP                  	Stopped. 2 left.
+2025/11/27 16:43:18.419882 [Main] 	Profiler             	Stopped. 1 left.
+2025/11/27 16:43:18.422972 [Main] 	Flow Alerts          	Stopped. 0 left.
+2025/11/27 16:43:18.423834 [Main] Analysis of dataset/router_2025-11-27_16-40-59.pcap finished in 54.95 minutes
+2025/11/27 16:43:18.425316 [Main] [Process Manager] Slips didn't shutdown gracefully - Killing modules that took more than 0.0 mins to finish.
+

@@ -1,0 +1,4 @@
+run_id: "run_20240101_120000"
+mode: simulate
+defender_port: 8000
+lab_password: "adminadmin"

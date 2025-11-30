@@ -1,0 +1,56 @@
+2025/11/26 22:07:31.984551 [Main] Storing Slips logs in output/router_2025-11-26_22-06-35.pcap_2025-11-26_22:07:31/
+2025/11/26 22:07:33.028018 [Main] Using redis server on port: 6379
+2025/11/26 22:07:33.028192 [Main] Started Main process [PID 3405]
+2025/11/26 22:07:33.363490 [Main] Starting modules
+2025/11/26 22:07:36.366640 [Main] 		Starting the module ARP (Detect ARP attacks) [PID 3426]
+2025/11/26 22:07:36.722511 [Main] 		Starting the module Flow Alerts (Alerts about flows: long connection, successful ssh, password guessing, self-signed certificate, data exfiltration, etc.) [PID 3428]
+2025/11/26 22:07:36.763625 [Main] 		Starting the module Flow ML Detection (Train or test a Machine Learning model to detect malicious flows) [PID 3430]
+2025/11/26 22:07:36.806176 [Main] 		Starting the module HTTP Analyzer (Analyze HTTP flows) [PID 3431]
+2025/11/26 22:07:37.070577 [Main] 		Starting the module IP Info (Get different info about an IP/MAC address) [PID 3432]
+2025/11/26 22:07:37.088964 [Main] 		Starting the module Network Discovery (Detect Horizonal, Vertical, ICMP and DHCP Scans.) [PID 3433]
+2025/11/26 22:07:37.129940 [Main] 		Starting the module Risk IQ (Module to get passive DNS info about IPs from RiskIQ) [PID 3434]
+2025/11/26 22:07:37.171130 [Main] 		Starting the module RNN C&C Detection (Detect C&C channels based on behavioral letters) [PID 3435]
+2025/11/26 22:07:37.217639 [Main] 		Starting the module Threat Intelligence (Check if the source IP or destination IP are in a malicious list of IPs) [PID 3445]
+2025/11/26 22:07:37.266585 [Main] 		Starting the module Timeline (Creates kalipso timeline of what happened in the network based on flows and available data) [PID 3454]
+2025/11/26 22:07:37.571285 [Main] 		Starting the module Update Manager (Update Threat Intelligence files) [PID 3455]
+2025/11/26 22:07:37.579767 [Update Manager] Checking if we need to download TI files.
+2025/11/26 22:07:37.614285 [Main] 		Starting the module Virustotal (IP, domain and file hash lookup on Virustotal) [PID 3456]
+2025/11/26 22:07:38.115251 [Main] Disabled Modules: ['template', 'exporting_alerts', 'p2ptrust', 'fidesModule', 'irisModule', 'cesnet', 'blocking', 'arp_poisoner', 'leak_detector', 'cyst']
+2025/11/26 22:07:38.395904 [Main] Started Evidence Process [PID 3457]
+2025/11/26 22:07:38.403641 [EvidenceHandler] Using threshold: 0.25
+2025/11/26 22:07:38.678542 [Main] Started Profiler Process [PID 3458]
+2025/11/26 22:07:38.684832 [Main] Metadata added to output/router_2025-11-26_22-06-35.pcap_2025-11-26_22:07:31/metadata
+2025/11/26 22:07:38.725926 [Main] Started Input Process [PID 3462]
+2025/11/26 22:07:38.741712 [Input] Storing zeek log files in output/router_2025-11-26_22-06-35.pcap_2025-11-26_22:07:31/zeek_files
+2025/11/26 22:07:38.752880 [Main] Warning: Slips may generate a large amount of traffic by querying TI sites.
+2025/11/26 22:07:41.805667 [Profiler] Used local network: 172.16.0.0/12
+2025/11/26 22:08:11.755642 [Input] Done reading all flows. Stopping the input process. Sent 188 lines for the profiler process.
+2025/11/26 22:08:11.755877 [Input] Telling Profiler to stop because no more input is arriving.
+2025/11/26 22:08:11.755938 [Input] Waiting for Profiler to stop.
+2025/11/26 22:08:11.757298 [Profiler] Stopping. Total lines read: 188
+2025/11/26 22:08:11.757457 [Profiler] Marking Profiler as done processing.
+2025/11/26 22:08:11.757505 [Profiler] Profiler is done processing.
+2025/11/26 22:08:11.757695 [Profiler] Profiler is done telling input.py that it's done processing.
+2025/11/26 22:08:11.757727 [Input] Input is done processing.
+2025/11/26 22:08:11.762819 [Input] Stopping. Total lines read: 188
+2025/11/26 22:08:13.861890 [Main] 
+---------------------------
+2025/11/26 22:08:13.862069 [Main] Stopping Slips
+2025/11/26 22:08:13.867891 [Main] Total flows read (without altflows): 7
+2025/11/26 22:08:13.868779 [Main] Killing modules that took more than 0.0 mins to finish.
+2025/11/26 22:08:16.873147 [Main] 	EvidenceHandler      	Stopped. 12 left.
+2025/11/26 22:08:16.876884 [Main] 	Flow Alerts          	Stopped. 11 left.
+2025/11/26 22:08:16.880146 [Main] 	Network Discovery    	Stopped. 10 left.
+2025/11/26 22:08:16.883235 [Main] 	Timeline             	Stopped. 9 left.
+2025/11/26 22:08:19.887773 [Main] 	Update Manager       	Stopped. 8 left.
+2025/11/26 22:08:19.891227 [Main] 	HTTP Analyzer        	Stopped. 7 left.
+2025/11/26 22:08:19.894828 [Main] 	Flow ML Detection    	Stopped. 6 left.
+2025/11/26 22:08:22.901648 [Main] 	IP Info              	Stopped. 5 left.
+2025/11/26 22:08:22.905155 [Main] 	Profiler             	Stopped. 4 left.
+2025/11/26 22:08:22.908616 [Main] 	RNN C&C Detection    	Stopped. 3 left.
+2025/11/26 22:08:22.911919 [Main] 	Threat Intelligence  	Stopped. 2 left.
+2025/11/26 22:08:22.915040 [Main] 	ARP                  	Stopped. 1 left.
+2025/11/26 22:08:22.918175 [Main] 	Input                	Stopped. 0 left.
+2025/11/26 22:08:22.919063 [Main] Analysis of dataset/router_2025-11-26_22-06-35.pcap finished in 18.15 minutes
+2025/11/26 22:08:22.920790 [Main] [Process Manager] Slips didn't shutdown gracefully - Killing modules that took more than 0.0 mins to finish.
+

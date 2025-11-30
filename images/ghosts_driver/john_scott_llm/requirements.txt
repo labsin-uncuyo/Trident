@@ -1,0 +1,2 @@
+# Python requirements for LLM Query Generator
+requests>=2.31.0
