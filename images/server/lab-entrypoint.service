@@ -1,0 +1,11 @@
+[Unit]
+Description=Lab Entrypoint Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/entrypoint.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
