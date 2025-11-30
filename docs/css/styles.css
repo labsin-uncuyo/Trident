@@ -810,6 +810,30 @@ ul {
         --section-padding: 40px;
     }
 
+    /* Fix sidebar positioning on mobile to not block content */
+    .col-lg-3.position-fixed {
+        position: relative !important;
+        height: auto !important;
+        margin-bottom: 2rem;
+    }
+
+    /* Hide contact button on mobile */
+    .cta-button.d-block.text-center[href="#contact"] {
+        display: none !important;
+    }
+
+    /* Make architecture image responsive on mobile */
+    .diagram-image {
+        max-width: 100% !important;
+        height: auto !important;
+        object-fit: contain !important;
+    }
+
+    .architecture-diagram {
+        padding: 1rem !important;
+        overflow-x: auto !important;
+    }
+
     body {
         font-size: 1rem;
     }
