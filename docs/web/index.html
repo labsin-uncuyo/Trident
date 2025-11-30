@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TRIDENT - Realistic Cyber Range for Autonomous Agent Training</title>
+
+    <!-- Third Party Plugins -->
+    <link rel="stylesheet" type="text/css" href="miller-free/css/vendor.css">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&family=Roboto:wght@400;700;900&family=Six+Caps&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Template Styles -->
+    <link rel="stylesheet" href="miller-free/style.css">
+    <!-- White Button Fixes -->
+    <link rel="stylesheet" href="css/white-buttons.css">
+  
+    <!-- Meta Tags for SEO -->
+    <meta name="description" content="A lightweight framework to train and test cyber agents (benign, attacker, defender) in real-like Docker environments. Built by Stratosphere Laboratory at CTU.">
+    <meta name="keywords" content="cyber range, autonomous agents, cybersecurity, Docker, SLIPS, ARACNE, defender agents, CTU, Stratosphere">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://trident-cyberrange.github.io/">
+    <meta property="og:title" content="TRIDENT - Realistic Cyber Range">
+    <meta property="og:description" content="Training autonomous cyber agents in realistic Docker environments">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="TRIDENT - Realistic Cyber Range">
+    <meta property="twitter:description" content="Training autonomous cyber agents in realistic Docker environments">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="assets/images/logo.svg">
+  </head>
+  <body data-bs-theme="dark">
+
+    <!-- Skip Navigation -->
+
+    <div class="nav nav-overlay">
+      <div class="nav__content">
+        <ul class="nav__list">
+          <li class="nav__list-item active-nav"><a href="#hero" class="hover-target">Home</a></li>
+          <li class="nav__list-item"><a href="#about" class="hover-target">About</a></li>
+          <li class="nav__list-item"><a href="#overview" class="hover-target">Overview</a></li>
+          <li class="nav__list-item"><a href="#architecture" class="hover-target">Architecture</a></li>
+          <li class="nav__list-item"><a href="#outcomes" class="hover-target">Outcomes</a></li>
+          <li class="nav__list-item"><a href="#resources" class="hover-target">Resources</a></li>
+          <li class="nav__list-item"><a href="#team" class="hover-target">Team</a></li>
+          <li class="nav__list-item"><a href="#contact" class="hover-target">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <nav id="navbar" class="position-absolute">
+			<input id="menu-toggle" type="checkbox" />
+			<label class="menu-btn" for="menu-toggle">
+			<span></span>
+			</label>
+		</nav>
+
+    <div class="container-fluid p-0">
+      <div class="row g-0">
+        <!-- Sidebar -->
+        <div class="col-lg-3 position-fixed z-1 h-100" data-aos="slide-right" data-aos-delay="200">
+          <div class="sidebar p-4 p-lg-5 vh-100 d-flex flex-column position-relative">
+            <div class="brand-section mb-0">
+              <img src="assets/images/logo.svg" alt="Trident Logo" class="trident-logo mb-3">
+              <h1 class="trident-title">TRIDENT</h1>
+            </div>
+
+            <p class="bio mt-4 d-none d-lg-block">
+              A lightweight framework to train and test cyber agents (benign, attacker, defender) in real-like Docker environments.
+            </p>
+            <p style="max-width: 200px;" class="d-none d-lg-block">Free HTML Template by <a href="https://templatesjungle.com/" target="_blank" class="text-decoration-none">TemplatesJungle</a></p>
+
+            <div class="social-icons mt-auto mb-4 d-none d-lg-flex flex-column">
+              <a href="https://github.com/stratosphereips" target="_blank" class="social-icon" aria-label="GitHub">
+                <i class="fab fa-github"></i>
+              </a>
+              <a href="https://www.stratosphereips.org" target="_blank" class="social-icon" aria-label="Website">
+                <i class="fas fa-globe"></i>
+              </a>
+              <a href="https://www.cvut.cz/en" target="_blank" class="social-icon" aria-label="University">
+                <i class="fas fa-university"></i>
+              </a>
+            </div>
+
+            <div class="personal-info d-none d-lg-flex">
+              <p class="job-title mb-2">AI & CYBERSECURITY RESEARCH</p>
+              <p class="location">Realistic Cyber Range</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-9 offset-lg-3">
+          <div class="row">
+
+            <!-- Hero Section -->
+            <div id="hero" class="col-lg-8 position-relative d-flex flex-column align-items-center">
+              <div class="pt-4 pt-lg-5 px-4 px-lg-5 w-100 mt-5">
+
+                <div class="swiper banner-slider slide-in mt-5 mt-lg-0">
+                  <div class="swiper-wrapper">
+                    <div class="swiper-slide">
+                      <div class="banner-content d-flex flex-column">
+                        <span class="introduction mb-3 d-block">AI & CYBERSECURITY RESEARCH</span>
+                        <h2 class="name mb-4 txt-fx slide-up">TRIDENT</h2>
+                        <p class="description mb-4">
+                          Realistic Cyber Range for Autonomous Agent Training
+                        </p>
+                        <div class="hero-buttons mb-4">
+                          <a href="https://github.com/labsin-uncuyo/Trident" class="cta-link d-inline-block mb-3" target="_blank">
+                            <i class="fab fa-github"></i> View on GitHub
+                          </a>
+                          <a href="https://trident-cyberrange.github.io/docs/dockerized-netsecgame.pdf" class="cta-link d-inline-block mb-3 ms-3" target="_blank">
+                            <i class="fas fa-file-pdf"></i> Read Documentation
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="swiper-slide">
+                      <div class="banner-content d-flex flex-column">
+                        <span class="introduction mb-3 d-block">Research Question</span>
+                        <h2 class="name mb-4 txt-fx slide-up">TRUSTED AGENTS</h2>
+                        <p class="description mb-4">
+                          Can autonomous benign, attacker, and defender agents be truly trusted to operate on real systems?
+                        </p>
+                        <a href="#about" class="cta-link d-inline-block mb-5">Learn More</a>
+                      </div>
+                    </div>
+                    <div class="swiper-slide">
+                      <div class="banner-content d-flex flex-column">
+                        <span class="introduction mb-3 d-block">Docker-based</span>
+                        <h2 class="name mb-4 txt-fx slide-up">ISOLATED TESTING</h2>
+                        <p class="description mb-4">
+                          Containerized environments for safe, reproducible cyber security experiments
+                        </p>
+                        <a href="#architecture" class="cta-link d-inline-block mb-5">View Architecture</a>
+                      </div>
+                    </div>
+                    <div class="swiper-slide">
+                      <div class="banner-content d-flex flex-column">
+                        <span class="introduction mb-3 d-block">Open Source</span>
+                        <h2 class="name mb-4 txt-fx slide-up">COLLABORATIVE</h2>
+                        <p class="description mb-4">
+                          Built with the cybersecurity research community for advancing defensive automation
+                        </p>
+                        <a href="#resources" class="cta-link d-inline-block mb-5">Get Involved</a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <nav class="section-nav swiper banner-nav-slider pt-3 pt-lg-4 px-4 px-lg-5 w-100" data-aos="fade-up" data-aos-delay="600" data-aos-anchor-placement="top-bottom">
+                <ul class="swiper-wrapper">
+                  <li class="swiper-slide"><span>01</span> INTRO</li>
+                  <li class="swiper-slide"><span>02</span> AGENTS</li>
+                  <li class="swiper-slide"><span>03</span> ARCHITECTURE</li>
+                  <li class="swiper-slide"><span>04</span> COMMUNITY</li>
+                </ul>
+              </nav>
+              <div class="swiper image-slider" data-aos="fade-up" data-aos-delay="1000" >
+                <div class="swiper-wrapper">
+                  <div class="swiper-slide">
+                    <img
+                        class="hero-image position-absolute top-0 end-0 img-fluid mb-5 opacity-25 vh-100"
+                        src="images/nn.jpg"
+                        alt="Universidad Nacional de Cuyo"
+                      >
+                  </div>
+                  <div class="swiper-slide">
+                    <img
+                        class="hero-image position-absolute top-0 end-0 img-fluid mb-5 opacity-25 vh-100"
+                        src="images/banner-image-2.jpg"
+                        alt="Network security"
+                      >
+                  </div>
+                  <div class="swiper-slide">
+                    <img
+                        class="hero-image position-absolute top-0 end-0 img-fluid mb-5 opacity-25 vh-100"
+                        src="images/banner-image-3.jpg"
+                        alt="Digital security"
+                      >
+                  </div>
+                  <div class="swiper-slide">
+                    <img
+                        class="hero-image position-absolute top-0 end-0 img-fluid mb-5 opacity-25 vh-100"
+                        src="images/banner-image-4.jpg"
+                        alt="Cyber range"
+                      >
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Skills Section (CTAs) -->
+            <div class="col-lg-4">
+              <div class="p-4 p-lg-5 vh-100">
+                <div class="skill" data-aos="fade-up" data-aos-delay="200">
+                  <span class="skill-number d-block">01</span>
+                  <h3>GitHub</h3>
+                  <p>View our source code and contribute to the project.</p>
+                </div>
+
+                <div class="skill" data-aos="fade-up" data-aos-delay="400">
+                  <span class="skill-number d-block">02</span>
+                  <h3>Documentation</h3>
+                  <p>Read our comprehensive research papers and technical docs.</p>
+                </div>
+
+
+
+                <!-- Mobile-only content -->
+                <div class="d-lg-none mt-5">
+                  <hr class="sidebar-divider">
+                  <p class="job-title mb-2">AI & CYBERSECURITY RESEARCH</p>
+                  <p class="location mb-4">Realistic Cyber Range</p>
+                  <a href="#contact" class="cta-button d-block text-center">CONTACT US</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- Main Content -->
+            <main id="main-content">
+
+            <!-- About Section -->
+            <section id="about" class="pt-4 pt-lg-5 px-4 px-lg-5 my-5 py-5">
+              <div class="row d-flex flex-wrap" data-aos="fade-up">
+                <div class="col-lg-12">
+                  <span class="introduction mb-3 d-block">ABOUT TRIDENT</span>
+                  <h2 class="name mb-4 txt-fx slide-up text-uppercase">Research Project</h2>
+                  <div class="highlight-quote mb-5">
+                    "Can autonomous benign, attacker, and defender agents be truly trusted to operate on real systems?"
+                  </div>
+
+                  <div class="row">
+                    <div class="col-lg-6 pb-4">
+                      <h3>Description</h3>
+                      <p>Trident is a lightweight framework to train and test cyber agents (benign, attacker, defender) in real-like environments using Docker and standard DevOps toolchains. The project is motivated by the need to evaluate defensive tactics, automate detection and response, and stress-test agents against realistic attack patterns while keeping experiments reproducible and containerized.</p>
+                    </div>
+                    <div class="col-lg-6 pb-4">
+                      <h3>Main Goal</h3>
+                      <p>Build and validate defender agents that operate reliably in containerized real-world stacks, while supporting benign and attacker agents for realistic training and evaluation.</p>
+                    </div>
+                    <div class="col-lg-12">
+                      <h3>Collaboration</h3>
+                      <p>Developed in collaboration with <strong>Stratosphere Laboratory</strong> at <strong>CTU UNIVERSITY, PRAGUE</strong>, leveraging years of expertise in network security and intrusion detection systems.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Overview Section -->
+            <section id="overview" class="pt-4 pt-lg-5 px-4 px-lg-5 my-5 py-5 section-dark">
+              <div class="row d-flex flex-wrap" data-aos="fade-up">
+                <div class="col-lg-12">
+                  <span class="introduction mb-3 d-block">PROJECT OVERVIEW</span>
+                  <h2 class="name mb-4 txt-fx slide-up text-uppercase">Workflow Phases</h2>
+
+                  <div class="row workflow-phases">
+                    <div class="col-lg-6 pb-4">
+                      <div class="phase-item" data-aos="fade-up">
+                        <div class="phase-number">1</div>
+                        <h3>Infrastructure & Integration</h3>
+                        <p>Establishing a closed-loop system where an attacker triggers alerts, prompting the defender to act.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-6 pb-4">
+                      <div class="phase-item" data-aos="fade-up" data-aos-delay="100">
+                        <div class="phase-number">2</div>
+                        <h3>Realism & Calibration</h3>
+                        <p>Injecting benign user traffic to measure false positives and refine detection logic.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-6 pb-4">
+                      <div class="phase-item" data-aos="fade-up" data-aos-delay="200">
+                        <div class="phase-number">3</div>
+                        <h3>LLM Red Teaming</h3>
+                        <p>Conducting manual and automated red-teaming to test the defender against prompt injections.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-6 pb-4">
+                      <div class="phase-item" data-aos="fade-up" data-aos-delay="300">
+                        <div class="phase-number">4</div>
+                        <h3>Expansion</h3>
+                        <p>Scaling to complex network topologies to test advanced detection models (Temporal GNNs).</p>
+                      </div>
+                    </div>
+                  </div>
+
+
+                </div>
+              </div>
+            </section>
+
+            <!-- Architecture Section -->
+            <section id="architecture" class="pt-4 pt-lg-5 px-4 px-lg-5 my-5 py-5">
+              <div class="row d-flex flex-wrap" data-aos="fade-up">
+                <div class="col-lg-12">
+                  <span class="introduction mb-3 d-block">SYSTEM ARCHITECTURE</span>
+                  <h2 class="name mb-4 txt-fx slide-up text-uppercase">Technical Components</h2>
+                  <p class="section-intro">Trident enables agents to execute unrestricted code in isolated Docker containers, generating real network traffic, alerts, and defensive actions.</p>
+
+                  <div class="architecture-diagram mb-5">
+                    <img src="assets/images/architecture.svg" alt="Trident system architecture showing Docker containers, SLIPS, ARACNE, and defender components" class="diagram-image">
+                  </div>
+
+                  <div class="row architecture-components">
+                    <div class="col-lg-4 mb-4" data-aos="fade-up">
+                      <div class="component-card defender">
+                        <div class="component-icon"><i class="fas fa-shield-halved"></i></div>
+                        <h4>Defender Agent</h4>
+                        <p>Monitors alerts, generates defensive prompts, and executes responses via OpenCode on victim machines.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="100">
+                      <div class="component-card attacker">
+                        <div class="component-icon"><i class="fas fa-user-secret"></i></div>
+                        <h4>Attacker Agent (aracne)</h4>
+                        <p>Performs controlled attack scenarios from an external host to validate detection and response.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="200">
+                      <div class="component-card benign">
+                        <div class="component-icon"><i class="fas fa-users"></i></div>
+                        <h4>Benign Agent (Ghost)</h4>
+                        <p>Simulates realistic user behavior to test false positive rates and system noise.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up">
+                      <div class="component-card">
+                        <div class="component-icon"><i class="fas fa-network-wired"></i></div>
+                        <h4>SLIPS</h4>
+                        <p>Network intrusion detection system that generates alerts from observed traffic patterns.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="100">
+                      <div class="component-card">
+                        <div class="component-icon"><i class="fab fa-docker"></i></div>
+                        <h4>Docker Infrastructure</h4>
+                        <p>Containerized victim machines and servers providing isolated, reproducible environments.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="200">
+                      <div class="component-card">
+                        <div class="component-icon"><i class="fas fa-exchange-alt"></i></div>
+                        <h4>Alert Pipeline</h4>
+                        <p>Forwards SLIPS alerts to the defender via FastAPI service for real-time response.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Outcomes Section -->
+            <section id="outcomes" class="pt-4 pt-lg-5 px-4 px-lg-5 my-5 py-5 section-dark">
+              <div class="row d-flex flex-wrap" data-aos="fade-up">
+                <div class="col-lg-12">
+                  <span class="introduction mb-3 d-block">EXPECTED OUTCOMES</span>
+                  <h2 class="name mb-4 txt-fx slide-up text-uppercase">Research Impact</h2>
+                  <p class="section-intro">The impact and capabilities Trident will enable for the cybersecurity research community.</p>
+
+                  <div class="row outcomes-grid">
+                    <div class="col-lg-4 mb-4" data-aos="fade-up">
+                      <div class="outcome-card">
+                        <div class="outcome-icon"><i class="fas fa-check-circle"></i></div>
+                        <h3>Trustworthy Evaluation</h3>
+                        <p>A safe, isolated sandbox for benchmarking unrestricted command execution by benign, attacker, and defender agents on real systems.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="100">
+                      <div class="outcome-card">
+                        <div class="outcome-icon"><i class="fas fa-redo"></i></div>
+                        <h3>Reproducible Environment</h3>
+                        <p>An environment that mirrors real networks, supports larger topologies, and allows safe experimentation without risk to production systems.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="200">
+                      <div class="outcome-card">
+                        <div class="outcome-icon"><i class="fas fa-robot"></i></div>
+                        <h3>Defensive Automation</h3>
+                        <p>Improved agent reliability through high-quality prompts, structured execution paths, and consistent response policies validated by testing.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up">
+                      <div class="outcome-card">
+                        <div class="outcome-icon"><i class="fas fa-filter"></i></div>
+                        <h3>Reduced False Positives</h3>
+                        <p>Better understanding of operational noise through calibrated benign activity that resembles real user behavior.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="100">
+                      <div class="outcome-card">
+                        <div class="outcome-icon"><i class="fas fa-chart-line"></i></div>
+                        <h3>High-Quality Datasets</h3>
+                        <p>Rich network and host-level datasets enriched with MITRE ATT&CK tags, supporting offline analysis and ML experimentation.</p>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="200">
+                      <div class="outcome-card">
+                        <div class="outcome-icon"><i class="fas fa-puzzle-piece"></i></div>
+                        <h3>Extensible Framework</h3>
+                        <p>A modular platform where new sensors, autonomous agents, or detection components are pluggable without redesigning the environment.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Resources Section -->
+            <section id="resources" class="pt-4 pt-lg-5 px-4 px-lg-5 my-5 py-5">
+              <div class="row d-flex flex-wrap" data-aos="fade-up">
+                <div class="col-lg-12">
+                  <span class="introduction mb-3 d-block">RESOURCES & LINKS</span>
+                  <h2 class="name mb-4 txt-fx slide-up text-uppercase">Open Source Tools</h2>
+
+                  <div class="row resources-grid">
+                    <div class="col-lg-4 mb-4" data-aos="fade-up">
+                      <div class="resource-category">
+                        <h3><i class="fab fa-github"></i> GitHub Repositories</h3>
+                        <ul class="resource-list">
+                          <li><a href="https://github.com/stratosphereips/StratosphereLinuxIPS" target="_blank">SLIPS <i class="fas fa-external-link-alt"></i></a> - Network Intrusion Detection System</li>
+                          <li><a href="https://github.com/stratosphereips/NetSecGame" target="_blank">NetSecGame <i class="fas fa-external-link-alt"></i></a> - Network Security Game Framework</li>
+                          <li><a href="https://github.com/stratosphereips/aracne" target="_blank">aracne <i class="fas fa-external-link-alt"></i></a> - Attacker Agent</li>
+                          <li><a href="https://github.com/labsin-uncuyo/Trident" target="_blank">Trident <i class="fas fa-external-link-alt"></i></a> - Main Repository</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="100">
+                      <div class="resource-category">
+                        <h3><i class="fas fa-tools"></i> Related Tools</h3>
+                        <ul class="resource-list">
+                          <li><a href="https://www.stratosphereips.org/stratocyberlab" target="_blank">StratoCyberLab <i class="fas fa-external-link-alt"></i></a> - Cyber Range Platform</li>
+                          <li><a href="https://github.com/cmu-sei/GHOSTS" target="_blank">GHOSTS <i class="fas fa-external-link-alt"></i></a> - Benign Activity Generator</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div class="col-lg-4 mb-4" data-aos="fade-up" data-aos-delay="200">
+                      <div class="resource-category">
+                        <h3><i class="fas fa-book"></i> Documentation</h3>
+                        <ul class="resource-list">
+                          <li><a href="docs/dockerized-netsecgame.pdf" target="_blank">Project PDF <i class="fas fa-file-pdf"></i></a> - Complete Project Description</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Team Section -->
+            <section id="team" class="pt-4 pt-lg-5 px-4 px-lg-5 my-5 py-5 section-dark">
+              <div class="row d-flex flex-wrap" data-aos="fade-up">
+                <div class="col-lg-12">
+                  <span class="introduction mb-3 d-block">TEAM & COLLABORATION</span>
+                  <h2 class="name mb-4 txt-fx slide-up text-uppercase">Research Partnership</h2>
+
+                  <div class=" mb-5">
+                    <p>Trident is developed in close collaboration with <strong>Stratosphere Laboratory</strong> at <strong>CTU UNIVERSITY, PRAGUE</strong>. Since 2018, we have been working together on advanced tools for malware and network-based threat detection.</p>
+                  </div>
+
+                  <div class="row">
+                    <div class="col-lg-6 mb-4" data-aos="fade-up">
+                      <div class="team-card">
+                        <h4>Previous Contributions</h4>
+                        <ul>
+                          <li><strong>2016:</strong> Domain Generation Algorithm (DGA) detection model</li>
+                          <li><strong>2019:</strong> DNS tunneling detection model</li>
+                          <li><strong>Recent:</strong> SLIPS Immune development (state-of-the-art NIDS, also supported by NLnet)</li>
+                          <li><strong>Current:</strong> LABSIN at Universidad Nacional de Cuyo</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div class="col-lg-6 mb-4" data-aos="fade-up" data-aos-delay="100">
+                      <div class="team-card">
+                        <h4>Project Roles</h4>
+                        <ul>
+                          <li>Project coordinator & senior AI expert</li>
+                          <li>Main developer</li>
+                          <li>Junior developer & Docker specialist</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="affiliations text-center" data-aos="fade-up">
+                    <h3>Affiliations</h3>
+                    <div class="affiliation-links d-flex justify-content-center gap-4 flex-wrap">
+                      <a href="https://www.stratosphereips.org" target="_blank" class="btn btn-outline">
+                        <i class="fas fa-link"></i> Stratosphere Laboratory
+                      </a>
+                      <a href="https://www.cvut.cz/en" target="_blank" class="btn btn-outline">
+                        <i class="fas fa-university"></i> CTU UNIVERSITY, PRAGUE
+                      </a>
+                      <a href="https://www.uncuyo.edu.ar/" target="_blank" class="btn btn-outline">
+                        <i class="fas fa-university"></i> UNCUYO
+                      </a>
+                      <a href="https://labsin.org/es.html" target="_blank" class="btn btn-outline">
+                        <i class="fas fa-globe"></i> Labsin
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+  
+            </main> <!-- End Main Content -->
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="miller-free/js/jquery-1.11.0.min.js"></script>
+    <script src="miller-free/js/plugins.js"></script>
+    <script src="miller-free/js/script.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>

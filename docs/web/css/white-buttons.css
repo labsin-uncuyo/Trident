@@ -1,0 +1,23 @@
+/* ============================================
+   WHITE AFFILIATION BUTTONS FIX
+   ============================================ */
+
+/* Make affiliation buttons white instead of black */
+.affiliation-links .btn-outline {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.8) !important;
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.affiliation-links .btn-outline:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+    border-color: #ffffff !important;
+    color: #000000 !important;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+/* Better visibility for dark theme */
+.affiliation-links .btn-outline i {
+    color: inherit !important;
+}
