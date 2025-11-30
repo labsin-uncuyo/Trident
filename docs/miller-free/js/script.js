@@ -64,8 +64,8 @@
     $('.txt-fx').each(function () {
       var newstr = '';
       var count = 0;
-      var delay = 300;
-      var stagger = 10;
+      var delay = 50;
+      var stagger = 5;
       var words = this.textContent.split(/\s/);
       var arrWords = new Array();
       
@@ -137,15 +137,11 @@
     initChocolat();
     initIsotope();
 
-    // mobile menu
-    $('.menu-btn').click(function(e){
-      // e.preventDefault();
-      $('body').toggleClass('nav-active');
-    });
-
+  
     AOS.init({
-      duration: 1200,
-      // once: true,
+      duration: 400,
+      once: true,
+      delay: 0
     })
 
   });
