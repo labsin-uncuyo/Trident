@@ -5,3 +5,4 @@ langchain>=0.2
 langchain-openai>=0.1
 tenacity>=8.2
 PyYAML>=6.0
+httpx>=0.25.0
