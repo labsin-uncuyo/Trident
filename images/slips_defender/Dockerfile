@@ -2,13 +2,22 @@
 FROM stratosphereips/slips:latest
 
 # Install SSH client and related tools (already running as root)
+# Also install missing Python dependencies like umap
 RUN apt-get update && apt-get install -y \
     openssh-client \
     sshpass \
     netcat-openbsd \
     telnet \
     iputils-ping \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+# Install umap and other missing Python dependencies
+RUN pip3 install --no-cache-dir umap-learn
+
+# Install defender requirements
+COPY ./defender/requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 # Create directory for SSH keys (volume will be mounted at /root/.ssh)
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
