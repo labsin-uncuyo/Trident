@@ -79,5 +79,26 @@ ssh_keys:
 	@echo "Setting up SSH keys for auto_responder..."
 	./scripts/setup_ssh_keys_host.sh
 
+up_core:
+	@RUN_ID_VALUE=$${RUN_ID:-run_local}; \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips_output
+	$(COMPOSE) --profile core up -d
+
+up_attackers:
+	@RUN_ID_VALUE=$${RUN_ID:-run_local}; \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips_output
+	$(COMPOSE) --profile core --profile attackers up -d
+
+up_full:
+	@RUN_ID_VALUE=$${RUN_ID:-run_local}; \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips_output
+	$(COMPOSE) --profile core --profile defender --profile attackers up -d
+
+prepare_aracne_env:
+	./scripts/prepare_aracne_env.sh
+
+test_aracne_ssh:
+	./scripts/test_aracne_ssh.sh
+
 clean:
 	$(COMPOSE) down --rmi all --volumes --remove-orphans
