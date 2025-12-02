@@ -3,6 +3,7 @@ services:
     build: ./images/router
     image: lab/router:latest
     container_name: lab_router
+    profiles: ["core"]
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
@@ -26,6 +27,7 @@ services:
     build: ./images/switch
     image: lab/switch:latest
     container_name: lab_switch
+    profiles: ["core"]
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
@@ -42,6 +44,7 @@ services:
     build: ./images/slips_defender
     image: lab/slips_defender:latest
     container_name: lab_slips_defender
+    profiles: ["defender"]
     environment:
       - RUN_ID=${RUN_ID}
       - DEFENDER_PORT=${DEFENDER_PORT:-8000}
@@ -79,6 +82,7 @@ services:
     build: ./images/compromised
     image: lab/compromised:latest
     container_name: lab_compromised
+    profiles: ["core"]
     environment:
       - LAB_PASSWORD=${LAB_PASSWORD}
       - RUN_ID=${RUN_ID}
@@ -116,6 +120,7 @@ services:
       dockerfile: images/ghosts_driver/Dockerfile
     image: lab/ghosts_driver:latest
     container_name: lab_ghosts_driver
+    profiles: ["attackers"]
     environment:
       - RUN_ID=${RUN_ID}
       - JOHN_SCOTT_MODE=${JOHN_SCOTT_MODE:-dummy}
@@ -133,10 +138,41 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  aracne_attacker:
+    build:
+      context: ../aracne
+      dockerfile: Dockerfile
+    container_name: aracne_attacker
+    profiles: ["attackers"]
+    network_mode: host
+    tty: true
+    working_dir: /agent
+    volumes:
+      - ./images/ghosts_driver/john_scott_dummy/id_rsa:/agent/keys/lab_ssh_key:ro
+      - ../aracne/agent/.env:/agent/.env:ro
+      - ../aracne/agent/config:/agent/config:ro
+      - ../aracne/agent/logs:/agent/logs:rw
+    depends_on:
+      - compromised
+    environment:
+      - OPENAI_API_KEY
+      - OPENAI_BASE_URL
+      - OLLAMA_HOST
+      - OLLAMA_PORT
+      - SSH_HOST
+      - SSH_PORT
+      - SSH_USER
+      - SSH_KEY_PATH
+    command: >
+      python3 aracne.py
+      -e /agent/.env
+      -c /agent/config/AttackConfig_lab.yaml
+
   server:
     build: ./images/server
     image: lab/server:latest
     container_name: lab_server
+    profiles: ["core"]
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
