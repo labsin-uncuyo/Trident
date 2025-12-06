@@ -1,1 +1,0 @@
-{"ts":1764258495.650738,"uid":"CvWlr9PxmlZIhNmAc","id.orig_h":"172.30.0.10","id.orig_p":48954,"id.resp_h":"172.31.0.10","id.resp_p":5432,"version":"TLSv13","cipher":"TLS_AES_256_GCM_SHA384","curve":"secp256r1","resumed":false,"established":true,"ssl_history":"CjiICs","ja3":"efbf560adca37c64c6b65f3dcae870c2","ja3s":"46ca3a127f5443353dfb8cc2e16197e5","is_DoH":false}
