@@ -1,26 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAB_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ARACNE_ROOT="${LAB_ROOT}/../aracne"
-ENV_SOURCE="${ARACNE_ROOT}/env_EXAMPLE"
-ENV_TARGET="${ARACNE_ROOT}/agent/.env"
+# Populate configs/aracne_lab/.env with sane lab defaults (or honor existing one with keys).
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ARACNE_ENV="${ROOT_DIR}/configs/aracne_lab/.env"
 
-if [ ! -d "${ARACNE_ROOT}" ]; then
-    echo "❌ ARACNE repository not found at ${ARACNE_ROOT}. Clone it as a sibling to Trident."
-    exit 1
+if [ -f "$ARACNE_ENV" ]; then
+  echo "[prepare_aracne_env] Found existing ${ARACNE_ENV}; leaving it unchanged."
+  exit 0
 fi
 
-if [ ! -f "${ENV_SOURCE}" ]; then
-    echo "❌ env_EXAMPLE missing at ${ENV_SOURCE}. Please restore it."
-    exit 1
-fi
+mkdir -p "$(dirname "$ARACNE_ENV")"
 
-if [ -f "${ENV_TARGET}" ]; then
-    echo "✅ ARACNE .env already present at ${ENV_TARGET}"
-else
-    cp "${ENV_SOURCE}" "${ENV_TARGET}"
-    echo "✨ Created ${ENV_TARGET} from env_EXAMPLE."
-    echo "👉 Update SSH/LLM values inside ${ENV_TARGET} as needed (API keys are still required)."
-fi
+cat >"$ARACNE_ENV" <<EOF
+OPENAI_API_KEY=${OPENAI_API_KEY:-}
+OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+CESNET_API_KEY=${CESNET_API_KEY:-}
+
+SSH_HOST=${SSH_HOST:-127.0.0.1}
+SSH_PORT=${SSH_PORT:-2223}
+SSH_USER=${SSH_USER:-labuser}
+SSH_KEY_PATH=${SSH_KEY_PATH:-}
+SSH_PASSWORD=${SSH_PASSWORD:-adminadmin}
+
+OLLAMA_HOST=${OLLAMA_HOST:-127.0.0.1}
+OLLAMA_PORT=${OLLAMA_PORT:-11434}
+EOF
+
+echo "[prepare_aracne_env] Wrote ${ARACNE_ENV}"

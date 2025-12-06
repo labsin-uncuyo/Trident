@@ -50,7 +50,7 @@ def _read_defender_alerts(run_id: str) -> list[dict]:
 
 
 def _slips_log_counts(run_id: str) -> dict[Path, int]:
-    base = ROOT / "outputs" / run_id / "slips_output"
+    base = ROOT / "outputs" / run_id / "slips"
     counts: dict[Path, int] = {}
     if not base.exists():
         return counts

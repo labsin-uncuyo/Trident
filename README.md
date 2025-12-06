@@ -45,10 +45,11 @@ The lab uses reusable Dockerfile snippets for common functionality:
 Both `server` and `compromised` containers reference these shared components, ensuring consistent environments and simplified maintenance.
 
 ## Artifacts & operations
-- Every container mounts `./outputs` to `/outputs`, and everything is scoped under `/outputs/<RUN_ID>/`.
+- Every container mounts `./outputs` to `/outputs`, and everything is scoped under `/outputs/<RUN_ID>/`. See `outputs/README.md` for a detailed map.
 - PCAPs: `router.pcap`, `router_stream.pcap`, and `switch_stream.pcap` accumulate under `outputs/<RUN_ID>/pcaps/`. Router and defender images ship logrotate configs plus `/management.sh rotate_pcaps` for forced rotations.
-- Alerts: `lab_slips_defender` always appends JSON lines to `outputs/<RUN_ID>/defender_alerts.ndjson`. To exercise the pipeline manually, drop a new PCAP into `outputs/${RUN_ID}/pcaps/` (for example `cp outputs/${RUN_ID}/pcaps/router.pcap outputs/${RUN_ID}/pcaps/manual_test.pcap`) and watch `/outputs/${RUN_ID}/slips_output/**/alerts.log`.
-- Viewing SLIPS logs: every time SLIPS processes a PCAP it writes into `outputs/${RUN_ID}/slips_output/<timestamp>/alerts.log`. Tail them on the host (`tail -f outputs/${RUN_ID}/slips_output/*/alerts.log`) or inside the container (`docker exec lab_slips_defender tail -f /StratosphereLinuxIPS/output/*/alerts.log`). Those same alert lines are forwarded to FastAPI and mirrored in `outputs/${RUN_ID}/defender_alerts.ndjson`.
+- Alerts: `lab_slips_defender` appends JSON lines to `outputs/<RUN_ID>/slips/defender_alerts.ndjson` and writes per-PCAP `alerts.log`/`alerts.json` under `outputs/<RUN_ID>/slips/<pcap>_<timestamp>/`. Drop a new PCAP into `outputs/${RUN_ID}/pcaps/` to trigger processing.
+- ARACNE attacker: logs to `outputs/<RUN_ID>/aracne/agent.log` (remote shell transcript) and `context.log` (LLM traces). Each session is snapshotted under `aracne/experiments/<timestamp_goal>/` for reproducibility.
+- Viewing SLIPS logs: every time SLIPS processes a PCAP it writes into `outputs/${RUN_ID}/slips/<timestamp>/alerts.log`. Tail them on the host (`tail -f outputs/${RUN_ID}/slips/*/alerts.log`) or inside the container (`docker exec lab_slips_defender tail -f /StratosphereLinuxIPS/output/*/alerts.log`). Those same alert lines are forwarded to FastAPI and mirrored in `outputs/${RUN_ID}/slips/defender_alerts.ndjson`.
 
 - Router ACL helpers:
 
@@ -58,9 +59,20 @@ Both `server` and `compromised` containers reference these shared components, en
   docker exec lab_router /management.sh rotate_pcaps
   ```
 
+## Running the ARACNE attacker
+- The attacker container is not started by `make up`; it only runs when invoked.
+- To launch an attack: set a goal and run `make aracne_attack`, e.g.:
+  ```bash
+  export GOAL="Run a noisy nmap scan against 172.31.0.10 and save output"
+  make aracne_attack
+  ```
+- ARACNE logs land in `outputs/<RUN_ID>/aracne_output/` (`agent.log`, `context.log`, per-session snapshots under `experiments/`). SLIPS artifacts continue to flow into `outputs/<RUN_ID>/slips_output/`.
+- SSH auth for the attacker uses password access (`adminadmin`) to the compromised host; no SSH key is required. If you need to test connectivity from the host, use `scripts/test_aracne_ssh.sh`.
+- Bringing it back down: `make down` (same as the rest of the stack). When not running an attack, the attacker container stays idle.
+
 ## SLIPS mode (official image, PCAP ingestion)
 1. **Router capture** – `lab_router` runs tcpdump and logrotate inside the container, writing rolling PCAPs to `outputs/<RUN_ID>/pcaps/` on the host. Use `/management.sh rotate_pcaps` whenever you want a fresh on-disk artifact.
-2. **Shared dataset** – The defender service mounts `./outputs/${RUN_ID}/pcaps` as `/StratosphereLinuxIPS/dataset` and `./outputs/${RUN_ID}/slips_output` as `/StratosphereLinuxIPS/output`. `make up` pre-creates both directories (or create them manually if you change `RUN_ID`).
+2. **Shared dataset** – The defender service mounts `./outputs/${RUN_ID}/pcaps` as `/StratosphereLinuxIPS/dataset` and `./outputs/${RUN_ID}/slips` as `/StratosphereLinuxIPS/output`. `make up` pre-creates both directories (or create them manually if you change `RUN_ID`).
 3. **Official SLIPS** – `lab_slips_defender` uses `stratosphereips/slips:latest` with host networking and NET_ADMIN. A lightweight watcher (`watch_pcaps.py`) polls the dataset directory, skips the actively written `router.pcap`, and calls `python3 /StratosphereLinuxIPS/slips.py -f dataset/<file>.pcap` for each rotated file it discovers.
 4. **Alert fan-out** – SLIPS writes its logs (including `alerts.log`) under `/StratosphereLinuxIPS/output/<timestamp>/`. `forward_alerts.py` tails every discovered `alerts.log` and POSTs the JSON lines to the built-in FastAPI endpoint at `http://127.0.0.1:${DEFENDER_PORT}/alerts`.
 5. **FastAPI persistence** – `defender_api.py` is the same FastAPI/uvicorn app as before; it responds to `/health` and appends alert JSON to `outputs/<RUN_ID>/defender_alerts.ndjson` when `/alerts` receives a POST. Tests watch both the SLIPS output tree and this NDJSON file to confirm end-to-end delivery.

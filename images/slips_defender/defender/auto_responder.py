@@ -23,7 +23,7 @@ import logging
 
 # Configuration
 RUN_ID = os.getenv("RUN_ID", "run_local")
-ALERT_FILE = Path("/outputs") / RUN_ID / "defender_alerts.ndjson"
+ALERT_FILE = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
 PROCESSED_FILE = Path("/outputs") / RUN_ID / "processed_alerts.json"
 PLANNER_URL = os.getenv("PLANNER_URL", "http://127.0.0.1:1654/plan")
 OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "300"))  # 5 minutes

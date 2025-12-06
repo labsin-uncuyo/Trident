@@ -57,7 +57,7 @@ services:
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
-      - ./outputs/${RUN_ID}/slips_output:/StratosphereLinuxIPS/output
+      - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
       - ./outputs:/outputs
       - ./images/slips_defender:/opt/lab
       - ./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml
@@ -140,33 +140,33 @@ services:
 
   aracne_attacker:
     build:
-      context: ../aracne
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: images/aracne/Dockerfile
     container_name: aracne_attacker
     profiles: ["attackers"]
     network_mode: host
     tty: true
     working_dir: /agent
     volumes:
-      - ./images/ghosts_driver/john_scott_dummy/id_rsa:/agent/keys/lab_ssh_key:ro
-      - ../aracne/agent/.env:/agent/.env:ro
-      - ../aracne/agent/config:/agent/config:ro
-      - ../aracne/agent/logs:/agent/logs:rw
+      - ./configs/aracne_lab/.env:/agent/.env:ro
+      - ./configs/aracne_lab/config/AttackConfig_lab.yaml:/agent/config/AttackConfig_lab.yaml:ro
+      - ./outputs/${RUN_ID}/aracne:/logs:rw
+      - ./configs/aracne_lab/start_lab.sh:/agent/start_lab.sh:ro
     depends_on:
       - compromised
     environment:
-      - OPENAI_API_KEY
-      - OPENAI_BASE_URL
-      - OLLAMA_HOST
-      - OLLAMA_PORT
-      - SSH_HOST
-      - SSH_PORT
-      - SSH_USER
-      - SSH_KEY_PATH
-    command: >
-      python3 aracne.py
-      -e /agent/.env
-      -c /agent/config/AttackConfig_lab.yaml
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - CESNET_API_KEY=${CESNET_API_KEY:-}
+      - OLLAMA_HOST=${OLLAMA_HOST:-127.0.0.1}
+      - OLLAMA_PORT=${OLLAMA_PORT:-11434}
+      - SSH_HOST=${SSH_HOST:-127.0.0.1}
+      - SSH_PORT=${SSH_PORT:-2223}
+      - SSH_USER=${SSH_USER:-labuser}
+      - SSH_PASSWORD=${SSH_PASSWORD:-adminadmin}
+      - SSH_KEY_PATH=${SSH_KEY_PATH:-}
+      - GOAL=${GOAL:-}
+    command: ["/bin/bash", "/agent/start_lab.sh"]
 
   server:
     build: ./images/server
