@@ -72,7 +72,7 @@ _ENV_CACHE = _load_env()
 
 def _prepare_outputs(run_id: str) -> None:
     base = ROOT / "outputs" / run_id
-    for name in ("pcaps", "slips_output"):
+    for name in ("pcaps", "slips"):
         (base / name).mkdir(parents=True, exist_ok=True)
     pcaps = base / "pcaps"
     for pattern in ("pytest_injected_*.pcap*", "manual_test_*.pcap*", "test.pcap*"):

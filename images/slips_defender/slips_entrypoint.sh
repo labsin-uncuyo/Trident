@@ -8,7 +8,7 @@ SLIPS_DATASET_DIR="/StratosphereLinuxIPS/dataset"
 SLIPS_OUTPUT_DIR="/StratosphereLinuxIPS/output"
 DEFENDER_URL="http://127.0.0.1:${DEFENDER_PORT}/alerts"
 
-mkdir -p "/outputs/${RUN_ID}/pcaps" "/outputs/${RUN_ID}/slips_output"
+mkdir -p "/outputs/${RUN_ID}/pcaps" "/outputs/${RUN_ID}/slips"
 mkdir -p "${SLIPS_DATASET_DIR}" "${SLIPS_OUTPUT_DIR}"
 
 # Clear stale pcaps so the watcher processes fresh captures promptly

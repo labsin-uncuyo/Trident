@@ -32,7 +32,7 @@ def _write_sentinel(path: Path, note: str) -> None:
     line = json.dumps(sentinel)
     with (assurance_dir / "alerts.log").open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
-    defender_file = Path("/outputs") / RUN_ID / "defender_alerts.ndjson"
+    defender_file = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
     defender_file.parent.mkdir(parents=True, exist_ok=True)
     with defender_file.open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")

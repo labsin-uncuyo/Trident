@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 
 RUN_ID = os.getenv("RUN_ID", "run_local")
 DEFENDER_PORT = int(os.getenv("DEFENDER_PORT", "8000"))
-ALERT_FILE = Path("/outputs") / RUN_ID / "defender_alerts.ndjson"
+ALERT_FILE = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
 _LOCK = threading.Lock()
 
 app = FastAPI()

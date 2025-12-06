@@ -3,29 +3,37 @@ COMPOSE ?= docker compose
 PYTHON ?= python3
 
 export COMPOSE_PROJECT_NAME := lab
+RUN_ID_FILE := ./outputs/.current_run
 
-.PHONY: build up down verify slips_verify clean ssh_keys
+.PHONY: build up down verify slips_verify clean ssh_keys aracne_attack
 
 build:
 	@for svc in $(SERVICES); do \
 		echo "Building $$svc"; \
 		docker build -t lab/$$svc:latest images/$$svc; \
 	done
+	@echo "Building aracne_attacker"
+	$(COMPOSE) build aracne_attacker
 	@echo "Pulling slips_defender image"
 	@docker pull stratosphereips/slips:latest
 
 up:
-	@RUN_ID_VALUE=$${RUN_ID:-run_local}; \
-	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips_output
-	-@docker ps -aq --filter "name=^lab_" | xargs -r docker rm -f >/dev/null 2>&1 || true
-	-@docker network rm lab_net_a >/dev/null 2>&1 || true
-	-@docker network rm lab_net_b >/dev/null 2>&1 || true
-	$(COMPOSE) up -d
-	@echo "Setting up SSH keys for auto_responder..."
+	@RUN_ID_VALUE=$$( [ -f $(RUN_ID_FILE) ] && cat $(RUN_ID_FILE) || echo logs_$$(date +%Y%m%d_%H%M%S) ); \
+	echo $$RUN_ID_VALUE > $(RUN_ID_FILE); \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips ./outputs/$$RUN_ID_VALUE/aracne ./outputs/$$RUN_ID_VALUE/ghosts; \
+	export RUN_ID=$$RUN_ID_VALUE; \
+	docker ps -aq --filter "name=^lab_" | xargs -r docker rm -f >/dev/null 2>&1 || true; \
+	docker network rm lab_net_a >/dev/null 2>&1 || true; \
+	docker network rm lab_net_b >/dev/null 2>&1 || true; \
+	opts=""; \
+	for p in core defender; do opts="$${opts} --profile $$p"; done; \
+	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d; \
+	echo "Setting up SSH keys for auto_responder..."; \
 	./scripts/setup_ssh_keys_host.sh
 
 down:
 	$(COMPOSE) down --volumes
+	@rm -f $(RUN_ID_FILE)
 
 verify:
 	@echo "[verify] Waiting for full lab readiness..."
@@ -46,14 +54,17 @@ verify:
 	docker ps --filter "name=lab_" --format "table {{.Names}}\t{{.Status}}"
 
 slips_verify:
-	@RUN_ID_VALUE=$${RUN_ID:-slips_verify_$$(date +%Y%m%d_%H%M%S)}; \
+	@RUN_ID_VALUE=$$( [ -f $(RUN_ID_FILE) ] && cat $(RUN_ID_FILE) || echo logs_$$(date +%Y%m%d_%H%M%S) ); \
+	echo $$RUN_ID_VALUE > $(RUN_ID_FILE); \
 	export RUN_ID=$$RUN_ID_VALUE; \
 	echo "[slips_verify] Using RUN_ID=$$RUN_ID_VALUE"; \
 	echo "[slips_verify] Resetting lab"; \
 	$(MAKE) down; \
-	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips_output; \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips; \
 	echo "[slips_verify] Bringing lab up"; \
-	$(COMPOSE) up -d; \
+	opts=""; \
+	for p in core defender; do opts="$${opts} --profile $$p"; done; \
+	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d; \
 	echo "[slips_verify] Waiting for full lab readiness..."; \
 	./scripts/wait_for_lab_ready.sh; \
 	echo "[slips_verify] Running Nmap service scan from compromised -> server"; \
@@ -79,26 +90,20 @@ ssh_keys:
 	@echo "Setting up SSH keys for auto_responder..."
 	./scripts/setup_ssh_keys_host.sh
 
-up_core:
-	@RUN_ID_VALUE=$${RUN_ID:-run_local}; \
-	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips_output
-	$(COMPOSE) --profile core up -d
-
-up_attackers:
-	@RUN_ID_VALUE=$${RUN_ID:-run_local}; \
-	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips_output
-	$(COMPOSE) --profile core --profile attackers up -d
-
-up_full:
-	@RUN_ID_VALUE=$${RUN_ID:-run_local}; \
-	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips_output
-	$(COMPOSE) --profile core --profile defender --profile attackers up -d
-
-prepare_aracne_env:
-	./scripts/prepare_aracne_env.sh
-
-test_aracne_ssh:
-	./scripts/test_aracne_ssh.sh
+aracne_attack:
+	@RUN_ID_VALUE=$$( [ -f $(RUN_ID_FILE) ] && cat $(RUN_ID_FILE) || echo logs_$$(date +%Y%m%d_%H%M%S) ); \
+	echo $$RUN_ID_VALUE > $(RUN_ID_FILE); \
+	export RUN_ID=$$RUN_ID_VALUE; \
+	echo "[aracne_attack] Using RUN_ID=$$RUN_ID_VALUE"; \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips ./outputs/$$RUN_ID_VALUE/aracne ./outputs/$$RUN_ID_VALUE/ghosts; \
+	echo "[aracne_attack] Preparing ARACNE env"; \
+	./scripts/prepare_aracne_env.sh; \
+	opts=""; \
+	for p in core defender attackers; do opts="$${opts} --profile $$p"; done; \
+	echo "[aracne_attack] Ensuring core/defender are running (no recreate)"; \
+	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d --no-recreate --no-build router switch server compromised slips_defender; \
+	echo "[aracne_attack] Starting ARACNE attacker"; \
+	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d --force-recreate --no-build aracne_attacker
 
 clean:
 	$(COMPOSE) down --rmi all --volumes --remove-orphans

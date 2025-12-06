@@ -1,0 +1,3 @@
+[submodule "external/aracne"]
+	path = external/aracne
+	url = https://github.com/stratosphereips/aracne.git
