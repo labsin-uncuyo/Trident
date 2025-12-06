@@ -1,1 +1,0 @@
-{"ts":1764194794.040444,"uid":"CoSesm4eJCcbShPN26","id.orig_h":"fe80::e02b:fff:fea3:7a98","id.orig_p":133,"id.resp_h":"ff02::2","id.resp_p":134,"proto":"icmp","conn_state":"OTH","local_orig":true,"local_resp":false,"missed_bytes":0,"orig_pkts":1,"orig_ip_bytes":56,"resp_pkts":0,"resp_ip_bytes":0,"ip_proto":58,"orig_l2_addr":"e2:2b:0f:a3:7a:98"}

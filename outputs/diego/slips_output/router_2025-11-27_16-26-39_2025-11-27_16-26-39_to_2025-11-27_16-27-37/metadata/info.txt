@@ -1,9 +1,0 @@
-Slips version: 1.1.15
-File: dataset/router_2025-11-27_16-26-39.pcap
-Branch: None
-Commit: None
-Command: /StratosphereLinuxIPS/slips.py -f dataset/router_2025-11-27_16-26-39.pcap
-Slips start date: 2025/11/27 16:27:19.854258
-Zeek version: 8.0.4
-
-Slips end date: 2025/11/27 16:28:04.089057
