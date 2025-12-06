@@ -13,7 +13,7 @@ import httpx
 
 RUN_ID = os.getenv("RUN_ID", "run_local")
 DEFENDER_PORT = int(os.getenv("DEFENDER_PORT", "8000"))
-ALERT_FILE = Path("/outputs") / RUN_ID / "defender_alerts.ndjson"
+ALERT_FILE = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
 _LOCK = threading.Lock()
 
 app = FastAPI()
@@ -117,7 +117,6 @@ the external planner service with proper environment configuration."""
         request_id=str(uuid.uuid4()),
         created=time.strftime("%Y-%m-%dT%H:%M:%S.%fZ", time.gmtime())
     )
-
 
 
 

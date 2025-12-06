@@ -7,12 +7,12 @@ echo "=== GHOSTS Driver Starting ==="
 MODE="${JOHN_SCOTT_MODE:-dummy}"
 echo "John Scott Mode: $MODE"
 
-# Verify SSH key exists
+# Verify SSH key exists (none is shipped by default)
 if [ ! -f /root/.ssh/id_rsa ]; then
-    echo "✗ SSH private key not found at /root/.ssh/id_rsa"
+    echo "No SSH private key at /root/.ssh/id_rsa. GitHub-scrubbed keys from the repo; provide a key or adapt to password auth before rebuilding."
     exit 1
 fi
-echo "✓ SSH private key configured"
+echo "SSH private key configured"
 
 # Setup timeline based on mode
 if [ "$MODE" = "llm" ]; then
@@ -54,9 +54,9 @@ done
 # Test SSH connectivity
 echo "Testing SSH connection to compromised machine..."
 if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i /root/.ssh/id_rsa labuser@172.30.0.10 "echo 'SSH connection successful'"; then
-    echo "✓ SSH connection test passed"
+    echo "SSH connection test passed"
 else
-    echo "✗ SSH connection test failed"
+    echo "SSH connection test failed"
     echo "  Please verify:"
     echo "  - SSH public key is installed on compromised machine"
     echo "  - labuser exists on compromised machine"

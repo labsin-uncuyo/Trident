@@ -1,0 +1,38 @@
+goal: ""
+
+llm_providers:
+  openai:
+    kind: openai
+  ollama:
+    kind: ollama
+    host: ${OLLAMA_HOST}
+    port: ${OLLAMA_PORT}
+  cesnet:
+    kind: openai
+    base_url: https://chat.ai.e-infra.cz/api
+    api_key_env: CESNET_API_KEY
+  cesnet_interpreter:
+    kind: openai
+    base_url: https://chat.ai.e-infra.cz/api
+    api_key_env: CESNET_API_KEY
+
+targets:
+  trident_compromised:
+    host: ${SSH_HOST}
+    port: ${SSH_PORT}
+    user: ${SSH_USER}
+    password: ${SSH_PASSWORD}
+
+default_target: trident_compromised
+
+planner_source: "cesnet"
+planner_model: "gpt-oss-120b"
+
+summarizing: false
+summarizer_source: "cesnet"
+summarizer_model: "deepseek-r1"
+
+interpreter_source: "cesnet"
+interpreter_model: "qwen3-coder"
+
+action_limit: 50

@@ -35,10 +35,10 @@ WORKDIR /opt/ghosts
 RUN ln -s /opt/ghosts/bin/Ghosts.Client.Universal /opt/ghosts/ghosts.client.linux \
     && chmod +x /opt/ghosts/ghosts.client.linux
 
-# Configuración SSH (Llave Privada) - usamos el dummy por defecto
-COPY images/ghosts_driver/john_scott_dummy/id_rsa /root/.ssh/id_rsa
-RUN chmod 600 /root/.ssh/id_rsa \
-    && chmod 700 /root/.ssh
+# Configuración SSH (Llave Privada)
+# NOTE: The previous dummy key was removed to avoid committing secrets. Provide a key at build time
+# or update the driver to use password-based SSH when rebuilding GHOSTS.
+RUN chmod 700 /root/.ssh
 
 # Copiar ambas configuraciones de John Scott
 COPY images/ghosts_driver/john_scott_dummy /opt/john_scott_dummy
