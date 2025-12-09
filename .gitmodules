@@ -1,3 +1,6 @@
 [submodule "external/aracne"]
 	path = external/aracne
 	url = https://github.com/stratosphereips/aracne.git
+[submodule "external/GHOSTS"]
+	path = external/GHOSTS
+	url = https://github.com/cmu-sei/GHOSTS.git
