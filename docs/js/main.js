@@ -33,29 +33,10 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 
 
 // ============================================
-// SCROLL ANIMATIONS
+// SCROLL ANIMATIONS - AOS ENHANCEMENT
 // ============================================
-const observerOptions = {
-    threshold: 0.1,
-    rootMargin: '0px 0px -100px 0px'
-};
-
-const fadeInObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.style.opacity = '1';
-            entry.target.style.transform = 'translateY(0)';
-        }
-    });
-}, observerOptions);
-
-// Apply fade-in animation to sections
-document.querySelectorAll('.section').forEach(section => {
-    section.style.opacity = '0';
-    section.style.transform = 'translateY(30px)';
-    section.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-    fadeInObserver.observe(section);
-});
+// AOS is already initialized in script.js, but we'll ensure it works for all content
+// This removes the conflicting Intersection Observer that was preventing animations from triggering
 
 
 

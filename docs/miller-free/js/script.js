@@ -141,7 +141,10 @@
     AOS.init({
       duration: 1200,
       once: true,
-      delay: 0
+      delay: 0,
+      offset: 50, // trigger animations 50px before element comes into view
+      throttleDelay: 99, // optimize performance
+      disable: window.innerWidth < 768 // disable on mobile for better performance
     })
 
   });
