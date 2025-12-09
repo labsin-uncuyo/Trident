@@ -30,7 +30,7 @@ sudo su
 3. **Watch real-time logs (in separate terminal):**
 ```bash
 # Watch all alerts being processed
-tail -f /outputs/${RUN_ID}/defender_alerts.ndjson
+tail -f /outputs/${RUN_ID}/slips/defender_alerts.ndjson
 
 # Watch auto responder logs (high-threat alerts only)
 tail -f /outputs/${RUN_ID}/auto_responder_detailed.log
@@ -200,7 +200,7 @@ telnet 172.31.0.10 80
 ### Watch Logs in Real-Time
 ```bash
 # Terminal 1: Watch alerts being detected
-tail -f /outputs/${RUN_ID}/defender_alerts.ndjson
+tail -f /outputs/${RUN_ID}/slips/defender_alerts.ndjson
 
 # Terminal 2: Watch auto responder activity
 tail -f /outputs/${RUN_ID}/auto_responder_detailed.log
@@ -209,7 +209,7 @@ tail -f /outputs/${RUN_ID}/auto_responder_detailed.log
 tail -f /outputs/${RUN_ID}/auto_responder_timeline.jsonl
 
 # Terminal 4: Watch SLIPS alerts
-find /outputs/${RUN_ID}/slips_output -name "alerts.log" -exec tail -f {} \;
+find /outputs/${RUN_ID}/slips -name "alerts.log" -exec tail -f {} \;
 ```
 
 ### Check System Status
@@ -291,7 +291,7 @@ wait
 
 All logs are stored in `/outputs/${RUN_ID}/`:
 
-- `defender_alerts.ndjson` - Alerts received from SLIPS
+- `slips/defender_alerts.ndjson` - Alerts received from SLIPS
 - `auto_responder_detailed.log` - Detailed activity logs
 - `auto_responder_timeline.jsonl` - Structured timeline
 - `executions.jsonl` - Execution details with I/O
