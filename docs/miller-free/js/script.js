@@ -140,11 +140,13 @@
   
     AOS.init({
       duration: 1200,
-      once: true,
+      once: false, // Allow animations to re-trigger on scroll
       delay: 0,
-      offset: 50, // trigger animations 50px before element comes into view
+      offset: 200, // trigger animations 200px before element comes into view (more aggressive)
       throttleDelay: 99, // optimize performance
-      disable: window.innerWidth < 768 // disable on mobile for better performance
+      disable: false, // Enable on all devices for testing
+      mirror: true, // Whether elements should animate out while scrolling past them
+      anchorPlacement: 'top-bottom' // Triggers animation when top of element hits bottom of viewport
     })
 
   });
