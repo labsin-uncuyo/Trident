@@ -35,8 +35,36 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 // ============================================
 // SCROLL ANIMATIONS - AOS ENHANCEMENT
 // ============================================
-// AOS is already initialized in script.js, but we'll ensure it works for all content
-// This removes the conflicting Intersection Observer that was preventing animations from triggering
+// Ensure AOS works properly throughout the entire page
+
+// Refresh AOS on scroll to catch any missed elements
+let scrollTimer;
+window.addEventListener('scroll', function() {
+    if (scrollTimer) {
+        clearTimeout(scrollTimer);
+    }
+    scrollTimer = setTimeout(function() {
+        if (typeof AOS !== 'undefined') {
+            AOS.refresh();
+        }
+    }, 100);
+});
+
+// Also refresh AOS on window resize
+window.addEventListener('resize', function() {
+    if (typeof AOS !== 'undefined') {
+        AOS.refresh();
+    }
+});
+
+// Force AOS refresh after page is fully loaded
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        if (typeof AOS !== 'undefined') {
+            AOS.refresh();
+        }
+    }, 500);
+});
 
 
 
