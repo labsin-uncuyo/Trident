@@ -66,6 +66,31 @@ window.addEventListener('load', function() {
     }, 500);
 });
 
+// Special handling for affiliations section at the bottom of the page
+function checkAffiliationsSection() {
+    const affiliationsEl = document.querySelector('.affiliations');
+    if (affiliationsEl && !affiliationsEl.classList.contains('aos-animate')) {
+        const rect = affiliationsEl.getBoundingClientRect();
+        const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+
+        if (isVisible) {
+            // Manually trigger the animation if AOS hasn't caught it
+            affiliationsEl.classList.add('aos-animate');
+            console.log('Manually triggered affiliations animation');
+        }
+    }
+}
+
+// Check affiliations section on scroll
+window.addEventListener('scroll', function() {
+    checkAffiliationsSection();
+});
+
+// Also check after initial load
+setTimeout(function() {
+    checkAffiliationsSection();
+}, 1000);
+
 
 
 // ============================================

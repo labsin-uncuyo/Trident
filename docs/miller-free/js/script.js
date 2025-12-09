@@ -142,11 +142,13 @@
       duration: 1200,
       once: false, // Allow animations to re-trigger on scroll
       delay: 0,
-      offset: 200, // trigger animations 200px before element comes into view (more aggressive)
+      offset: 300, // trigger animations 300px before element comes into view (even more aggressive)
       throttleDelay: 99, // optimize performance
       disable: false, // Enable on all devices for testing
       mirror: true, // Whether elements should animate out while scrolling past them
-      anchorPlacement: 'top-bottom' // Triggers animation when top of element hits bottom of viewport
+      anchorPlacement: 'top-bottom', // Triggers animation when top of element hits bottom of viewport
+      startEvent: 'DOMContentLoaded', // Start earlier
+      debounceDelay: 50 // Reduce debounce delay for faster response
     })
 
   });
