@@ -1,4 +1,4 @@
-SERVICES := router switch compromised server
+SERVICES := router switch compromised server slips_defender
 COMPOSE ?= docker compose
 PYTHON ?= python3
 
@@ -14,8 +14,6 @@ build:
 	done
 	@echo "Building aracne_attacker"
 	$(COMPOSE) build aracne_attacker
-	@echo "Pulling slips_defender image"
-	@docker pull stratosphereips/slips:latest
 
 up:
 	@RUN_ID_VALUE=$$( [ -f $(RUN_ID_FILE) ] && cat $(RUN_ID_FILE) || echo logs_$$(date +%Y%m%d_%H%M%S) ); \

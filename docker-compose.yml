@@ -55,12 +55,13 @@ services:
       - SLIPS_PROCESS_ACTIVE=${SLIPS_PROCESS_ACTIVE:-1}
       - SLIPS_ACTIVE_STABLE_SECS=${SLIPS_ACTIVE_STABLE_SECS:-3}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - PYTHONIOENCODING=utf-8
+      - LC_ALL=C.UTF-8
+      - LANG=C.UTF-8
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
       - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
       - ./outputs:/outputs
-      - ./images/slips_defender:/opt/lab
-      - ./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml
       - slips_redis_data:/var/lib/redis
       - slips_ti_data:/StratosphereLinuxIPS/modules/threat_intelligence/remote_data_files
       - auto_responder_ssh_keys:/root/.ssh
