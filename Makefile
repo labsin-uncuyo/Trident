@@ -5,15 +5,13 @@ PYTHON ?= python3
 export COMPOSE_PROJECT_NAME := lab
 RUN_ID_FILE := ./outputs/.current_run
 
-.PHONY: build up down verify slips_verify clean ssh_keys aracne_attack
+.PHONY: build up down verify slips_verify clean ssh_keys aracne_attack ghosts_psql
 
 build:
 	@for svc in $(SERVICES); do \
 		echo "Building $$svc"; \
 		docker build -t lab/$$svc:latest images/$$svc; \
 	done
-	@echo "Building aracne_attacker"
-	$(COMPOSE) build aracne_attacker
 	@echo "Pulling slips_defender image"
 	@docker pull stratosphereips/slips:latest
 
@@ -107,3 +105,84 @@ aracne_attack:
 
 clean:
 	$(COMPOSE) down --rmi all --volumes --remove-orphans
+
+# Target: ghosts_psql
+# Usage: make ghosts_psql REPEATS=<num> DELAY=<seconds>
+# Example: make ghosts_psql REPEATS=3 DELAY=2
+# 
+# Prerequisites: Run 'make up' first to initialize the infrastructure and RUN_ID
+# 
+# Parameters:
+#   REPEATS: Number of times to repeat the workflow/timeline (default: 1)
+#   DELAY: Delay in seconds between commands (default: 5)
+#
+# This target:
+# 1. Uses existing RUN_ID from outputs/.current_run (created by 'make up')
+# 2. Starts ghosts_driver container with adjusted timeline
+# 3. Waits for execution to complete
+# 4. Stops the container (logs are automatically copied by entrypoint.sh)
+ghosts_psql:
+	@REPEATS=$${REPEATS:-1}; \
+	DELAY=$${DELAY:-5}; \
+	echo "=== GHOSTS PostgreSQL Workflow ==="; \
+	echo "Parameters:"; \
+	echo "  - Repeats: $$REPEATS"; \
+	echo "  - Delay between commands: $$DELAY seconds"; \
+	echo ""; \
+	if [ ! -f $(RUN_ID_FILE) ]; then \
+		echo "✗ Error: RUN_ID not found. Please run 'make up' first to initialize the infrastructure."; \
+		exit 1; \
+	fi; \
+	RUN_ID_VALUE=$$(cat $(RUN_ID_FILE)); \
+	echo "[ghosts_psql] Using existing RUN_ID=$$RUN_ID_VALUE"; \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/ghosts; \
+	echo "[ghosts_psql] Output directory: ./outputs/$$RUN_ID_VALUE/ghosts"; \
+	echo ""; \
+	TIMELINE_SRC="images/ghosts_driver/john_scott_dummy/timeline_john_scott.json"; \
+	NUM_COMMANDS=$$(grep -c '"Command":' $$TIMELINE_SRC || echo 6); \
+	TOTAL_TIME=$$(($$REPEATS * $$NUM_COMMANDS * $$DELAY * 2 + 60)); \
+	echo "[ghosts_psql] Estimated execution time: $$TOTAL_TIME seconds (~$$(($$TOTAL_TIME / 60)) minutes)"; \
+	echo "  - Commands per cycle: $$NUM_COMMANDS"; \
+	echo "  - Total cycles: $$REPEATS"; \
+	echo "  - Delay per command: $$DELAY seconds"; \
+	echo ""; \
+	echo "[ghosts_psql] Starting ghosts_driver container..."; \
+	RUN_ID=$$RUN_ID_VALUE GHOSTS_REPEATS=$$REPEATS GHOSTS_DELAY=$$DELAY $(COMPOSE) up -d ghosts_driver; \
+	echo "✓ Container started: lab_ghosts_driver"; \
+	echo ""; \
+	echo "[ghosts_psql] Monitoring execution..."; \
+	echo "  (You can watch logs with: docker logs -f lab_ghosts_driver)"; \
+	echo ""; \
+	sleep 5; \
+	docker logs lab_ghosts_driver; \
+	echo ""; \
+	echo "[ghosts_psql] Waiting for execution to complete..."; \
+	echo "  (Max wait time: $$TOTAL_TIME seconds)"; \
+	ELAPSED=0; \
+	while [ $$ELAPSED -lt $$TOTAL_TIME ]; do \
+		if ! docker ps --filter "name=lab_ghosts_driver" --filter "status=running" | grep -q lab_ghosts_driver; then \
+			echo "✓ Container has stopped (execution completed)"; \
+			break; \
+		fi; \
+		sleep 10; \
+		ELAPSED=$$(($$ELAPSED + 10)); \
+		REMAINING=$$(($$TOTAL_TIME - $$ELAPSED)); \
+		if [ $$(($$ELAPSED % 60)) -eq 0 ]; then \
+			echo "  [$$ELAPSED/$$TOTAL_TIME seconds] Container still running ($$REMAINING seconds remaining)..."; \
+		fi; \
+	done; \
+	echo ""; \
+	echo "[ghosts_psql] Stopping ghosts_driver container..."; \
+	docker stop lab_ghosts_driver 2>/dev/null || true; \
+	echo "✓ Container stopped"; \
+	echo ""; \
+	echo "=== GHOSTS Execution Complete ==="; \
+	echo "✓ Logs saved to: ./outputs/$$RUN_ID_VALUE/ghosts/"; \
+	echo "✓ Timeline log: ./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log"; \
+	echo ""; \
+	if [ -f "./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log" ]; then \
+		EVENTS=$$(grep -c "TIMELINE|" "./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log" 2>/dev/null || echo 0); \
+		echo "📊 Statistics:"; \
+		echo "  - Timeline events logged: $$EVENTS"; \
+		echo "  - Log file size: $$(du -h ./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log 2>/dev/null | cut -f1 || echo '0')"; \
+	fi
