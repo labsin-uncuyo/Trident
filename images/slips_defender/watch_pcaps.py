@@ -11,9 +11,9 @@ from pathlib import Path
 DATASET_DIR = Path(os.getenv("SLIPS_DATASET_DIR", "/StratosphereLinuxIPS/dataset"))
 OUTPUT_DIR = Path(os.getenv("SLIPS_OUTPUT_DIR", "/StratosphereLinuxIPS/output"))
 RUN_ID = os.getenv("RUN_ID", "run_local")
-POLL_INTERVAL = float(os.getenv("SLIPS_WATCH_INTERVAL", "5"))
+POLL_INTERVAL = float(os.getenv("SLIPS_WATCH_INTERVAL", "60"))
 PROCESS_ACTIVE = os.getenv("SLIPS_PROCESS_ACTIVE", "").lower() in {"1", "true", "yes", "on"}
-ACTIVE_SNAPSHOT_COOLDOWN = float(os.getenv("SLIPS_ACTIVE_SNAPSHOT_SECS", "30"))
+ACTIVE_SNAPSHOT_COOLDOWN = float(os.getenv("SLIPS_ACTIVE_SNAPSHOT_SECS", "60"))
 SKIP_ACTIVE = {"router.pcap", "router_stream.pcap", "switch_stream.pcap"}
 SKIP_ACTIVE.add("server.pcap")
 SKIP_PREFIXES = ("router_stream", "switch_stream", "server_stream")

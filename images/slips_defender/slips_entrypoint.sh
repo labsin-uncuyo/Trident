@@ -8,8 +8,18 @@ SLIPS_DATASET_DIR="/StratosphereLinuxIPS/dataset"
 SLIPS_OUTPUT_DIR="/StratosphereLinuxIPS/output"
 DEFENDER_URL="http://127.0.0.1:${DEFENDER_PORT}/alerts"
 
-mkdir -p "/outputs/${RUN_ID}/pcaps" "/outputs/${RUN_ID}/slips"
+mkdir -p "/outputs/${RUN_ID}/pcaps" "/outputs/${RUN_ID}/slips_output"
 mkdir -p "${SLIPS_DATASET_DIR}" "${SLIPS_OUTPUT_DIR}"
+
+# Create symlink to redirect Slips output to the mounted volume
+mkdir -p "/outputs/${RUN_ID}/slips"
+ln -sf "/outputs/${RUN_ID}/slips" "/outputs/slips" 2>/dev/null || true
+
+# Redirect Slips' default output location to our mounted volume
+if [ -d "/outputs" ] && [ ! -L "/outputs/slips" ]; then
+    rm -rf "/outputs/slips" 2>/dev/null || true
+    ln -sf "/outputs/${RUN_ID}/slips" "/outputs/slips"
+fi
 
 # Clear stale pcaps so the watcher processes fresh captures promptly
 find "${SLIPS_DATASET_DIR}" -maxdepth 1 -type f -name "*.pcap*" \
