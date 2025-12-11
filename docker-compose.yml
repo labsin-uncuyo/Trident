@@ -3,10 +3,10 @@ services:
     build: ./images/router
     image: lab/router:latest
     container_name: lab_router
-    profiles: ["core"]
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
+      - PCAP_ROTATE_SECS=${PCAP_ROTATE_SECS:-3}
     volumes:
       - ./outputs:/outputs
     networks:
@@ -27,7 +27,6 @@ services:
     build: ./images/switch
     image: lab/switch:latest
     container_name: lab_switch
-    profiles: ["core"]
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
@@ -44,20 +43,21 @@ services:
     build: ./images/slips_defender
     image: lab/slips_defender:latest
     container_name: lab_slips_defender
-    profiles: ["defender"]
     environment:
       - RUN_ID=${RUN_ID}
       - DEFENDER_PORT=${DEFENDER_PORT:-8000}
+      - PLANNER_PORT=${PLANNER_PORT:-1654}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LAB_PASSWORD=${LAB_PASSWORD}
       - SLIPS_PROCESS_ACTIVE=${SLIPS_PROCESS_ACTIVE:-1}
-      - SLIPS_ACTIVE_STABLE_SECS=${SLIPS_ACTIVE_STABLE_SECS:-3}
+      - SLIPS_WATCH_INTERVAL=${SLIPS_WATCH_INTERVAL:-1}
+      - SLIPS_ACTIVE_SNAPSHOT_SECS=${SLIPS_ACTIVE_SNAPSHOT_SECS:-2}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
-      - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
+      - ./outputs/${RUN_ID}/slips_output:/StratosphereLinuxIPS/output
       - ./outputs:/outputs
       - ./images/slips_defender:/opt/lab
       - ./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml
@@ -82,7 +82,6 @@ services:
     build: ./images/compromised
     image: lab/compromised:latest
     container_name: lab_compromised
-    profiles: ["core"]
     environment:
       - LAB_PASSWORD=${LAB_PASSWORD}
       - RUN_ID=${RUN_ID}
@@ -120,14 +119,10 @@ services:
       dockerfile: images/ghosts_driver/Dockerfile
     image: lab/ghosts_driver:latest
     container_name: lab_ghosts_driver
-    profiles: ["attackers"]
     environment:
       - RUN_ID=${RUN_ID}
-      - JOHN_SCOTT_MODE=${JOHN_SCOTT_MODE:-dummy}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL:-qwen3-coder}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
+      - GHOSTS_REPEATS=${GHOSTS_REPEATS:-1}
+      - GHOSTS_DELAY=${GHOSTS_DELAY:-5}
     volumes:
       - ./outputs:/outputs
     networks:
@@ -138,41 +133,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  aracne_attacker:
-    build:
-      context: .
-      dockerfile: images/aracne/Dockerfile
-    container_name: aracne_attacker
-    profiles: ["attackers"]
-    network_mode: host
-    tty: true
-    working_dir: /agent
-    volumes:
-      - ./configs/aracne_lab/.env:/agent/.env:ro
-      - ./configs/aracne_lab/config/AttackConfig_lab.yaml:/agent/config/AttackConfig_lab.yaml:ro
-      - ./outputs/${RUN_ID}/aracne:/logs:rw
-      - ./configs/aracne_lab/start_lab.sh:/agent/start_lab.sh:ro
-    depends_on:
-      - compromised
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      - CESNET_API_KEY=${CESNET_API_KEY:-}
-      - OLLAMA_HOST=${OLLAMA_HOST:-127.0.0.1}
-      - OLLAMA_PORT=${OLLAMA_PORT:-11434}
-      - SSH_HOST=${SSH_HOST:-127.0.0.1}
-      - SSH_PORT=${SSH_PORT:-2223}
-      - SSH_USER=${SSH_USER:-labuser}
-      - SSH_PASSWORD=${SSH_PASSWORD:-adminadmin}
-      - SSH_KEY_PATH=${SSH_KEY_PATH:-}
-      - GOAL=${GOAL:-}
-    command: ["/bin/bash", "/agent/start_lab.sh"]
-
   server:
     build: ./images/server
     image: lab/server:latest
     container_name: lab_server
-    profiles: ["core"]
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
