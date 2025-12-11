@@ -3,42 +3,20 @@ set -e
 
 echo "=== GHOSTS Driver Starting ==="
 
-# Determine mode (default: dummy)
-MODE="${JOHN_SCOTT_MODE:-dummy}"
-echo "John Scott Mode: $MODE"
+# Check for parameters
+GHOSTS_REPEATS=${GHOSTS_REPEATS:-1}
+GHOSTS_DELAY=${GHOSTS_DELAY:-5}
+echo "Parameters:"
+echo "  - Workflow repeats: $GHOSTS_REPEATS"
+echo "  - Delay between commands: $GHOSTS_DELAY seconds"
+echo ""
 
-# Verify SSH key exists (none is shipped by default)
+# Verify SSH key exists
 if [ ! -f /root/.ssh/id_rsa ]; then
-    echo "No SSH private key at /root/.ssh/id_rsa. GitHub-scrubbed keys from the repo; provide a key or adapt to password auth before rebuilding."
+    echo "✗ SSH private key not found at /root/.ssh/id_rsa"
     exit 1
 fi
-echo "SSH private key configured"
-
-# Setup timeline based on mode
-if [ "$MODE" = "llm" ]; then
-    echo "=== LLM Mode: Generating dynamic timeline ==="
-    
-    # Show LLM configuration
-    echo "LLM Configuration:"
-    echo "  - API Base: ${OPENAI_BASE_URL:-https://chat.ai.e-infra.cz/api/v1}"
-    echo "  - Model: ${LLM_MODEL:-qwen3-coder}"
-    echo "  - Temperature: ${LLM_TEMPERATURE:-0.7}"
-    
-    # Generate timeline using LLM
-    cd /opt/john_scott_llm
-    if bash ./generate_timeline.sh; then
-        echo "✓ Timeline generated successfully with LLM"
-        # Copy generated timeline to GHOSTS config
-        cp /opt/john_scott_llm/timeline_john_scott_llm.json /opt/ghosts/bin/config/timeline.json
-    else
-        echo "✗ Failed to generate timeline with LLM, falling back to dummy mode"
-        cp /opt/john_scott_dummy/timeline_john_scott.json /opt/ghosts/bin/config/timeline.json
-    fi
-else
-    echo "=== Dummy Mode: Using predefined timeline ==="
-    cp /opt/john_scott_dummy/timeline_john_scott.json /opt/ghosts/bin/config/timeline.json
-    echo "✓ Dummy timeline configured"
-fi
+echo "✓ SSH private key configured"
 
 # Wait for compromised machine to be ready
 echo "Waiting for compromised machine (172.30.0.10) to be ready..."
@@ -54,18 +32,75 @@ done
 # Test SSH connectivity
 echo "Testing SSH connection to compromised machine..."
 if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i /root/.ssh/id_rsa labuser@172.30.0.10 "echo 'SSH connection successful'"; then
-    echo "SSH connection test passed"
+    echo "✓ SSH connection test passed"
 else
-    echo "SSH connection test failed"
+    echo "✗ SSH connection test failed"
     echo "  Please verify:"
     echo "  - SSH public key is installed on compromised machine"
     echo "  - labuser exists on compromised machine"
     echo "  - SSH service is running on compromised machine"
 fi
 
-# Start GHOSTS client
+# Adjust timeline based on parameters
+echo "Adjusting timeline with delay settings..."
+TIMELINE_FILE="/opt/ghosts/bin/config/timeline.json"
+if [ -f "$TIMELINE_FILE" ]; then
+    DELAY_MS=$((GHOSTS_DELAY * 1000))
+    # Backup original
+    cp "$TIMELINE_FILE" "${TIMELINE_FILE}.original"
+    
+    # Adjust delays
+    sed -i "s/\"DelayBefore\": [0-9]*/\"DelayBefore\": $DELAY_MS/g" "$TIMELINE_FILE"
+    sed -i "s/\"DelayAfter\": [0-9]*/\"DelayAfter\": $DELAY_MS/g" "$TIMELINE_FILE"
+    
+    # Adjust Loop setting based on REPEATS
+    if [ "$GHOSTS_REPEATS" -eq 1 ]; then
+        echo "  - Setting Loop to false (single execution)"
+        sed -i 's/"Loop": true/"Loop": false/g' "$TIMELINE_FILE"
+    else
+        echo "  - Keeping Loop enabled (will run continuously)"
+    fi
+    
+    echo "✓ Timeline delays adjusted to $DELAY_MS ms"
+else
+    echo "⚠ Timeline file not found at $TIMELINE_FILE"
+fi
+echo ""
+
+# Calculate execution time for controlled termination
+NUM_COMMANDS=$(grep -c '"Command":' "$TIMELINE_FILE" 2>/dev/null || echo 6)
+CYCLE_TIME=$((NUM_COMMANDS * GHOSTS_DELAY * 2))
+TOTAL_TIME=$((GHOSTS_REPEATS * CYCLE_TIME))
+echo "Execution plan:"
+echo "  - Commands per cycle: $NUM_COMMANDS"
+echo "  - Time per cycle: ~$CYCLE_TIME seconds"
+echo "  - Total planned time: ~$TOTAL_TIME seconds"
+echo ""
+
+# Start GHOSTS client with timeout if Loop is enabled
 echo "Starting GHOSTS client..."
 cd /opt/ghosts/bin
-./Ghosts.Client.Universal
+
+if [ "$GHOSTS_REPEATS" -gt 1 ]; then
+    # Run with timeout to stop after N cycles
+    TIMEOUT_SECS=$((TOTAL_TIME + 60))
+    echo "  (Will terminate after $TIMEOUT_SECS seconds)"
+    timeout $TIMEOUT_SECS ./Ghosts.Client.Universal || true
+else
+    # Run normally (Loop is false, will exit on its own)
+    ./Ghosts.Client.Universal
+fi
+
+# Copy GHOSTS logs to outputs
+echo "Copying GHOSTS logs to outputs..."
+if [ -n "$RUN_ID" ] && [ -d "/opt/ghosts/bin/logs" ]; then
+    LOGS_DEST="/outputs/${RUN_ID}/ghosts"
+    mkdir -p "$LOGS_DEST"
+    cp -r /opt/ghosts/bin/logs/* "$LOGS_DEST/" 2>/dev/null || true
+    echo "✓ Logs copied to $LOGS_DEST"
+    ls -lh "$LOGS_DEST"
+else
+    echo "⚠ RUN_ID not set or logs directory not found, skipping log copy"
+fi
 
 echo "=== GHOSTS Driver Stopped ==="
