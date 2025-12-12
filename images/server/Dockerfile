@@ -21,10 +21,14 @@ RUN apt-get update \
        net-tools procps kmod systemd systemd-sysv \
     && rm -rf /var/lib/apt/lists/*
 
+# Add PostgreSQL APT repository (11.x) using vendored key/list to avoid network fetch during build
+COPY postgresql.gpg /usr/share/keyrings/postgresql.gpg
+COPY pgdg.list /etc/apt/sources.list.d/pgdg.list
+
 # === SERVER-SPECIFIC PACKAGES ===
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       nginx postgresql postgresql-contrib rsyslog \
+       nginx postgresql-11 postgresql-contrib-11 rsyslog \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/run/sshd \
