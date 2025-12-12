@@ -6,7 +6,6 @@ services:
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
-      - PCAP_ROTATE_SECS=${PCAP_ROTATE_SECS:-3}
     volumes:
       - ./outputs:/outputs
     networks:
@@ -51,9 +50,6 @@ services:
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LAB_PASSWORD=${LAB_PASSWORD}
-      - SLIPS_PROCESS_ACTIVE=${SLIPS_PROCESS_ACTIVE:-1}
-      - SLIPS_WATCH_INTERVAL=${SLIPS_WATCH_INTERVAL:-1}
-      - SLIPS_ACTIVE_SNAPSHOT_SECS=${SLIPS_ACTIVE_SNAPSHOT_SECS:-2}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset

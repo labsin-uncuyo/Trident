@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-DATASET_DIR = Path(os.getenv("SLIPS_DATASET_DIR", "/StratosphereLinuxIPS/dataset"))
-OUTPUT_DIR = Path(os.getenv("SLIPS_OUTPUT_DIR", "/StratosphereLinuxIPS/output"))
-RUN_ID = os.getenv("RUN_ID", "run_local")
-POLL_INTERVAL = float(os.getenv("SLIPS_WATCH_INTERVAL", "5"))
-PROCESS_ACTIVE = os.getenv("SLIPS_PROCESS_ACTIVE", "").lower() in {"1", "true", "yes", "on"}
-ACTIVE_SNAPSHOT_COOLDOWN = float(os.getenv("SLIPS_ACTIVE_SNAPSHOT_SECS", "30"))
+DATASET_DIR = Path("/StratosphereLinuxIPS/dataset")
+OUTPUT_DIR = Path("/StratosphereLinuxIPS/output")
+RUN_ID = "run_local"
+# Fixed cadence and behavior: no active stream snapshots, 5s poll, 60s per-PCAP timeout.
+POLL_INTERVAL = 5.0
+PROCESS_ACTIVE = False
+PROCESS_TIMEOUT = 60.0
 SKIP_ACTIVE = {"router.pcap", "router_stream.pcap", "switch_stream.pcap"}
 SKIP_ACTIVE.add("server.pcap")
 SKIP_PREFIXES = ("router_stream", "switch_stream", "server_stream")
@@ -63,6 +63,7 @@ def _process(path: Path) -> None:
     subprocess.run(
         ["python3", "/StratosphereLinuxIPS/slips.py", "-f", f"dataset/{path.name}"],
         cwd="/StratosphereLinuxIPS",
+        timeout=PROCESS_TIMEOUT,
         check=True,
     )
     _write_sentinel(path, "completed")
@@ -177,8 +178,14 @@ def main() -> None:
                 _process(target_path)
                 _rename_output_dir(target_path)
                 processed.add(marker)
+            except subprocess.TimeoutExpired:
+                print(f"[slips-watch] SLIPS timed out for {path.name} after {PROCESS_TIMEOUT}s", flush=True)
+                _write_sentinel(path, "timeout")
+                processed.add(marker)
             except subprocess.CalledProcessError as exc:
                 print(f"[slips-watch] SLIPS failed for {path.name}: {exc}", flush=True)
+                _write_sentinel(path, "failed")
+                processed.add(marker)
         now = time.time()
         if now - last_heartbeat >= 10:
             _write_sentinel(Path("heartbeat.pcap"), "heartbeat")

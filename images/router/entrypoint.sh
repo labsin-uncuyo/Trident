@@ -2,7 +2,7 @@
 set -euo pipefail
 
 : "${RUN_ID:=run_local}"
-: "${PCAP_ROTATE_SECS:=60}"
+: "${PCAP_ROTATE_SECS:=30}"
 
 pcap_dir="/outputs/${RUN_ID}/pcaps"
 mkdir -p "${pcap_dir}"

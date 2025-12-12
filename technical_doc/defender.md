@@ -69,9 +69,7 @@ Skips system messages: `heartbeat`, `queued`, `completed`
 
 ### 3. Plan Generation
 
-**Two modes:**
-
-#### A. LLM-Based Planning (via `/plan` endpoint)
+**LLM-Based Planning (via external planner service)**
 **File:** `defender/app/planner.py`
 
 Uses LangChain with OpenAI-compatible API:
@@ -89,14 +87,6 @@ llm = ChatOpenAI(
 - Generates actionable plan without code snippets
 - Returns strict JSON: `{"executor_host_ip": "...", "plan": "..."}`
 
-#### B. Fallback Rule-Based Planning
-**File:** `defender_api.py` → `generate_fallback_plan()`
-
-Pattern-matched responses for:
-- Port scans → Block source IP + rate limiting
-- DDoS → Rate limiting + SYN cookies
-- Brute force → Block + audit accounts
-- Generic → Investigation + containment
 
 ### 4. SSH Execution
 
@@ -200,6 +190,20 @@ Each line is a JSON object with these fields:
 | `MAX_EXECUTION_RETRIES` | `3` | SSH retry attempts |
 | `OPENCODE_API_KEY` | - | API key for OpenCode LLM |
 
+### SLIPS capture and processing cadence
+
+- Router rotation is fixed at 30s (`images/router/entrypoint.sh`), producing `router_*.pcap` into `outputs/<run>/pcaps`.
+- The watcher polls every 5s and processes only completed rotated PCAPs (stream snapshots are disabled).
+- Per-PCAP processing timeout is fixed at 60s in `watch_pcaps.py`; if exceeded, the run is marked timed out and the watcher moves on.
+- Zeek preprocessing (`images/slips_defender/slips.yaml`):
+  - `pcapfilter` drops mDNS/DHCP (`not port 5353 and not port 67 and not port 68`) while keeping ICMP/ARP; avoids multicast/broadcast keywords that break on SLL captures.
+  - `tcp_inactivity_timeout` is set to 1 minute to finish small rotations faster.
+
+### SLIPS modules (enabled vs disabled)
+
+- Disabled (to keep runs fast/stable): `rnn_cc_detection`, `flowmldetection`, `threat_intelligence`, `update_manager`, `virustotal`, `timeline`, `blocking`, plus the default `template`.
+- Enabled (all others): core flow/ARP/HTTP/scan modules such as `arp`, `flow_alerts`, `http_analyzer`, `ip_info`, `network_discovery`, `riskiq`, and supporting processes (input/profiler/evidence handler).
+
 ### Network Topology
 
 | Container | IP | Network |
@@ -221,7 +225,7 @@ images/slips_defender/
 │   │   ├── main.py           # FastAPI planner service
 │   │   └── planner.py        # LangChain LLM planner
 │   └── prompts.yaml          # LLM system/human prompts
-├── defender_api.py           # Defender API (alerts + fallback planner)
+├── defender_api.py           # Defender API (alerts storage)
 ├── forward_alerts.py         # SLIPS → Defender API forwarder
 └── watch_pcaps.py            # PCAP sentinel alerts
 
@@ -286,7 +290,7 @@ OpenCode execution can take 60-180 seconds depending on plan complexity. The 300
 T+0s    SLIPS detects port scan from 172.30.0.10 to 172.31.0.10
 T+2s    forward_alerts.py POSTs to /alerts
 T+5s    auto_responder picks up alert
-T+5s    Calls /plan endpoint → fallback plan generated
+T+5s    Calls /plan endpoint → LLM plan generated
 T+5s    SSH to server@172.31.0.10
 T+6s    OpenCode starts with soc_god agent
 T+30s   OpenCode runs: iptables -A INPUT -s 172.30.0.10 -j DROP
