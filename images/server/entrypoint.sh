@@ -30,6 +30,8 @@ pg_hba="/etc/postgresql/${pg_version}/main/pg_hba.conf"
 pg_log="/var/log/postgresql/postgresql-${pg_version}-main.log"
 
 sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" "${pg_conf}"
+# Force plaintext connections so router captures show queries without SSL wrapping
+sed -i "s/^#\\?ssl = .*/ssl = off/" "${pg_conf}"
 if ! grep -q "0.0.0.0/0" "${pg_hba}"; then
     echo "host all all 0.0.0.0/0 trust" >> "${pg_hba}"
 fi
