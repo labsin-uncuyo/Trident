@@ -35,7 +35,12 @@ if ! /opt/lab/setup_ssh_keys.sh; then
 fi
 
 python3 -m uvicorn defender_api:app --host 127.0.0.1 --port "${DEFENDER_PORT}" --log-level info &
-API_PID=$!
+RECEIVER_PID=$!
+
+# Planner API disabled due to missing dependencies
+# python3 -m uvicorn defender.app.main:app --host 127.0.0.1 --port "${PLANNER_PORT:-1654}" --log-level info &
+# PLANNER_PID=$!
+PLANNER_PID=""
 
 python3 /opt/lab/forward_alerts.py &
 TAIL_PID=$!
@@ -47,12 +52,26 @@ python3 /opt/lab/defender/auto_responder.py &
 AUTO_PID=$!
 
 cleanup() {
-    kill "${API_PID}" "${TAIL_PID}" "${WATCH_PID}" "${AUTO_PID}" >/dev/null 2>&1 || true
+    # Only kill processes that have PIDs (planner is disabled)
+    [ -n "${RECEIVER_PID}" ] && kill "${RECEIVER_PID}" >/dev/null 2>&1 || true
+    [ -n "${PLANNER_PID}" ] && kill "${PLANNER_PID}" >/dev/null 2>&1 || true
+    [ -n "${TAIL_PID}" ] && kill "${TAIL_PID}" >/dev/null 2>&1 || true
+    [ -n "${WATCH_PID}" ] && kill "${WATCH_PID}" >/dev/null 2>&1 || true
+    [ -n "${AUTO_PID}" ] && kill "${AUTO_PID}" >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT INT TERM
 
-wait -n "${API_PID}" "${TAIL_PID}" "${WATCH_PID}" "${AUTO_PID}"
+# Only wait for processes that are running (planner is disabled)
+PIDS_TO_WAIT=()
+[ -n "${RECEIVER_PID}" ] && PIDS_TO_WAIT+=("${RECEIVER_PID}")
+[ -n "${TAIL_PID}" ] && PIDS_TO_WAIT+=("${TAIL_PID}")
+[ -n "${WATCH_PID}" ] && PIDS_TO_WAIT+=("${WATCH_PID}")
+[ -n "${AUTO_PID}" ] && PIDS_TO_WAIT+=("${AUTO_PID}")
+
+if [ ${#PIDS_TO_WAIT[@]} -gt 0 ]; then
+    wait -n "${PIDS_TO_WAIT[@]}"
+fi
 EXIT_CODE=$?
 cleanup
 wait || true
