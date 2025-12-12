@@ -67,11 +67,9 @@ slips_defender:
     - OPENAI_API_KEY=${OPENAI_API_KEY}
     - OPENAI_BASE_URL=${OPENAI_BASE_URL}
     - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
-    - SLIPS_PROCESS_ACTIVE=${SLIPS_PROCESS_ACTIVE:-1}
-    - SLIPS_ACTIVE_STABLE_SECS=${SLIPS_ACTIVE_STABLE_SECS:-3}
   volumes:
     - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
-    - ./outputs/${RUN_ID}/slips_output:/StratosphereLinuxIPS/output
+    - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
     - ./outputs:/outputs
     - ./images/slips_defender:/opt/lab
     - ./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml
@@ -302,7 +300,7 @@ responder.diagnose_ssh_connectivity('172.31.0.10')
 - `DEFENDER_PORT`: Port for defender API (default: 8000)
 - `OPENAI_API_KEY`: API key for LLM integration
 - `LLM_MODEL`: Model to use for automated response planning
-- `SLIPS_PROCESS_ACTIVE`: Enable/disable SLIPS processing (1/0)
+- SLIPS watcher now runs with fixed defaults: no stream snapshots, 5s poll interval, 60s per-PCAP timeout, and 30s router PCAP rotations.
 
 #### Key Files and Locations
 - **Docker Compose**: `/docker-compose.yml`
@@ -331,7 +329,7 @@ responder.diagnose_ssh_connectivity('172.31.0.10')
 #### Key Log Files
 - **Defender Logs**: `/outputs/${RUN_ID}/auto_responder_detailed.log`
 - **Timeline**: `/outputs/${RUN_ID}/auto_responder_timeline.jsonl`
-- **SLIPS Logs**: `/outputs/${RUN_ID}/slips_output/`
+- **SLIPS Logs**: `/outputs/${RUN_ID}/slips/`
 - **Container Health**: `docker ps` or `docker-compose ps`
 
 #### Log Analysis Commands
