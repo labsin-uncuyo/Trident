@@ -218,3 +218,116 @@ ghosts_psql:
 		echo "  - Timeline events logged: $$EVENTS"; \
 		echo "  - Log file size: $$(du -h ./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log 2>/dev/null | cut -f1 || echo '0')"; \
 	fi
+
+# Target: ghosts_psql_llm
+# Usage: make ghosts_psql_llm NUM_QUERIES=<num> SCENARIO=<type> ROLE=<db_role> DELAY=<seconds>
+# Example: make ghosts_psql_llm NUM_QUERIES=10 SCENARIO=hr_audit ROLE=senior_developer_role DELAY=3
+# 
+# Prerequisites: 
+#   - Run 'make up' first to initialize the infrastructure and RUN_ID
+#   - OPENCODE_API_KEY must be set in .env file
+# 
+# Parameters:
+#   NUM_QUERIES: Number of SQL queries to generate via LLM (default: 5)
+#   SCENARIO: Scenario type - developer_routine, hr_audit, performance_review, exploratory (default: developer_routine)
+#   ROLE: Database role name (determines permissions and behavior, default: senior_developer_role)
+#   DELAY: Base delay in seconds between commands (default: 5, varies slightly for realism)
+#
+# This target:
+# 1. Uses LLM (OpenCode) to dynamically generate SQL queries based on scenario and role
+# 2. Creates GHOSTS timeline with generated queries
+# 3. Executes timeline via ghosts_driver container
+# 4. Logs are automatically saved to outputs/
+ghosts_psql_llm:
+	@NUM_QUERIES=$${NUM_QUERIES:-5}; \
+	SCENARIO=$${SCENARIO:-developer_routine}; \
+	ROLE=$${ROLE:-senior_developer_role}; \
+	DELAY=$${DELAY:-5}; \
+	echo "=== GHOSTS PostgreSQL Workflow (LLM-Driven) ==="; \
+	echo "Parameters:"; \
+	echo "  - Number of queries: $$NUM_QUERIES"; \
+	echo "  - Scenario: $$SCENARIO"; \
+	echo "  - Database Role: $$ROLE"; \
+	echo "  - Delay between commands: $$DELAY seconds"; \
+	echo ""; \
+	if [ ! -f $(RUN_ID_FILE) ]; then \
+		echo "✗ Error: RUN_ID not found. Please run 'make up' first to initialize the infrastructure."; \
+		exit 1; \
+	fi; \
+	if ! grep -q "OPENCODE_API_KEY=" .env 2>/dev/null; then \
+		echo "✗ Error: OPENCODE_API_KEY not found in .env file"; \
+		exit 1; \
+	fi; \
+	RUN_ID_VALUE=$$(cat $(RUN_ID_FILE)); \
+	echo "[ghosts_psql_llm] Using existing RUN_ID=$$RUN_ID_VALUE"; \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/ghosts; \
+	echo "[ghosts_psql_llm] Output directory: ./outputs/$$RUN_ID_VALUE/ghosts"; \
+	echo ""; \
+	DELAY_MS=$$(($$DELAY * 1000)); \
+	TOTAL_TIME=$$(($$NUM_QUERIES * $$DELAY * 2 + 60)); \
+	echo "[ghosts_psql_llm] Estimated execution time: $$TOTAL_TIME seconds (~$$(($$TOTAL_TIME / 60)) minutes)"; \
+	echo "  - Queries to generate: $$NUM_QUERIES"; \
+	echo "  - Scenario: $$SCENARIO"; \
+	echo "  - Database Role: $$ROLE"; \
+	echo "  - Delay per command: $$DELAY seconds"; \
+	echo ""; \
+	echo "[ghosts_psql_llm] Starting ghosts_driver container with LLM timeline generation..."; \
+	RUN_ID=$$RUN_ID_VALUE GHOSTS_MODE=llm GHOSTS_NUM_QUERIES=$$NUM_QUERIES GHOSTS_SCENARIO=$$SCENARIO GHOSTS_ROLE=$$ROLE GHOSTS_DELAY=$$DELAY $(COMPOSE) --profile core --profile benign up -d --no-recreate --no-build router server compromised; \
+	RUN_ID=$$RUN_ID_VALUE GHOSTS_MODE=llm GHOSTS_NUM_QUERIES=$$NUM_QUERIES GHOSTS_SCENARIO=$$SCENARIO GHOSTS_ROLE=$$ROLE GHOSTS_DELAY=$$DELAY $(COMPOSE) --profile core --profile benign up -d ghosts_driver; \
+	echo "✓ Container started: lab_ghosts_driver"; \
+	echo ""; \
+	echo "[ghosts_psql_llm] Monitoring execution..."; \
+	echo "  (You can watch logs with: docker logs -f lab_ghosts_driver)"; \
+	echo ""; \
+	sleep 10; \
+	docker logs lab_ghosts_driver; \
+	echo ""; \
+	echo "[ghosts_psql_llm] Waiting for execution to complete..."; \
+	echo "  (Max wait time: $$TOTAL_TIME seconds)"; \
+	ELAPSED=0; \
+	while [ $$ELAPSED -lt $$TOTAL_TIME ]; do \
+		if ! docker ps --filter "name=lab_ghosts_driver" --filter "status=running" | grep -q lab_ghosts_driver; then \
+			echo "✓ Container has stopped (execution completed)"; \
+			break; \
+		fi; \
+		sleep 10; \
+		ELAPSED=$$(($$ELAPSED + 10)); \
+		REMAINING=$$(($$TOTAL_TIME - $$ELAPSED)); \
+		if [ $$(($$ELAPSED % 60)) -eq 0 ]; then \
+			echo "  [$$ELAPSED/$$TOTAL_TIME seconds] Container still running ($$REMAINING seconds remaining)..."; \
+		fi; \
+	done; \
+	echo ""; \
+	echo "[ghosts_psql_llm] Stopping ghosts_driver container..."; \
+	docker stop lab_ghosts_driver 2>/dev/null || true; \
+	echo "✓ Container stopped"; \
+	echo ""; \
+	echo "[ghosts_psql_llm] Copying logs from container..."; \
+	if docker cp lab_ghosts_driver:/opt/ghosts/bin/logs "./outputs/$$RUN_ID_VALUE/ghosts_tmp" 2>/dev/null; then \
+		mkdir -p "./outputs/$$RUN_ID_VALUE/ghosts"; \
+		cp -r "./outputs/$$RUN_ID_VALUE/ghosts_tmp/"* "./outputs/$$RUN_ID_VALUE/ghosts/" 2>/dev/null || true; \
+		rm -rf "./outputs/$$RUN_ID_VALUE/ghosts_tmp"; \
+		echo "✓ Logs copied to ./outputs/$$RUN_ID_VALUE/ghosts/"; \
+	else \
+		echo "✗ Failed to copy logs from lab_ghosts_driver (container missing or no logs)."; \
+	fi; \
+	if docker cp lab_ghosts_driver:/opt/ghosts/bin/config/timeline.json "./outputs/$$RUN_ID_VALUE/ghosts/timeline_generated.json" 2>/dev/null; then \
+		echo "✓ Generated timeline copied to ./outputs/$$RUN_ID_VALUE/ghosts/timeline_generated.json"; \
+	fi; \
+	ls -lh "./outputs/$$RUN_ID_VALUE/ghosts/" 2>/dev/null || true; \
+	echo ""; \
+	echo "=== GHOSTS LLM Execution Complete ==="; \
+	echo "✓ Logs saved to: ./outputs/$$RUN_ID_VALUE/ghosts/"; \
+	echo "✓ Timeline log: ./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log"; \
+	echo "✓ Generated timeline: ./outputs/$$RUN_ID_VALUE/ghosts/timeline_generated.json"; \
+	echo ""; \
+	if [ -f "./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log" ]; then \
+		EVENTS=$$(grep -c "TIMELINE|" "./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log" 2>/dev/null || echo 0); \
+		echo "📊 Statistics:"; \
+		echo "  - Timeline events logged: $$EVENTS"; \
+		echo "  - Scenario: $$SCENARIO"; \
+		echo "  - Database Role: $$ROLE"; \
+		echo "  - LLM-generated queries: $$NUM_QUERIES"; \
+		echo "  - Log file size: $$(du -h ./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log 2>/dev/null | cut -f1 || echo '0')"; \
+	fi
+
