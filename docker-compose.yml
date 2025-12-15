@@ -188,7 +188,7 @@ services:
       - RUN_ID=${RUN_ID}
       - GOAL=${GOAL:-Create the file /home/labuser/aracne_was_here.txt containing 'aracne ok' and then read it back to confirm.}
     volumes:
-      - ./outputs/${RUN_ID}/aracne:/agent/logs
+      - ./outputs/${RUN_ID}/aracne:/logs
       - ./configs/aracne_lab/config:/agent/config:ro
       - ./configs/aracne_lab/.env:/agent/.env:ro
       - ./configs/aracne_lab/start_lab.sh:/agent/start_lab.sh:ro
