@@ -1,7 +1,7 @@
 # Lab Topology and Functional Specification
 
 ## Overview
-Phase 1 now delivers a five-container “tiny routed lab” that mirrors Stratosphere Linux IPS (SLIPS) deployment practices. Two Docker bridges (`lab_net_a`, `lab_net_b`) are routed through a privileged router. Every container shares `./outputs`, which becomes the rendezvous point for PCAP captures, SLIPS datasets, and defender alerts. Automated tests rely on static IP assignments and the official SLIPS container ingesting rotated PCAPs captured on the **server** (host-based monitoring of client↔server traffic).
+Phase 1 now delivers a modular “tiny routed lab” that mirrors Stratosphere Linux IPS (SLIPS) deployment practices. Two Docker bridges (`lab_net_a`, `lab_net_b`) are routed through a privileged router. Every container shares `./outputs`, which becomes the rendezvous point for PCAP captures, SLIPS datasets, and defender alerts. Automated tests rely on static IP assignments and the official SLIPS container ingesting rotated PCAPs captured on the **server** (host-based monitoring of client↔server traffic). Services are grouped by profiles: `core` (router/server/compromised), `defender` (slips_defender + switch), `benign` (ghosts_driver), and `attackers` (aracne_attacker).
 
 ## Network Topology
 - **lab_net_a (172.30.0.0/24)** – houses the compromised client (172.30.0.10), optional switch/collector (172.30.0.2), and the SLIPS defender (uses host networking but still mounts the same outputs).
@@ -18,7 +18,7 @@ Phase 1 now delivers a five-container “tiny routed lab” that mirrors Stratos
 | SLIPS Defender | lab_slips_defender (host net) | — | host network |
 | Server         | lab_server       | net_b     | 172.31.0.10    |
 
-> NOTE: `lab_slips_defender` uses `network_mode: host` to follow upstream SLIPS docs. It still mounts `./outputs/${RUN_ID}/pcaps` and `./outputs/${RUN_ID}/slips_output` for dataset and output paths.
+> NOTE: `lab_slips_defender` uses `network_mode: host` to follow upstream SLIPS docs. It still mounts `./outputs/${RUN_ID}/pcaps` and `./outputs/${RUN_ID}/slips` for dataset and output paths.
 
 ## Service Matrix
 | Container          | Base stack                                   | Key responsibilities |
@@ -32,12 +32,12 @@ Phase 1 now delivers a five-container “tiny routed lab” that mirrors Stratos
 ## Alert Flow
 1. `lab_server` captures PCAPs into `outputs/<RUN_ID>/pcaps/` as `server.pcap`.
 2. `lab_slips_defender` mounts that directory as `/StratosphereLinuxIPS/dataset`. `watch_pcaps.py` skips live files (`server.pcap`, router/switch streams) and triggers SLIPS runs for rotated copies or injected fixtures (e.g., `server.pcap.1`, `pytest_injected_*.pcap`).
-3. SLIPS writes alerts under `/StratosphereLinuxIPS/output/<timestamp>/alerts.log`, which is bind-mounted to `outputs/<RUN_ID>/slips_output/`.
+3. SLIPS writes alerts under `/StratosphereLinuxIPS/output/<timestamp>/alerts.log`, which is bind-mounted to `outputs/<RUN_ID>/slips/`.
 4. `forward_alerts.py` tails every `alerts.log` file and POSTs JSON payloads to `http://127.0.0.1:${DEFENDER_PORT}/alerts`.
 5. `defender_api.py` handles `/health` and `/alerts`, appending alerts to `/outputs/<RUN_ID>/defender_alerts.ndjson`. Tests read both the SLIPS log and the NDJSON to verify the pipeline.
 
 ## SLIPS Logs & Debugging
-- Host path: `outputs/<RUN_ID>/slips_output/<timestamp>/alerts.log`. Use `tail -f outputs/run_local/slips_output/*/alerts.log`.
+- Host path: `outputs/<RUN_ID>/slips/<timestamp>/alerts.log`. Use `tail -f outputs/<RUN_ID>/slips/*/alerts.log`.
 - Container path: `/StratosphereLinuxIPS/output/<timestamp>/alerts.log`. Use `docker exec -it lab_slips_defender tail -f /StratosphereLinuxIPS/output/*/alerts.log`.
 - FastAPI persists every POST to `outputs/<RUN_ID>/defender_alerts.ndjson`, making it easy to correlate alerts with PCAPs.
 
@@ -45,12 +45,13 @@ Phase 1 now delivers a five-container “tiny routed lab” that mirrors Stratos
 - `pytest` suite (run via `make verify`) spins the stack, waits for all services to report healthy, and validates:
   - SSH reachability to `lab_compromised`.
   - HTTP reachability from `lab_compromised` to `lab_server`.
-  - SLIPS ingestion: copies an existing PCAP, waits for new entries in `slips_output/**/alerts.log`, and asserts defender NDJSON grows.
-  - Log rotation: writes a test PCAP inside the router and calls `/management.sh rotate_pcaps`.
+- SLIPS ingestion: copies an existing PCAP, waits for new entries in `slips/**/alerts.log`, and asserts defender NDJSON grows.
+- Log rotation: writes a test PCAP inside the router and calls `/management.sh rotate_pcaps`.
   - Server restart policy and post-test cleanup (`make down`).
 
 ## Operational Notes
-- `make build` now pulls the official SLIPS image in addition to building local ones.
-- `make up` wipes any lingering `lab_` containers/networks and pre-creates `outputs/${RUN_ID}/{pcaps,slips_output}` to satisfy volume mounts.
+- `make build` builds all profiles (core/defender/benign/attackers) via compose.
+- `make up` wipes any lingering `lab_` containers/networks and pre-creates `outputs/${RUN_ID}/{pcaps,slips}` to satisfy volume mounts; it starts only the `core` profile.
+- `make defend` / `make not_defend` toggle the defender profile; `make ghosts_psql` runs the benign profile; `make aracne_attack` runs the attackers profile after `make up`.
 - Because `stratosphereips/slips:latest` is amd64-only, ARM hosts must enable binfmt (`docker run --privileged --rm tonistiigi/binfmt --install amd64`) before `make up`.
-- Router management commands (`block_ip`, `unblock_ip`, `rotate_pcaps`) remain unchanged; SLIPS consumes the rotated artifacts automatically.
+- Router management commands (`block_ip`, `unblock_ip`, `rotate_pcaps`) remain unchanged; SLIPS consumes the rotated artifacts automatically when the defender profile is active.

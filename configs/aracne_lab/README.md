@@ -9,7 +9,7 @@ This repository tracks ARACNE as a submodule (`external/aracne`) without our lab
 
 ## How to run
 ```bash
-# bring up core + defender
+# bring up core (router/server/compromised)
 make up
 
 # run an attack with a goal
