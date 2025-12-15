@@ -81,26 +81,50 @@ echo ""
 echo "Starting GHOSTS client..."
 cd /opt/ghosts/bin
 
+copy_logs() {
+    echo "Copying GHOSTS logs to outputs..."
+    if [ -n "$RUN_ID" ] && [ -d "/opt/ghosts/bin/logs" ]; then
+        LOGS_DEST="/outputs/${RUN_ID}/ghosts"
+        mkdir -p "$LOGS_DEST"
+        cp -r /opt/ghosts/bin/logs/* "$LOGS_DEST/" 2>/dev/null || true
+        echo "✓ Logs copied to $LOGS_DEST"
+        ls -lh "$LOGS_DEST"
+        # Basic sanity check: ensure we wrote at least one log file
+        if find "$LOGS_DEST" -type f | grep -q .; then
+            echo "✓ Log presence check passed"
+        else
+            echo "✗ No log files found in $LOGS_DEST (check GHOSTS run)"
+        fi
+    else
+        echo "⚠ RUN_ID not set or logs directory not found, skipping log copy"
+    fi
+}
+
+runner_pid=""
+
+cleanup() {
+    if [ -n "$runner_pid" ] && kill -0 "$runner_pid" 2>/dev/null; then
+        kill "$runner_pid" 2>/dev/null || true
+        wait "$runner_pid" 2>/dev/null || true
+    fi
+    copy_logs
+}
+
+trap cleanup EXIT
+trap cleanup TERM INT
+
 if [ "$GHOSTS_REPEATS" -gt 1 ]; then
     # Run with timeout to stop after N cycles
     TIMEOUT_SECS=$((TOTAL_TIME + 60))
     echo "  (Will terminate after $TIMEOUT_SECS seconds)"
-    timeout $TIMEOUT_SECS ./Ghosts.Client.Universal || true
+    timeout $TIMEOUT_SECS ./Ghosts.Client.Universal &
+    runner_pid=$!
 else
     # Run normally (Loop is false, will exit on its own)
-    ./Ghosts.Client.Universal
+    ./Ghosts.Client.Universal &
+    runner_pid=$!
 fi
 
-# Copy GHOSTS logs to outputs
-echo "Copying GHOSTS logs to outputs..."
-if [ -n "$RUN_ID" ] && [ -d "/opt/ghosts/bin/logs" ]; then
-    LOGS_DEST="/outputs/${RUN_ID}/ghosts"
-    mkdir -p "$LOGS_DEST"
-    cp -r /opt/ghosts/bin/logs/* "$LOGS_DEST/" 2>/dev/null || true
-    echo "✓ Logs copied to $LOGS_DEST"
-    ls -lh "$LOGS_DEST"
-else
-    echo "⚠ RUN_ID not set or logs directory not found, skipping log copy"
-fi
+wait "$runner_pid" 2>/dev/null || true
 
 echo "=== GHOSTS Driver Stopped ==="
