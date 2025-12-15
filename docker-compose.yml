@@ -131,6 +131,11 @@ services:
       - RUN_ID=${RUN_ID}
       - GHOSTS_REPEATS=${GHOSTS_REPEATS:-1}
       - GHOSTS_DELAY=${GHOSTS_DELAY:-5}
+      - GHOSTS_MODE=${GHOSTS_MODE:-dummy}
+      - GHOSTS_NUM_QUERIES=${GHOSTS_NUM_QUERIES:-5}
+      - GHOSTS_SCENARIO=${GHOSTS_SCENARIO:-developer_routine}
+      - GHOSTS_ROLE=${GHOSTS_ROLE:-senior_developer_role}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
     volumes:
       - ./outputs:/outputs
     networks:

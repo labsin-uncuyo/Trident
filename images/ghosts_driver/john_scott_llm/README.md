@@ -1,419 +1,276 @@
-# John Scott LLM - NPC con Integración de LLM
+# GHOSTS John Scott - LLM-Driven Version
 
-## Descripción
+LLM-powered behavior simulation for John Scott (Senior Developer) using the GHOSTS framework to generate realistic database queries dynamically.
 
-`john_scott_llm` es un agente NPC (Non-Player Character) para GHOSTS que utiliza un Large Language Model (LLM) para generar consultas SQL dinámicamente. A diferencia de `john_scott_dummy` que usa queries hardcodeadas, este agente genera comportamiento adaptativo usando IA.
+## Overview
 
-## Arquitectura de Integración LLM + GHOSTS
+This implementation uses an LLM (via OpenCode) to generate realistic SQL queries that John Scott would execute as part of his daily work. Instead of using hardcoded timelines, the queries are generated on-demand based on different scenarios, making the simulation more dynamic and realistic.
 
-### Flujo de Trabajo
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 1. Inicio del Contenedor (ghosts_driver)                    │
-│    - Lee JOHN_SCOTT_MODE desde variables de entorno         │
-│    - Si MODE=llm → ejecuta generate_timeline.sh             │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
+│  Makefile (ghosts_psql_llm target)                          │
+│  - Accepts: NUM_QUERIES, SCENARIO, DELAY, API_KEY           │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. Generación de Timeline (generate_timeline_llm.py)        │
-│    - Lee configuración LLM desde env vars                   │
-│    - Define tareas en lenguaje natural                      │
-│    - Por cada tarea: llama al LLM para generar SQL          │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
+│  generate_timeline.sh                                        │
+│  - Calls generate_timeline_llm.py                            │
+│  - Copies generated timeline to GHOSTS config                │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. LLM API Call (OpenAI-compatible)                         │
-│    Input: "Check all employees in Engineering department"   │
-│    Context: Schema de la base de datos (tables, columns)    │
-│    Output: "SELECT * FROM employees WHERE department=       │
-│            'Engineering' LIMIT 10;"                          │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
+│  generate_timeline_llm.py                                    │
+│  - Uses llm_query_generator.py to get SQL queries           │
+│  - Wraps queries in SSH commands                             │
+│  - Generates GHOSTS timeline.json                            │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. Construcción del Timeline JSON                           │
-│    - Cada query SQL → evento en el timeline                 │
-│    - Incluye comandos SSH con queries generadas             │
-│    - Guarda: timeline_john_scott_llm.json                   │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
+│  llm_query_generator.py                                      │
+│  - Calls OpenCode LLM with database schema context           │
+│  - Parses and validates SQL queries                          │
+│  - Fallback to reasonable defaults if LLM unavailable        │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 5. GHOSTS Client Ejecuta Timeline                           │
-│    - Lee timeline.json                                       │
-│    - Ejecuta comandos SSH a 172.30.0.10 (compromised)       │
-│    - Cada comando ejecuta psql con la query generada        │
-│    - Loop continuo con delays configurados                  │
+│  GHOSTS Driver Container                                     │
+│  - Reads generated timeline                                  │
+│  - Executes SSH commands to compromised machine              │
+│  - Compromised machine runs psql commands                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Componentes Clave
+## Files
 
-#### 1. **generate_timeline_llm.py**
-Script Python que genera el timeline dinámicamente usando LLM.
+- **`llm_query_generator.py`**: Core LLM integration, generates SQL queries based on scenario
+- **`generate_timeline_llm.py`**: Converts SQL queries into GHOSTS timeline format
+- **`generate_timeline.sh`**: Wrapper script that orchestrates timeline generation
+- **`test_john_scott_llm.sh`**: Test script for local development
+- **`requirements.txt`**: Python dependencies
 
-**Responsabilidades:**
-- Conectar con API de LLM (OpenAI-compatible)
-- Enviar prompts con contexto del schema de la base de datos
-- Generar queries SQL basadas en descripciones de tareas
-- Construir timeline JSON para GHOSTS
-- Manejar fallbacks si el LLM falla
+## Usage
 
-**Configuración LLM:**
-```python
-LLM_API_KEY = os.getenv('OPENAI_API_KEY')
-LLM_BASE_URL = os.getenv('OPENAI_BASE_URL').rstrip('/')  # Elimina trailing slash
-LLM_MODEL = os.getenv('LLM_MODEL', 'qwen3-coder')
-LLM_TEMPERATURE = float(os.getenv('LLM_TEMPERATURE', '0.7'))
+### Prerequisites
+
+1. Ensure `OPENCODE_API_KEY` is set in `/home/shared/Trident/.env` file:
+   ```bash
+   OPENCODE_API_KEY=sk-your-api-key-here
+   ```
+   The API key is **automatically** loaded from `.env` - you never need to pass it as a parameter.
+
+2. Initialize the infrastructure:
+   ```bash
+   make up
+   ```
+
+### From Makefile (Recommended)
+
+```bash
+# Generate 10 queries with developer_routine scenario using default role
+make ghosts_psql_llm NUM_QUERIES=10 SCENARIO=developer_routine
+
+# Generate 5 queries with hr_audit scenario, custom role, and delay
+make ghosts_psql_llm NUM_QUERIES=5 SCENARIO=hr_audit ROLE=senior_developer_role DELAY=3
+
+# Exploratory scenario with 8 queries
+make ghosts_psql_llm NUM_QUERIES=8 SCENARIO=exploratory ROLE=senior_developer_role
 ```
 
-**Prompt del Sistema:**
-```python
-SYSTEM_PROMPT = f"""You are a PostgreSQL query generator for John Scott, a Senior Developer.
+### Parameters
 
-{DATABASE_SCHEMA}  # Incluye estructura completa de tablas
+- **`NUM_QUERIES`** (default: 5): Number of SQL queries to generate via LLM
+- **`SCENARIO`** (default: `developer_routine`): Type of work scenario
+  - `developer_routine`: Daily dev tasks (team checks, salaries, hires)
+  - `hr_audit`: HR-focused queries (headcounts, ranges, tenure)
+  - `performance_review`: Review preparation (reports, progression, comparisons)
+  - `exploratory`: Random analytical queries (statistics, joins, edge cases)
+- **`ROLE`** (default: `senior_developer_role`): Database role name from `/home/shared/Trident/images/server/roles_users.sql`
+  - Determines user permissions and access patterns
+  - LLM generates queries appropriate for the role's privileges
+  - Currently supported: `senior_developer_role` (john_scott user)
+- **`DELAY`** (default: 5): Base delay in seconds between commands (varies slightly for realism)
 
-Generate ONLY the PostgreSQL query without any explanation, markdown formatting, or additional text.
-The query must be a valid PostgreSQL statement that can be executed directly.
-Vary the queries - include SELECT, JOIN, GROUP BY, COUNT, AVG, SUM operations.
-Keep queries realistic for a developer's daily work.
-Respond with ONLY the SQL query, nothing else."""
+**Note:** Unlike the hardcoded version, `REPEATS` is not a parameter since the LLM generates unique queries each time.
+
+### Direct Script Usage
+
+```bash
+# Generate queries only with specific role
+python3 llm_query_generator.py --num-queries 10 --scenario hr_audit --role senior_developer_role
+
+# Generate complete timeline with role
+python3 generate_timeline_llm.py --num-queries 8 --scenario developer_routine \
+    --role senior_developer_role --delay-before 5000 --delay-after 10000 --output timeline.json
+
+# Generate timeline with looping enabled
+python3 generate_timeline_llm.py --num-queries 5 --scenario exploratory \
+    --role senior_developer_role --loop
 ```
 
-#### 2. **Conexión SSH Hardcodeada**
-Como solicitaste, la conexión SSH está fija en el código:
+## Database Roles and Permissions
 
-```python
-SSH_TARGET = "labuser@172.30.0.10"
-SSH_KEY = "/root/.ssh/id_rsa"
-SSH_OPTIONS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-```
+The LLM generates queries based on the specified database role, which determines:
+- Available tables and columns
+- Permission levels (SELECT, INSERT, UPDATE, DELETE, DDL)
+- Typical work patterns and access needs
 
-#### 3. **Tareas en Lenguaje Natural**
-Las tareas se definen como descripciones, no como SQL:
+### Available Roles
 
-```python
-tasks = [
-    "Check all employees in the Engineering department",
-    "Find the average salary by department",
-    "List all active projects with their team sizes",
-    "Get recent hires from the last year",
-    "Show department budgets and managers",
-    "Find employees working on multiple projects",
-    "Calculate total project hours by employee",
-    "List departments with more than 10 employees"
-]
-```
+#### `senior_developer_role` (john_scott user)
+- **Credentials**: `john_scott` / `john_scott`
+- **Connection**: Two-step process
+  1. SSH to labuser@172.30.0.10
+  2. `psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb`
+  
+- **Permissions**:
+  - DML: SELECT, INSERT, UPDATE, DELETE on all tables
+  - DDL: CREATE on schema public
+  - Full access to: employee, department, department_employee, department_manager, salary, title, events
+  
+- **Typical Activities**:
+  - Query employee records and department data
+  - Analyze salary ranges for budget planning
+  - Review team composition and hiring patterns
+  - Create test data or temporary tables
+  - Run analytics queries and reports
+  - Monitor system events and logs
 
-El LLM convierte cada tarea en una query SQL apropiada.
+### Role-Based Query Generation
 
-#### 4. **Integration con GHOSTS**
-El timeline generado tiene el formato estándar de GHOSTS:
+The LLM considers the role's permissions when generating queries:
+- **READ-only roles**: Only SELECT statements
+- **Developer roles**: SELECT + occasional INSERT/UPDATE for testing
+- **Admin roles**: Full DDL/DML including CREATE, DROP, ALTER
+
+This ensures realistic behavior - a developer won't try to execute queries they don't have permission for.
+
+## Scenarios
+
+### developer_routine
+John Scott performs typical development work:
+- Checking team members in Development department
+- Reviewing recent hires and backgrounds
+- Planning budgets with salary information
+- Tracking title progressions and promotions
+- Analyzing department statistics
+
+### hr_audit
+John Scott conducts HR audit activities:
+- Employee counts by department
+- Salary ranges and averages
+- Identifying long-tenured employees
+- Reviewing organizational changes
+- Checking manager assignments
+
+### performance_review
+John Scott prepares for performance reviews:
+- Listing direct reports and titles
+- Analyzing salary history and adjustments
+- Calculating time in current positions
+- Making cross-department comparisons
+- Identifying career progression patterns
+
+### exploratory
+John Scott explores the database:
+- Running random analytical queries
+- Performing data quality checks
+- Computing statistical aggregations
+- Testing complex joins and subqueries
+- Investigating edge cases
+
+## How It Works
+
+1. **Role Context Loading**: System reads the database role from `roles_users.sql` to understand permissions and access patterns
+2. **LLM Query Generation**: `llm_query_generator.py` sends the database schema, role permissions, and scenario context to OpenCode LLM
+3. **Query Validation**: Generated queries are validated for syntax and role-appropriate permissions
+4. **Timeline Creation**: `generate_timeline_llm.py` wraps each SQL query in proper SSH and psql command syntax
+5. **Two-Step Connection**: Each command follows the security pattern:
+   - Step 1: SSH from ghosts_driver (172.30.0.20) to compromised (172.30.0.10)
+   - Step 2: From compromised, connect to PostgreSQL on server (172.31.0.10:5432)
+6. **GHOSTS Execution**: The timeline is loaded by GHOSTS framework, which executes each command with specified delays
+
+## Example Generated Timeline
 
 ```json
 {
-  "Id": "d531df3a-c946-4a53-beac-57d70c97d799",
-  "Status": "Active",
+  "Status": "Run",
   "TimeLineHandlers": [{
-    "HandlerType": "Command",
-    "Loop": true,
+    "HandlerType": "Bash",
+    "Loop": false,
     "TimeLineEvents": [
       {
-        "Command": "ssh -i /root/.ssh/id_rsa labuser@172.30.0.10 \"psql -h 172.30.0.3 -U laboratorio -d employees -c \\\"SELECT * FROM employees WHERE department='Engineering'\\\"\"",
-        "DelayAfter": 30000,
-        "DelayBefore": 15000
-      }
+        "Command": "ssh ... labuser@172.30.0.10 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -U john_scott -d labdb -c \"SELECT ...\"'",
+        "DelayBefore": 5000,
+        "DelayAfter": 10000
+      },
+      ...
     ]
   }]
 }
 ```
 
-## Variables de Entorno
+## Requirements
 
-Definidas en `.env` y pasadas por `docker-compose.yml`:
+- OpenCode CLI installed in ghosts_driver container
+- Access to e-INFRA CZ Chat API (or compatible OpenAI API)
+- **`OPENCODE_API_KEY`** configured in `/home/shared/Trident/.env` file (automatically loaded)
+- Python 3.8+
+- SSH access from ghosts_driver to compromised machine
+- PostgreSQL database credentials for john_scott user
+
+## Environment Variables
+
+All configuration is loaded from `/home/shared/Trident/.env`:
 
 ```bash
-# Proveedor LLM (e-INFRA CZ o compatible OpenAI)
-OPENAI_API_KEY=sk-dbb9b6c182fc4766980650cc6790fd7f
-OPENAI_BASE_URL=https://chat.ai.e-infra.cz/api
+# Required
+OPENCODE_API_KEY=sk-your-api-key-here
+
+# Optional (with defaults shown)
+OPENAI_BASE_URL=https://chat.ai.e-infra.cz/api/
 LLM_MODEL=qwen3-coder
-LLM_TEMPERATURE=0.7
-
-# Modo de operación (dummy o llm)
-JOHN_SCOTT_MODE=llm  # Se define al ejecutar docker compose
-```
-
-## Uso
-
-### 1. Levantar en Modo LLM
-
-```bash
-# Reconstruir imagen con los cambios
-docker compose build ghosts_driver
-
-# Levantar en modo LLM
-JOHN_SCOTT_MODE=llm docker compose up -d ghosts_driver
-```
-
-### 2. Verificar Timeline Generado
-
-```bash
-# Ver logs de generación
-docker logs lab_ghosts_driver --tail 50
-
-# Debería mostrar:
-# [INFO] Starting LLM-powered timeline generation for John Scott
-# [INFO] Using LLM: qwen3-coder at https://chat.ai.e-infra.cz/api
-# [INFO] Generating query 1/8: Check all employees in Engineering department
-# [INFO] Generated query: SELECT * FROM employees WHERE department='Engineering' LIMIT 10;
-# [SUCCESS] Timeline generated successfully
-```
-
-### 3. Ver Timeline Generado
-
-```bash
-# Copiar timeline desde el contenedor
-docker cp lab_ghosts_driver:/opt/john_scott_llm/timeline_john_scott_llm.json ./timeline_llm.json
-
-# Ver contenido
-cat timeline_llm.json | jq '.TimeLineHandlers[0].TimeLineEvents[] | .Command' | head -20
-```
-
-### 4. Verificar Ejecución en Tiempo Real
-
-```bash
-# Seguir logs en vivo
-docker logs lab_ghosts_driver -f
-
-# Debería mostrar comandos SSH ejecutándose:
-# 2025-11-27 14:00:01|INFO|TIMELINE|Command: ssh labuser@172.30.0.10 "PGPASSWORD=... psql -c \"SELECT AVG(salary) FROM employees GROUP BY department;\""
-# Result: department | avg
-#         Engineering | 95000.00
-#         Marketing   | 75000.00
-```
-
-### 5. Conectarse al Contenedor para Debug
-
-```bash
-# Entrar al contenedor
-docker exec -it lab_ghosts_driver bash
-
-# Ver archivos generados
-ls -la /opt/john_scott_llm/
-cat /opt/john_scott_llm/timeline_john_scott_llm.json
-
-# Regenerar timeline manualmente
-cd /opt/john_scott_llm
-python3 generate_timeline_llm.py
-
-# Ver logs de GHOSTS
-tail -f /opt/ghosts/bin/logs/*.log
-```
-
-### 6. Verificar Queries en la Base de Datos
-
-```bash
-# Conectarse a la máquina comprometida
-ssh -i images/ghosts_driver/john_scott_dummy/id_rsa labuser@localhost -p 2223
-
-# Ver historial de comandos ejecutados por john_scott_llm
-history | grep "JOHN_SCOTT_LLM"
-
-# Conectarse directamente a la base de datos
-PGPASSWORD=scotty@1 psql -h 172.30.0.3 -U laboratorio -d employees
-
-# Ver tablas disponibles
-\dt
-
-# Ejecutar query de ejemplo
-SELECT * FROM employees LIMIT 5;
-```
-
-## Comparación: Dummy vs LLM
-
-### Similitudes (Lo que comparten)
-
-Ambos modos utilizan la **misma infraestructura base**:
-
-✅ **Mismo `application.json`** - Configuración de GHOSTS idéntica
-✅ **Mismas credenciales SSH** - Usan `id_rsa` / `id_rsa.pub` compartidas
-✅ **Mismo target SSH** - Ambos se conectan a `labuser@172.30.0.10` (compromised)
-✅ **Misma base de datos** - PostgreSQL en `172.30.0.3:5432` (employees)
-✅ **Mismo usuario DB** - `laboratorio` con contraseña `scotty@1`
-✅ **Mismo formato timeline** - JSON compatible con GHOSTS Client Universal
-✅ **Mismo HandlerType** - Ambos usan `Command` con bash/ssh
-✅ **Mismo contenedor** - Ejecutan en el mismo `lab/ghosts_driver:latest`
-✅ **Mismo entrypoint** - `entrypoint.sh` detecta el modo via `JOHN_SCOTT_MODE`
-
-**Directorio compartido:**
-```
-images/ghosts_driver/
-├── application.json          ← Compartido por ambos
-├── entrypoint.sh             ← Detecta modo (dummy/llm)
-├── john_scott_dummy/
-│   ├── id_rsa                ← Copiado a john_scott_llm/
-│   ├── id_rsa.pub            ← Copiado a john_scott_llm/
-│   └── timeline.json         ← Timeline estático
-└── john_scott_llm/
-    ├── id_rsa                ← Copia del dummy
-    ├── id_rsa.pub            ← Copia del dummy
-    ├── generate_timeline_llm.py  ← Generador dinámico
-    └── timeline_john_scott_llm.json  ← Generado en runtime
-```
-
-### Diferencias Clave
-
-| Aspecto | john_scott_dummy | john_scott_llm |
-|---------|------------------|----------------|
-| **🎯 Generación de Queries** | 13 queries SQL **hardcodeadas** en `timeline.json` | Queries **generadas dinámicamente** por LLM al inicio |
-| **🔄 Variabilidad** | Mismo comportamiento cada vez | Comportamiento **adaptativo** - queries diferentes en cada ejecución |
-| **📝 Definición de Tareas** | SQL directo en JSON | **Descripciones en lenguaje natural** (ej: "Find average salary by department") |
-| **🔌 Dependencias Externas** | Ninguna - funciona offline | Requiere **API LLM** (OpenAI-compatible) |
-| **⚙️ Configuración** | Timeline estático pre-generado | Timeline generado **en tiempo de arranque** |
-| **🚀 Tiempo de Inicio** | Instantáneo (~2 segundos) | +20-30 segundos (llamadas al LLM) |
-| **📊 Complejidad Queries** | Queries fijas simples/intermedias | Queries **variadas y contextuales** generadas por IA |
-| **🛡️ Fallback** | N/A - siempre funciona | Queries simples si LLM falla |
-| **💰 Costo** | Gratis | Depende del proveedor LLM (gratis con e-INFRA CZ) |
-| **🔧 Mantenimiento** | Editar JSON manualmente | Editar **descripciones en Python** |
-
-### Cuándo Usar Cada Uno
-
-**Usa `john_scott_dummy` cuando:**
-- ✅ Necesitas comportamiento predecible y consistente
-- ✅ No tienes acceso a API de LLM
-- ✅ Quieres arranque rápido sin dependencias externas
-- ✅ Estás en entorno offline/air-gapped
-- ✅ El timeline está bien definido y no necesita cambios
-
-**Usa `john_scott_llm` cuando:**
-- ✅ Quieres comportamiento más realista y variable
-- ✅ Tienes acceso a LLM API (OpenAI, e-INFRA CZ, etc.)
-- ✅ Necesitas generar queries complejas sin escribir SQL
-- ✅ Quieres simular un desarrollador real que adapta sus queries
-- ✅ Estás investigando comportamiento adaptativo de NPCs
-
-## Testing Completo
-
-### Test 1: Verificar Modo de Operación
-
-```bash
-# Ver qué modo está activo
-docker exec lab_ghosts_driver bash -c 'echo "Mode: $JOHN_SCOTT_MODE"'
-```
-
-### Test 2: Verificar Conectividad LLM
-
-```bash
-# Test manual del API
-curl -X POST "https://chat.ai.e-infra.cz/api/v1/chat/completions" \
-  -H "Authorization: Bearer sk-dbb9b6c182fc4766980650cc6790fd7f" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "qwen3-coder",
-    "messages": [
-      {"role": "user", "content": "Generate a SQL query to count all employees"}
-    ],
-    "temperature": 0.7
-  }'
-```
-
-### Test 3: Regenerar Timeline con Diferentes Temperaturas
-
-```bash
-# Temperatura baja = queries más determinísticas
-docker exec -e LLM_TEMPERATURE=0.2 lab_ghosts_driver bash -c 'cd /opt/john_scott_llm && python3 generate_timeline_llm.py'
-
-# Temperatura alta = queries más creativas
-docker exec -e LLM_TEMPERATURE=1.0 lab_ghosts_driver bash -c 'cd /opt/john_scott_llm && python3 generate_timeline_llm.py'
-
-# Comparar diferencias
-docker cp lab_ghosts_driver:/opt/john_scott_llm/timeline_john_scott_llm.json ./timeline_temp_test.json
-```
-
-### Test 4: Verificar Fallback
-
-```bash
-# Simular fallo de LLM (API key inválida)
-docker exec -e OPENAI_API_KEY=invalid lab_ghosts_driver bash -c 'cd /opt/john_scott_llm && python3 generate_timeline_llm.py'
-
-# Debería usar queries fallback simples
-docker logs lab_ghosts_driver --tail 20 | grep "fallback"
-```
-
-### Test 5: Monitoreo de Actividad
-
-```bash
-# Ver actividad en tiempo real
-watch -n 2 'docker logs lab_ghosts_driver --tail 5'
-
-# O usar tmux/screen para múltiples vistas:
-# Panel 1: logs de GHOSTS
-docker logs lab_ghosts_driver -f
-
-# Panel 2: logs del servidor comprometido
-docker logs lab_compromised -f
-
-# Panel 3: queries en la base de datos
-docker exec -it lab_server bash -c 'tail -f /var/log/postgresql/*.log'
 ```
 
 ## Troubleshooting
 
-### Problema: "405 Method Not Allowed"
-**Causa:** URL del API incorrecta (doble barra `/api//chat`)
-**Solución:** Verificar que `OPENAI_BASE_URL` no termine en `/`
+**LLM queries not generating:**
+- Check if OpenCode is installed: `opencode --version`
+- Verify API key is set: `echo $OPENCODE_API_KEY`
+- Check network connectivity to API endpoint
+- Review fallback queries are being used
 
-```bash
-# En .env debe ser:
-OPENAI_BASE_URL=https://chat.ai.e-infra.cz/api
-# NO:
-OPENAI_BASE_URL=https://chat.ai.e-infra.cz/api/
-```
+**SSH connection failures:**
+- Ensure SSH keys are properly set up (see `setup_ssh_keys_host.sh`)
+- Verify compromised container is running
+- Check network connectivity between containers
 
-### Problema: Timeline no se genera
-**Causa:** Error en llamada al LLM o permisos
-**Debug:**
-```bash
-docker exec -it lab_ghosts_driver bash
-cd /opt/john_scott_llm
-python3 generate_timeline_llm.py
-# Ver error completo
-```
+**PostgreSQL connection issues:**
+- Verify server container is running
+- Check john_scott user credentials
+- Ensure database is initialized
 
-### Problema: Queries SQL inválidas
-**Causa:** LLM genera SQL mal formateado
-**Solución:** Ajustar temperatura o mejorar el prompt del sistema
+## Differences from Hardcoded Version
 
-### Problema: Conexión SSH falla
-**Causa:** Clave SSH incorrecta o máquina comprometida no disponible
-**Debug:**
-```bash
-docker exec lab_ghosts_driver ssh -i /root/.ssh/id_rsa labuser@172.30.0.10 "echo test"
-```
+| Aspect | Hardcoded (`john_scott_dummy`) | LLM-Driven (`john_scott_llm`) |
+|--------|-------------------------------|------------------------------|
+| Queries | Fixed 6 queries | Dynamic, LLM-generated |
+| Parameters | REPEATS, DELAY | NUM_QUERIES, SCENARIO, DELAY |
+| Variety | Same queries each run | Different queries each run |
+| Realism | Predetermined patterns | Contextually appropriate |
+| Flexibility | Limited scenarios | Multiple scenario types |
+| Fallback | N/A | Graceful degradation |
 
-## Archivos Importantes
+## Future Enhancements
 
-```
-john_scott_llm/
-├── generate_timeline_llm.py    # Script principal de generación
-├── generate_timeline.sh        # Wrapper bash para ejecutar el script
-├── requirements.txt            # Dependencias Python (requests)
-├── id_rsa                      # Clave SSH privada (copiada de dummy)
-├── id_rsa.pub                  # Clave SSH pública
-└── timeline_john_scott_llm.json  # Timeline generado (creado en runtime)
-```
-
-## Ventajas del Enfoque LLM
-
-1. **Comportamiento Adaptativo:** Cada ejecución puede generar queries ligeramente diferentes
-2. **Mantenibilidad:** Cambiar el comportamiento editando descripciones en lenguaje natural
-3. **Realismo:** Las queries varían como lo haría un desarrollador real
-4. **Extensibilidad:** Fácil agregar nuevas tareas sin escribir SQL
-5. **Testing:** El LLM puede generar queries de prueba automáticamente
-
-## Próximos Pasos
-
-- Agregar más tareas de desarrollo realistas
-- Integrar análisis de datos con pandas/matplotlib
-- Implementar respuestas adaptativas basadas en resultados de queries
-- Logging avanzado de actividad del NPC
-- Integración con GHOSTS Shadows para comportamiento más complejo
+- [ ] Add conversation memory for multi-session continuity
+- [ ] Implement time-of-day aware scenario selection
+- [ ] Add anomaly injection (e.g., suspicious queries)
+- [ ] Support for multiple personas with different access levels
+- [ ] Integration with SLIPS for correlation analysis
+- [ ] Real-time query adaptation based on previous results

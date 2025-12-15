@@ -4,11 +4,24 @@ set -e
 echo "=== GHOSTS Driver Starting ==="
 
 # Check for parameters
+GHOSTS_MODE=${GHOSTS_MODE:-dummy}
 GHOSTS_REPEATS=${GHOSTS_REPEATS:-1}
 GHOSTS_DELAY=${GHOSTS_DELAY:-5}
+GHOSTS_NUM_QUERIES=${GHOSTS_NUM_QUERIES:-5}
+GHOSTS_SCENARIO=${GHOSTS_SCENARIO:-developer_routine}
+GHOSTS_ROLE=${GHOSTS_ROLE:-senior_developer_role}
+
 echo "Parameters:"
-echo "  - Workflow repeats: $GHOSTS_REPEATS"
-echo "  - Delay between commands: $GHOSTS_DELAY seconds"
+echo "  - Mode: $GHOSTS_MODE"
+if [ "$GHOSTS_MODE" = "llm" ]; then
+    echo "  - Number of queries: $GHOSTS_NUM_QUERIES"
+    echo "  - Scenario: $GHOSTS_SCENARIO"
+    echo "  - Database Role: $GHOSTS_ROLE"
+    echo "  - Delay between commands: $GHOSTS_DELAY seconds"
+else
+    echo "  - Workflow repeats: $GHOSTS_REPEATS"
+    echo "  - Delay between commands: $GHOSTS_DELAY seconds"
+fi
 echo ""
 
 # Verify SSH key exists
@@ -41,36 +54,86 @@ else
     echo "  - SSH service is running on compromised machine"
 fi
 
-# Adjust timeline based on parameters
-echo "Adjusting timeline with delay settings..."
+# Generate or adjust timeline based on mode
 TIMELINE_FILE="/opt/ghosts/bin/config/timeline.json"
-if [ -f "$TIMELINE_FILE" ]; then
-    DELAY_MS=$((GHOSTS_DELAY * 1000))
-    # Backup original
-    cp "$TIMELINE_FILE" "${TIMELINE_FILE}.original"
+
+if [ "$GHOSTS_MODE" = "llm" ]; then
+    echo "=== LLM Mode: Generating Timeline ==="
     
-    # Adjust delays
-    sed -i "s/\"DelayBefore\": [0-9]*/\"DelayBefore\": $DELAY_MS/g" "$TIMELINE_FILE"
-    sed -i "s/\"DelayAfter\": [0-9]*/\"DelayAfter\": $DELAY_MS/g" "$TIMELINE_FILE"
-    
-    # Adjust Loop setting based on REPEATS
-    if [ "$GHOSTS_REPEATS" -eq 1 ]; then
-        echo "  - Setting Loop to false (single execution)"
-        sed -i 's/"Loop": true/"Loop": false/g' "$TIMELINE_FILE"
-    else
-        echo "  - Keeping Loop enabled (will run continuously)"
+    # Check for OpenCode availability
+    if ! command -v opencode &> /dev/null; then
+        echo "⚠ Warning: OpenCode not found, will use fallback queries"
     fi
     
-    echo "✓ Timeline delays adjusted to $DELAY_MS ms"
+    # Check for API key
+    if [ -z "$OPENCODE_API_KEY" ]; then
+        echo "⚠ Warning: OPENCODE_API_KEY not set, will use fallback queries"
+    else
+        echo "✓ OPENCODE_API_KEY is configured"
+    fi
+    
+    # Generate timeline using LLM
+    DELAY_MS=$((GHOSTS_DELAY * 1000))
+    
+    if [ -f "/opt/ghosts/john_scott_llm/generate_timeline.sh" ]; then
+        echo "Calling LLM timeline generator..."
+        NUM_QUERIES=$GHOSTS_NUM_QUERIES \
+        SCENARIO=$GHOSTS_SCENARIO \
+        ROLE=$GHOSTS_ROLE \
+        DELAY_BEFORE=$DELAY_MS \
+        DELAY_AFTER=$((DELAY_MS * 2)) \
+        LOOP=false \
+        OUTPUT_FILE="$TIMELINE_FILE" \
+        bash /opt/ghosts/john_scott_llm/generate_timeline.sh
+        
+        if [ ! -f "$TIMELINE_FILE" ]; then
+            echo "✗ Timeline generation failed, copying fallback timeline"
+            cp /opt/ghosts/john_scott_dummy/timeline_john_scott.json "$TIMELINE_FILE"
+        fi
+    else
+        echo "✗ LLM generator not found, using fallback timeline"
+        cp /opt/ghosts/john_scott_dummy/timeline_john_scott.json "$TIMELINE_FILE"
+    fi
+    
+    NUM_COMMANDS=$(grep -c '"Command":' "$TIMELINE_FILE" 2>/dev/null || echo 6)
+    echo "✓ Timeline ready with $NUM_COMMANDS commands"
+    
 else
-    echo "⚠ Timeline file not found at $TIMELINE_FILE"
+    # Original dummy/hardcoded mode
+    echo "Adjusting timeline with delay settings..."
+    if [ -f "$TIMELINE_FILE" ]; then
+        DELAY_MS=$((GHOSTS_DELAY * 1000))
+        # Backup original
+        cp "$TIMELINE_FILE" "${TIMELINE_FILE}.original"
+        
+        # Adjust delays
+        sed -i "s/\"DelayBefore\": [0-9]*/\"DelayBefore\": $DELAY_MS/g" "$TIMELINE_FILE"
+        sed -i "s/\"DelayAfter\": [0-9]*/\"DelayAfter\": $DELAY_MS/g" "$TIMELINE_FILE"
+        
+        # Adjust Loop setting based on REPEATS
+        if [ "$GHOSTS_REPEATS" -eq 1 ]; then
+            echo "  - Setting Loop to false (single execution)"
+            sed -i 's/"Loop": true/"Loop": false/g' "$TIMELINE_FILE"
+        else
+            echo "  - Keeping Loop enabled (will run continuously)"
+        fi
+        
+        echo "✓ Timeline delays adjusted to $DELAY_MS ms"
+    else
+        echo "⚠ Timeline file not found at $TIMELINE_FILE"
+    fi
 fi
 echo ""
 
 # Calculate execution time for controlled termination
 NUM_COMMANDS=$(grep -c '"Command":' "$TIMELINE_FILE" 2>/dev/null || echo 6)
-CYCLE_TIME=$((NUM_COMMANDS * GHOSTS_DELAY * 2))
-TOTAL_TIME=$((GHOSTS_REPEATS * CYCLE_TIME))
+if [ "$GHOSTS_MODE" = "llm" ]; then
+    CYCLE_TIME=$((NUM_COMMANDS * GHOSTS_DELAY * 2))
+    TOTAL_TIME=$((CYCLE_TIME + 60))
+else
+    CYCLE_TIME=$((NUM_COMMANDS * GHOSTS_DELAY * 2))
+    TOTAL_TIME=$((GHOSTS_REPEATS * CYCLE_TIME))
+fi
 echo "Execution plan:"
 echo "  - Commands per cycle: $NUM_COMMANDS"
 echo "  - Time per cycle: ~$CYCLE_TIME seconds"
