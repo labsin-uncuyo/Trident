@@ -21,14 +21,14 @@ wait_for_container() {
     local max_attempts=30
     while [ ${attempts} -lt ${max_attempts} ]; do
         if docker exec "${name}" true >/dev/null 2>&1; then
-            log "✅ ${name} is reachable"
+            log "${name} is reachable"
             return 0
         fi
         attempts=$((attempts + 1))
-        log "⏳ Waiting for ${name} (${attempts}/${max_attempts})..."
+        log "Waiting for ${name} (${attempts}/${max_attempts})..."
         sleep 2
     done
-    log "❌ Timeout waiting for ${name}"
+    log "Timeout waiting for ${name}"
     return 1
 }
 
@@ -43,23 +43,23 @@ add_key_to_container() {
 }
 
 main() {
-    log "🔧 Setting up SSH key access for auto_responder from host"
+    log "Setting up SSH key access for auto_responder from host"
 
     # Fetch the pub key from the persistent volume
     pub_key=$(docker run --rm -v lab_auto_responder_ssh_keys:/data alpine sh -c 'cat /data/id_rsa_auto_responder.pub 2>/dev/null' || true)
     if [ -z "${pub_key}" ]; then
-        log "❌ Could not read id_rsa_auto_responder.pub from auto_responder_ssh_keys volume"
+        log "Could not read id_rsa_auto_responder.pub from auto_responder_ssh_keys volume"
         exit 1
     fi
-    log "📋 Public key loaded from volume"
+    log "Public key loaded from volume"
 
     wait_for_container lab_server || true
     wait_for_container lab_compromised || true
 
-    add_key_to_container lab_server "${pub_key}" || log "⚠️ Failed to add key to lab_server"
-    add_key_to_container lab_compromised "${pub_key}" || log "⚠️ Failed to add key to lab_compromised"
+    add_key_to_container lab_server "${pub_key}" || log "Failed to add key to lab_server"
+    add_key_to_container lab_compromised "${pub_key}" || log "Failed to add key to lab_compromised"
 
-    log "🎉 Host-side SSH key setup complete"
+    log "Host-side SSH key setup complete"
 }
 
 main "$@"
