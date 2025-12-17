@@ -4,6 +4,8 @@ images/server/employees_data_modified.sql
 outputs/
 *.pcap
 *.pcapng
+.env
+configs/aracne_lab/.env
 
 # Python cache files
 __pycache__/
@@ -26,3 +28,5 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+!outputs/README.md
