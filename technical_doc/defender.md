@@ -49,7 +49,7 @@ From 172.30.0.10 to 5 unique destination IPs.
 Total packets sent: 25. Confidence: 0.8. threat level: high.
 ```
 
-**Defender API Storage (`defender_alerts.ndjson`):**
+**Defender API Storage (`slips/defender_alerts.ndjson`):**
 ```json
 {"raw":"2024-01-15T10:30:45... threat level: high.","run_id":"diego","timestamp":1705312245.123}
 ```
@@ -167,7 +167,7 @@ Each line is a JSON object with these fields:
 ### Example Timeline
 
 ```jsonl
-{"ts":"2025-11-27T15:47:28Z","level":"INIT","msg":"AutoResponder started","data":{"config":{"alert_file":"/outputs/diego/defender_alerts.ndjson","planner_url":"http://127.0.0.1:1654/plan"}}}
+{"ts":"2025-11-27T15:47:28Z","level":"INIT","msg":"AutoResponder started","data":{"config":{"alert_file":"/outputs/diego/slips/defender_alerts.ndjson","planner_url":"http://127.0.0.1:1654/plan"}}}
 {"ts":"2025-11-27T15:48:39Z","level":"ALERT","msg":"New: 172.30.0.10 → 172.31.0.10","alert":"a130b248","exec":"891e75f5","data":{"source_ip":"172.30.0.10","dest_ip":"172.31.0.10","raw":"...threat level: high."}}
 {"ts":"2025-11-27T15:48:39Z","level":"PLAN","msg":"Generated for 172.31.0.10 (0.01s)","alert":"a130b248","exec":"891e75f5","data":{"executor_ip":"172.31.0.10","plan":"SECURITY INCIDENT RESPONSE:..."}}
 {"ts":"2025-11-27T15:48:40Z","level":"SSH","msg":"→ server@172.31.0.10 (attempt 1/3)","alert":"a130b248","exec":"891e75f5","data":{"target":"server","command":"ssh ... opencode run --agent soc_god \"...\""}}
@@ -230,7 +230,7 @@ images/slips_defender/
 └── watch_pcaps.py            # PCAP sentinel alerts
 
 outputs/<run_id>/
-├── defender_alerts.ndjson    # Raw alerts from SLIPS
+├── slips/defender_alerts.ndjson    # Raw alerts from SLIPS
 ├── processed_alerts.json     # Deduplication state
 ├── auto_responder_timeline.jsonl  # Structured execution log
 └── auto_responder_detailed.log    # Human-readable log
@@ -247,7 +247,7 @@ cat outputs/diego/auto_responder_timeline.jsonl | jq -c 'select(.level != "SSH")
 
 ### Watch Live Alerts
 ```bash
-tail -f outputs/diego/defender_alerts.ndjson | jq .
+tail -f outputs/diego/slips/defender_alerts.ndjson | jq .
 ```
 
 ### Filter Errors Only
