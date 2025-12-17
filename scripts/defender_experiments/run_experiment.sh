@@ -8,10 +8,11 @@ set -e
 # Configuration
 EXPERIMENT_ID="${1:-$(date +%s)}"
 LAB_PASSWORD="${LAB_PASSWORD:-admin123}"
-PCAP_ROTATE_SECS="${PCAP_ROTATE_SECS:-5}"
+PCAP_ROTATE_SECS="${PCAP_ROTATE_SECS:-30}"
 SLIPS_PROCESS_ACTIVE="${SLIPS_PROCESS_ACTIVE:-1}"
 SLIPS_WATCH_INTERVAL="${SLIPS_WATCH_INTERVAL:-1}"
 DEFENDER_PORT="${DEFENDER_PORT:-8000}"
+FIRST_TRY_PASSWORD="false"
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -157,9 +158,32 @@ execute_attack() {
     docker exec lab_compromised chmod +x /tmp/attack_script.sh
 
     log "Starting attack (experiment ID: $EXPERIMENT_ID)..."
-    docker exec lab_compromised /tmp/attack_script.sh "$EXPERIMENT_ID"
+    log "Note: Attack may take several minutes. Use Ctrl+C to interrupt gracefully."
 
-    log_success "Attack execution completed"
+    # Prepare attack script arguments
+    ATTACK_ARGS="$EXPERIMENT_ID"
+    if [[ "$FIRST_TRY_PASSWORD" == "true" ]]; then
+        ATTACK_ARGS="$ATTACK_ARGS --first-try"
+        log "First-try mode enabled: correct password will be at position 1"
+    fi
+
+    # Run attack with a longer timeout (15 minutes) and capture the exit code
+    if timeout 900 docker exec lab_compromised /tmp/attack_script.sh $ATTACK_ARGS; then
+        log_success "Attack execution completed successfully"
+    else
+        exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            log_warning "Attack timed out after 15 minutes"
+        elif [ $exit_code -eq 130 ]; then
+            log_warning "Attack was interrupted (Ctrl+C)"
+        elif [ $exit_code -eq 137 ]; then
+            log_success "Attack was terminated (exit code 137 - likely blocked by defender)"
+            log "This indicates the defensive system successfully mitigated the attack"
+        else
+            log_warning "Attack exited with code: $exit_code"
+        fi
+        # Continue with result collection even if attack didn't complete normally
+    fi
 }
 
 # Wait for attack to complete and collect results
@@ -211,7 +235,16 @@ analyze_pcaps() {
     # Run PCAP analysis
     local analyze_script="$SCRIPT_DIR/analyze_pcaps.py"
     if [[ -f "$analyze_script" ]]; then
-        python3 "$analyze_script" "$EXPERIMENT_OUTPUTS/pcaps" --output "$EXPERIMENT_OUTPUTS/pcap_analysis.json"
+        # Use virtual environment python if available, otherwise system python3.12
+    if [[ -f "$PROJECT_ROOT/.venv/bin/python" ]]; then
+        PYTHON_CMD="$PROJECT_ROOT/.venv/bin/python"
+        log "Using virtual environment Python: $PYTHON_CMD"
+    else
+        PYTHON_CMD="python3.12"
+        log "Using system Python: python3.12"
+    fi
+
+    "$PYTHON_CMD" "$analyze_script" "$EXPERIMENT_OUTPUTS/pcaps" --output "$EXPERIMENT_OUTPUTS/pcap_analysis.json"
         if [[ $? -eq 0 ]]; then
             log_success "PCAP analysis completed successfully"
             log "Analysis saved to: $EXPERIMENT_OUTPUTS/pcap_analysis.json"
@@ -294,12 +327,15 @@ trap interrupt_handler INT TERM
 
 # Show usage
 usage() {
-    echo "Usage: $0 [EXPERIMENT_ID]"
+    echo "Usage: $0 [EXPERIMENT_ID] [OPTIONS]"
     echo "  EXPERIMENT_ID: Optional unique identifier for the experiment (defaults to timestamp)"
     echo ""
+    echo "Options:"
+    echo "  --first-try     Place correct password at first position in wordlist (for testing)"
+    echo ""
     echo "Environment variables:"
-    echo "  LAB_PASSWORD: SSH password for containers (default: P@ssw0rd123!)"
-    echo "  PCAP_ROTATE_SECS: PCAP rotation interval in seconds (default: 5)"
+    echo "  LAB_PASSWORD: SSH password for containers (default: admin123)"
+    echo "  PCAP_ROTATE_SECS: PCAP rotation interval in seconds (default: 30)"
     echo "  SLIPS_PROCESS_ACTIVE: Enable SLIPS processing (default: 1)"
     echo "  SLIPS_WATCH_INTERVAL: SLIPS watch interval in seconds (default: 1)"
     echo "  DEFENDER_PORT: Defender API port (default: 8000)"
@@ -309,6 +345,27 @@ usage() {
 # Parse arguments
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     usage
+fi
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --first-try)
+            FIRST_TRY_PASSWORD="true"
+            shift
+            ;;
+        *)
+            if [[ -z "$EXPERIMENT_ID" ]]; then
+                EXPERIMENT_ID="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Set default experiment ID if not provided
+if [[ -z "$EXPERIMENT_ID" ]]; then
+    EXPERIMENT_ID=$(date +%s)
 fi
 
 # Run the experiment
