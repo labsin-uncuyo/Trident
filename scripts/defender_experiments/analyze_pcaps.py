@@ -56,28 +56,18 @@ def analyze_folder_continuously(folder_path, logger):
         "ssh_handshake": None,          # TCP handshake + SSH version exchange complete
         "ssh_key_exchange_complete": None,  # SSH key exchange done (encrypted channel ready)
         "ssh_auth_attempt": None,       # First SSH authentication attempt
-        "ssh_auth_success": None        # Successful SSH authentication
+        "ssh_auth_success": None,       # Successful SSH authentication (based on large file transfer)
+        "large_file_transfer_detected": None  # Large script transfer detected via SSH
     }
 
-    # TCP State Machine for Port 22
-    # Key: (client_ip, client_port, server_ip, server_port) -> Value: State String
-    tcp_states = {}
-
-    # Per-flow SSH protocol tracking
+    # Simplified SSH flow tracking - focus on data transfer detection only
     # flow_ssh_info[flow_key] = {
-    #   'client_version_seen': bool,
-    #   'server_version_seen': bool,
-    #   'key_exchange_started': bool,
-    #   'key_exchange_complete': bool,
-    #   'auth_phase_started': bool,
-    #   'packets_after_key_exchange_client': int,
-    #   'packets_after_key_exchange_server': int,
-    #   'bytes_after_key_exchange_client': int,
-    #   'bytes_after_key_exchange_server': int,
-    #   'key_exchange_complete_time': timestamp,
-    #   'first_auth_packet_time': timestamp,
-    #   'sustained_session_start': timestamp,
-    #   'last_packet_time': timestamp
+    #   'total_bytes': int,             # Total bytes transferred in this flow
+    #   'packet_count': int,            # Number of data packets
+    #   'first_packet_time': timestamp,
+    #   'last_packet_time': timestamp,
+    #   'large_transfer_detected': bool,
+    #   'large_transfer_time': timestamp
     # }
     flow_ssh_info = {}
 
@@ -180,182 +170,66 @@ def analyze_folder_continuously(folder_path, logger):
                             continue
 
                         # Only track SSH connections (port 22)
-                        if flow_key[3] != 22:
+                        if tcp.sport != 22 and tcp.dport != 22:
                             continue
 
-                        # Initialize flow tracking
+                        # Initialize simplified flow tracking
                         if flow_key not in flow_ssh_info:
                             flow_ssh_info[flow_key] = {
-                                'client_version_seen': False,
-                                'server_version_seen': False,
-                                'key_exchange_started': False,
-                                'key_exchange_complete': False,
-                                'auth_phase_started': False,
-                                'packets_after_key_exchange_client': 0,
-                                'packets_after_key_exchange_server': 0,
-                                'bytes_after_key_exchange_client': 0,
-                                'bytes_after_key_exchange_server': 0,
-                                'key_exchange_complete_time': None,
-                                'first_auth_packet_time': None,
-                                'sustained_session_start': None,
-                                'last_packet_time': get_time(pkt)
+                                'total_bytes': 0,
+                                'packet_count': 0,
+                                'first_packet_time': get_time(pkt),
+                                'last_packet_time': get_time(pkt),
+                                'large_transfer_detected': False,
+                                'large_transfer_time': None
                             }
-                            tcp_states[flow_key] = "NEW"
                             total_ssh_connections += 1
 
                         flow_info = flow_ssh_info[flow_key]
                         flow_info['last_packet_time'] = get_time(pkt)
 
-                        # === CLIENT TO SERVER ===
-                        if direction == "client_to_server":
-                            # SYN: Client initiates connection
-                            if (tcp.flags & 0x02) and not (tcp.flags & 0x10):  # SYN without ACK
-                                tcp_states[flow_key] = "SYN_SENT"
-                                logger.debug(f"SYN sent to port 22 from {tcp.sport}")
+                        # === TCP HANDSHAKE TRACKING ===
+                        # SYN-ACK: Server confirms port 22 is open
+                        if (tcp.flags & 0x02) and (tcp.flags & 0x10):  # SYN+ACK
+                            if src == SERVER_IP and milestones["ssh_port_found"] is None:
+                                milestones["ssh_port_found"] = get_time(pkt)
+                                logger.info(f"SSH port 22 discovered (SYN-ACK) at {milestones['ssh_port_found']}")
 
-                            # ACK: Client completes handshake or sends data
-                            elif tcp.flags & 0x10:  # ACK flag set
-                                current_state = tcp_states.get(flow_key, "UNKNOWN")
-                                
-                                # Complete TCP handshake
-                                if current_state == "SYN_ACK_RECVD":
-                                    tcp_states[flow_key] = "ESTABLISHED"
-                                    logger.debug(f"TCP connection established for flow {flow_key}")
+                        # === DATA TRANSFER TRACKING ===
+                        # Count any packets with payload as SSH data
+                        if len(pkt[TCP].payload) > 0:
+                            payload_bytes = bytes(pkt[TCP].payload)
+                            payload_len = len(payload_bytes)
 
-                                # Process payload if present
-                                if len(pkt[TCP].payload) > 0:
-                                    payload_bytes = bytes(pkt[TCP].payload)
-                                    payload_len = len(payload_bytes)
-                                    ssh_data_packets += 1
+                            # Update flow statistics
+                            flow_info['total_bytes'] += payload_len
+                            flow_info['packet_count'] += 1
+                            ssh_data_packets += 1
 
-                                    # Detect SSH version string (cleartext "SSH-2.0-..." or "SSH-1.x-...")
-                                    if b'SSH-' in payload_bytes and not flow_info['client_version_seen']:
-                                        flow_info['client_version_seen'] = True
-                                        logger.debug(f"Client SSH version string detected")
+                            # Detect SSH version strings if they exist (optional milestone)
+                            if b'SSH-' in payload_bytes and milestones["ssh_handshake"] is None:
+                                milestones["ssh_handshake"] = get_time(pkt)
+                                logger.info(f"SSH version string detected at {milestones['ssh_handshake']}")
 
-                                        # Check if both sides have exchanged versions (SSH handshake complete)
-                                        if flow_info['server_version_seen'] and milestones["ssh_handshake"] is None:
-                                            milestones["ssh_handshake"] = get_time(pkt)
-                                            logger.info(f"SSH protocol handshake complete at {milestones['ssh_handshake']}")
+                            # MARK: LARGE FILE TRANSFER DETECTION
+                            # This is the key detection - large data transfers over SSH port 22
+                            LARGE_TRANSFER_THRESHOLD = 50000  # 50KB threshold to distinguish from normal SSH commands
 
-                                    # After version exchange, next large packets are key exchange
-                                    elif flow_info['client_version_seen'] and flow_info['server_version_seen']:
-                                        if not flow_info['key_exchange_started']:
-                                            flow_info['key_exchange_started'] = True
-                                            logger.debug(f"SSH key exchange started")
+                            if not flow_info['large_transfer_detected'] and flow_info['total_bytes'] >= LARGE_TRANSFER_THRESHOLD:
+                                flow_info['large_transfer_detected'] = True
+                                flow_info['large_transfer_time'] = get_time(pkt)
 
-                                        # Key exchange typically involves several packets of varying sizes
-                                        # After key exchange, we see smaller, more uniform encrypted packets
-                                        # Heuristic: After seeing 3+ packets from both sides post-version,
-                                        # and packet sizes stabilize (indicating encryption is active),
-                                        # we consider key exchange complete
-                                        
-                                        if flow_info['key_exchange_started'] and not flow_info['key_exchange_complete']:
-                                            # Count packets after version exchange
-                                            flow_info['packets_after_key_exchange_client'] += 1
-                                            flow_info['bytes_after_key_exchange_client'] += payload_len
+                                # Mark SSH milestones as successful since we have large file transfer
+                                if milestones["ssh_auth_success"] is None:
+                                    milestones["ssh_auth_success"] = get_time(pkt)
+                                if milestones["large_file_transfer_detected"] is None:
+                                    milestones["large_file_transfer_detected"] = get_time(pkt)
 
-                                            # If we've seen enough exchange from both sides, mark complete
-                                            if (flow_info['packets_after_key_exchange_client'] >= 3 and 
-                                                flow_info['packets_after_key_exchange_server'] >= 3):
-                                                flow_info['key_exchange_complete'] = True
-                                                flow_info['key_exchange_complete_time'] = get_time(pkt)
-                                                
-                                                if milestones["ssh_key_exchange_complete"] is None:
-                                                    milestones["ssh_key_exchange_complete"] = get_time(pkt)
-                                                    logger.info(f"SSH key exchange complete at {milestones['ssh_key_exchange_complete']}")
-
-                                        # After key exchange, we're in authentication phase
-                                        if flow_info['key_exchange_complete'] and not flow_info['auth_phase_started']:
-                                            flow_info['auth_phase_started'] = True
-                                            flow_info['first_auth_packet_time'] = get_time(pkt)
-                                            
-                                            if milestones["ssh_auth_attempt"] is None:
-                                                milestones["ssh_auth_attempt"] = get_time(pkt)
-                                                logger.info(f"SSH authentication phase started at {milestones['ssh_auth_attempt']}")
-                                            
-                                            ssh_auth_attempts += 1
-
-                        # === SERVER TO CLIENT ===
-                        elif direction == "server_to_client":
-                            # SYN-ACK: Server confirms port 22 is open
-                            if (tcp.flags & 0x02) and (tcp.flags & 0x10):  # SYN+ACK
-                                if milestones["ssh_port_found"] is None:
-                                    milestones["ssh_port_found"] = get_time(pkt)
-                                    logger.info(f"SSH port 22 discovered (SYN-ACK) at {milestones['ssh_port_found']}")
-
-                                if tcp_states.get(flow_key) == "SYN_SENT":
-                                    tcp_states[flow_key] = "SYN_ACK_RECVD"
-
-                            # Server sends data
-                            elif (tcp.flags & 0x10) and len(pkt[TCP].payload) > 0:  # ACK with payload
-                                payload_bytes = bytes(pkt[TCP].payload)
-                                payload_len = len(payload_bytes)
-
-                                # Detect SSH version string from server
-                                if b'SSH-' in payload_bytes and not flow_info['server_version_seen']:
-                                    flow_info['server_version_seen'] = True
-                                    logger.debug(f"Server SSH version string detected")
-
-                                    # Check if both sides have exchanged versions
-                                    if flow_info['client_version_seen'] and milestones["ssh_handshake"] is None:
-                                        milestones["ssh_handshake"] = get_time(pkt)
-                                        logger.info(f"SSH protocol handshake complete at {milestones['ssh_handshake']}")
-
-                                # Track key exchange packets from server
-                                elif flow_info['client_version_seen'] and flow_info['server_version_seen']:
-                                    if flow_info['key_exchange_started'] and not flow_info['key_exchange_complete']:
-                                        flow_info['packets_after_key_exchange_server'] += 1
-                                        flow_info['bytes_after_key_exchange_server'] += payload_len
-
-                                        # Check if key exchange is complete
-                                        if (flow_info['packets_after_key_exchange_client'] >= 3 and 
-                                            flow_info['packets_after_key_exchange_server'] >= 3):
-                                            flow_info['key_exchange_complete'] = True
-                                            flow_info['key_exchange_complete_time'] = get_time(pkt)
-                                            
-                                            if milestones["ssh_key_exchange_complete"] is None:
-                                                milestones["ssh_key_exchange_complete"] = get_time(pkt)
-                                                logger.info(f"SSH key exchange complete at {milestones['ssh_key_exchange_complete']}")
-
-                                    # After key exchange, look for successful authentication
-                                    # Success indicators:
-                                    # 1. Sustained bidirectional traffic (shell session)
-                                    # 2. Server sends significant data (welcome banner, prompt)
-                                    # 3. Connection stays alive with interactive patterns
-                                    if flow_info['key_exchange_complete'] and flow_info['auth_phase_started']:
-                                        
-                                        # Calculate time since auth started
-                                        try:
-                                            auth_start = datetime.fromisoformat(flow_info['first_auth_packet_time'])
-                                            current_time = datetime.fromtimestamp(float(pkt.time))
-                                            time_since_auth = (current_time - auth_start).total_seconds()
-                                        except:
-                                            time_since_auth = 0
-
-                                        # Count ALL packets with payload after key exchange (more accurate)
-                                        # Since we're in the auth phase, all payload packets count toward auth/post-auth traffic
-                                        client_auth_packets = flow_info['packets_after_key_exchange_client']
-                                        server_auth_packets = flow_info['packets_after_key_exchange_server']
-
-                                        # SUCCESS CRITERIA:
-                                        # - At least 5 payload packets from each side after key exchange
-                                        # - At least 500 bytes from server (banner, prompt, etc.)
-                                        # - Connection sustained for at least 2 seconds
-                                        # This indicates the server accepted the auth and started a session
-                                        if (client_auth_packets >= 5 and
-                                            server_auth_packets >= 5 and
-                                            flow_info['bytes_after_key_exchange_server'] > 500 and
-                                            time_since_auth >= 2.0):
-
-                                            if milestones["ssh_auth_success"] is None:
-                                                milestones["ssh_auth_success"] = get_time(pkt)
-                                                flow_info['sustained_session_start'] = get_time(pkt)
-                                                logger.info(f"SSH authentication SUCCESS detected at {milestones['ssh_auth_success']}")
-                                                logger.info(f"  Auth packets: client={client_auth_packets}, server={server_auth_packets}")
-                                                logger.info(f"  Server bytes: {flow_info['bytes_after_key_exchange_server']}")
-                                                logger.info(f"  Time since auth start: {time_since_auth:.1f}s")
-                                                tcp_states[flow_key] = "AUTH_SUCCESS"
+                                logger.info(f"LARGE SSH FILE TRANSFER DETECTED at {milestones['large_file_transfer_detected']}")
+                                logger.info(f"  Flow: {flow_key[0]}:{flow_key[1]} <-> {flow_key[2]}:{flow_key[3]}")
+                                logger.info(f"  Total bytes: {flow_info['total_bytes']}")
+                                logger.info(f"  Packets: {flow_info['packet_count']}")
+                                logger.info(f"  Threshold: {LARGE_TRANSFER_THRESHOLD} bytes")
 
                 logger.info(f"Processed {packet_count} packets from {os.path.basename(file_path)}")
 
@@ -366,40 +240,27 @@ def analyze_folder_continuously(folder_path, logger):
             continue
 
     # --- SSH SUCCESS DETECTION (Post-Processing) ---
-    # Check all flows for successful authentication criteria
+    # Post-processing: Check all flows for large file transfers
+    # This catches any large transfers that might have been missed during packet processing
     for flow_key, flow_info in flow_ssh_info.items():
-        if flow_info['key_exchange_complete'] and flow_info['auth_phase_started'] and not milestones["ssh_auth_success"]:
+        if flow_info['total_bytes'] > 0:
+            logger.info(f"SSH Flow Analysis - {flow_key[0]}:{flow_key[1]} <-> {flow_key[2]}:{flow_key[3]}")
+            logger.info(f"  Total bytes: {flow_info['total_bytes']}")
+            logger.info(f"  Packets: {flow_info['packet_count']}")
+            logger.info(f"  Large transfer detected: {flow_info['large_transfer_detected']}")
 
-            # Calculate time since auth started
-            try:
-                auth_start = datetime.fromisoformat(flow_info['first_auth_packet_time'])
-                last_packet_time = datetime.fromisoformat(flow_info['last_packet_time'])
-                time_since_auth = (last_packet_time - auth_start).total_seconds()
-            except:
-                time_since_auth = 0
-
-            client_auth_packets = flow_info['packets_after_key_exchange_client']
-            server_auth_packets = flow_info['packets_after_key_exchange_server']
-            server_bytes = flow_info['bytes_after_key_exchange_server']
-
-            logger.info(f"SSH flow analysis - Client: {client_auth_packets}, Server: {server_auth_packets}, Server bytes: {server_bytes}, Duration: {time_since_auth:.1f}s")
-
-            # SUCCESS CRITERIA (more realistic for actual PCAP captures):
-            # - At least 3 payload packets from each side after key exchange
-            # - At least 500 bytes from server (banner, prompt, etc.)
-            # - Connection sustained for at least 2 seconds
-            # This indicates the server accepted the auth and started a session
-            if (client_auth_packets >= 3 and
-                server_auth_packets >= 3 and
-                server_bytes > 500 and
-                time_since_auth >= 2.0):
+            # If we didn't detect during processing but still have significant data, mark it now
+            if not flow_info['large_transfer_detected'] and flow_info['total_bytes'] >= 50000:
+                flow_info['large_transfer_detected'] = True
+                flow_info['large_transfer_time'] = flow_info['last_packet_time']
 
                 if milestones["ssh_auth_success"] is None:
                     milestones["ssh_auth_success"] = flow_info['last_packet_time']
-                    logger.info(f"SSH authentication SUCCESS detected at {milestones['ssh_auth_success']}")
-                    logger.info(f"  Auth packets: client={client_auth_packets}, server={server_auth_packets}")
-                    logger.info(f"  Server bytes: {server_bytes}")
-                    logger.info(f"  Time since auth start: {time_since_auth:.1f}s")
+                if milestones["large_file_transfer_detected"] is None:
+                    milestones["large_file_transfer_detected"] = flow_info['last_packet_time']
+
+                logger.info(f"SSH large file transfer detected in post-processing!")
+                logger.info(f"  Total bytes: {flow_info['total_bytes']}")
 
     # --- FINAL EVALUATION (Improved Logic) ---
 

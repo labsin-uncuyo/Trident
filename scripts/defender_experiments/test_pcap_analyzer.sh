@@ -271,25 +271,31 @@ generate_test_pcaps() {
     # Record start time for this test
     local test6_start_time=$(date +%s)
 
+      # Ensure admin user exists on server before running SSH test
+    log "Ensuring admin user exists on server..."
+    docker exec lab_server bash -c 'id admin 2>/dev/null || { adduser --disabled-password --gecos "" admin && echo "admin:adminadmin" | chpasswd; echo "Admin user created"; }'
+
     docker exec lab_compromised timeout 30 bash -c "
         # Install required tools (same as attack_script.sh)
         apt-get update -qq >/dev/null 2>&1
         apt-get install -y -qq openssh-client sshpass >/dev/null 2>&1
 
-        # Connect with correct password and generate sustained traffic to meet strict criteria
-        timeout 15 sshpass -p '$LAB_PASSWORD' ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no admin@172.31.0.10 '
-            echo \"Successfully authenticated\"
-            whoami
-            pwd
-            ls -la
-            # Generate sustained traffic for 6+ seconds to meet analyzer criteria
-            for i in {1..10}; do
-                echo \"Command \$i: \$(date)\"
-                cat /etc/hostname
-                sleep 1
-            done
-            echo \"SSH session complete\"
-        ' || true
+        # Create a simple large script directly
+        cat > /tmp/large_test.sh << 'EOF'
+#!/bin/bash
+echo 'Large SSH transfer test started'
+for i in {1..300}; do
+    echo \"Chunk \$i: Large data transfer for SSH success detection - \$(date)\"
+    dd if=/dev/urandom bs=1024 count=1 2>/dev/null | base64 | head -c 80
+    echo \"Large data chunk \$i with lots of padding text for SSH traffic analysis\"
+    sleep 0.02
+done
+echo 'Large SSH transfer test completed'
+EOF
+
+        # Connect with correct password and transfer large script
+        echo 'Starting SSH connection with large file transfer...'
+        timeout 20 sshpass -p 'adminadmin' ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no admin@172.31.0.10 'bash -s' < /tmp/large_test.sh || true
         sleep 3
     " || true
     sleep 3
