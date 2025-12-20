@@ -135,7 +135,15 @@ services:
       - GHOSTS_NUM_QUERIES=${GHOSTS_NUM_QUERIES:-5}
       - GHOSTS_SCENARIO=${GHOSTS_SCENARIO:-developer_routine}
       - GHOSTS_ROLE=${GHOSTS_ROLE:-senior_developer_role}
+      - LAB_PASSWORD=${LAB_PASSWORD}
+      - SSH_HOST=${SSH_HOST:-172.30.0.10}
+      - SSH_PORT=${SSH_PORT:-22}
+      - SSH_USER=${SSH_USER:-labuser}
+      - SSH_PASSWORD=${SSH_PASSWORD:-${LAB_PASSWORD}}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL:-qwen3-coder}
     volumes:
       - ./outputs:/outputs
     networks:
