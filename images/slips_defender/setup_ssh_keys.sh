@@ -80,6 +80,23 @@ add_key_via_password_ssh() {
          sudo chmod 600 /root/.ssh/authorized_keys"
 }
 
+add_key_to_admin_user() {
+    local pub_key
+    pub_key=$(cat "${SSH_KEY_PATH}.pub" 2>/dev/null || true)
+    if [ -z "${pub_key}" ]; then
+        log "❌ Public key not found at ${SSH_KEY_PATH}.pub"
+        return 1
+    fi
+
+    log "🔑 Installing public key on server admin user (${SERVER_IP}) as admin"
+    sshpass -p "${SERVER_ROOT_PASSWORD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -p "${SSH_PORT}" "admin@${SERVER_IP}" \
+        "mkdir -p /home/admin/.ssh && chmod 700 /home/admin/.ssh && \
+         touch /home/admin/.ssh/authorized_keys && \
+         grep -qxF '${pub_key}' /home/admin/.ssh/authorized_keys || echo '${pub_key}' >> /home/admin/.ssh/authorized_keys && \
+         chmod 600 /home/admin/.ssh/authorized_keys"
+}
+
 test_key_login() {
     local ip=$1
     local label=$2
@@ -101,6 +118,7 @@ main() {
     wait_for_ssh "${COMPROMISED_IP}" "lab_compromised" || true
 
     add_key_via_password_ssh "root" "${SERVER_IP}" "${SERVER_ROOT_PASSWORD}" "lab_server" || true
+    add_key_to_admin_user || true
     add_key_via_password_ssh "${COMPROMISED_USER}" "${COMPROMISED_IP}" "${COMPROMISED_PASSWORD}" "lab_compromised (sudo)" || true
 
     test_key_login "${SERVER_IP}" "lab_server" || true

@@ -35,7 +35,7 @@ if ! /opt/lab/setup_ssh_keys.sh; then
     echo "⚠️ SSH key setup encountered issues; continuing startup. Check logs above."
 fi
 
-python3 -m uvicorn defender_api:app --host 127.0.0.1 --port "${DEFENDER_PORT}" --log-level info &
+python3 -m uvicorn defender_api:app --host 0.0.0.0 --port "${DEFENDER_PORT}" --log-level info &
 RECEIVER_PID=$!
 
 # Planner API disabled due to missing dependencies
