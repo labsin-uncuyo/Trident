@@ -37,10 +37,12 @@ for i in $(seq 1 "$MAX_RETRIES"); do
         continue
     fi
 
-    if ! curl -sf "http://localhost:${DEFENDER_PORT_VALUE}/health" >/dev/null; then
-        echo "[wait] SLIPS API not healthy yet"
-        sleep "$SLEEP"
-        continue
+    if docker ps --filter "name=lab_slips_defender" --format '{{.Names}}' | grep -q lab_slips_defender; then
+        if ! curl -sf "http://localhost:${DEFENDER_PORT_VALUE}/health" >/dev/null; then
+            echo "[wait] SLIPS API not healthy yet"
+            sleep "$SLEEP"
+            continue
+        fi
     fi
 
     echo "[wait] LAB IS READY ✔"

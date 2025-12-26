@@ -57,7 +57,7 @@ def test_alert_flow(lab_env):
     outputs_dir = ROOT / "outputs" / run_id
     dataset_dir = outputs_dir / "pcaps"
     slips_output_dir = outputs_dir / "slips"
-    alert_file = outputs_dir / "defender_alerts.ndjson"
+    alert_file = outputs_dir / "slips" / "defender_alerts.ndjson"
     dataset_dir.mkdir(parents=True, exist_ok=True)
     slips_output_dir.mkdir(parents=True, exist_ok=True)
 

@@ -3,18 +3,20 @@ goal: ""
 llm_providers:
   openai:
     kind: openai
+    base_url: ${OPENAI_BASE_URL}
+    api_key_env: OPENAI_API_KEY
+  cesnet:
+    kind: openai
+    base_url: ${CESNET_BASE_URL}
+    api_key_env: CESNET_API_KEY
+  cesnet_interpreter:
+    kind: openai
+    base_url: ${CESNET_BASE_URL}
+    api_key_env: CESNET_API_KEY
   ollama:
     kind: ollama
     host: ${OLLAMA_HOST}
     port: ${OLLAMA_PORT}
-  cesnet:
-    kind: openai
-    base_url: https://chat.ai.e-infra.cz/api
-    api_key_env: CESNET_API_KEY
-  cesnet_interpreter:
-    kind: openai
-    base_url: https://chat.ai.e-infra.cz/api
-    api_key_env: CESNET_API_KEY
 
 targets:
   trident_compromised:
@@ -25,14 +27,14 @@ targets:
 
 default_target: trident_compromised
 
-planner_source: "cesnet"
-planner_model: "gpt-oss-120b"
+planner_source: ${PLANNER_SOURCE}
+planner_model: ${PLANNER_MODEL}
 
 summarizing: false
-summarizer_source: "cesnet"
-summarizer_model: "deepseek-r1"
+summarizer_source: ${SUMMARIZER_SOURCE}
+summarizer_model: ${SUMMARIZER_MODEL}
 
-interpreter_source: "cesnet"
-interpreter_model: "qwen3-coder"
+interpreter_source: ${INTERPRETER_SOURCE}
+interpreter_model: ${INTERPRETER_MODEL}
 
 action_limit: 50

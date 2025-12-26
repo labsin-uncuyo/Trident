@@ -9,37 +9,37 @@
       "Loop": true,
       "TimeLineEvents": [
         {
-          "Command": "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /root/.ssh/id_rsa labuser@172.30.0.10 \"echo '[JOHN_SCOTT] Senior Developer starting work session at $(date)'\"",
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" \"echo '[JOHN_SCOTT] Senior Developer starting work session at $(date)'\"",
           "CommandArgs": [],
           "DelayBefore": 5000,
           "DelayAfter": 10000
         },
         {
-          "Command": "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /root/.ssh/id_rsa labuser@172.30.0.10 \"PGPASSWORD='john_scott' psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c 'SELECT current_database(), current_user, version();' 2>&1\"",
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" \"PGPASSWORD='john_scott' psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c 'SELECT current_database(), current_user, version();' 2>&1\"",
           "CommandArgs": [],
           "DelayBefore": 3000,
           "DelayAfter": 20000
         },
         {
-          "Command": "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /root/.ssh/id_rsa labuser@172.30.0.10 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT e.first_name, e.last_name, e.hire_date, d.dept_name FROM employee e JOIN department_employee de ON e.id = de.employee_id JOIN department d ON de.department_id = d.id WHERE d.dept_name = \\$\\$Development\\$\\$ ORDER BY e.hire_date DESC LIMIT 10;\" 2>&1'",
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT e.first_name, e.last_name, e.hire_date, d.dept_name FROM employee e JOIN department_employee de ON e.id = de.employee_id JOIN department d ON de.department_id = d.id WHERE d.dept_name = \\$\\$Development\\$\\$ ORDER BY e.hire_date DESC LIMIT 10;\" 2>&1'",
           "CommandArgs": [],
           "DelayBefore": 5000,
           "DelayAfter": 25000
         },
         {
-          "Command": "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /root/.ssh/id_rsa labuser@172.30.0.10 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT d.dept_name, COUNT(de.employee_id) as employee_count FROM department d JOIN department_employee de ON d.id = de.department_id GROUP BY d.dept_name ORDER BY employee_count DESC;\" 2>&1'",
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT d.dept_name, COUNT(de.employee_id) as employee_count FROM department d JOIN department_employee de ON d.id = de.department_id GROUP BY d.dept_name ORDER BY employee_count DESC;\" 2>&1'",
           "CommandArgs": [],
           "DelayBefore": 5000,
           "DelayAfter": 30000
         },
         {
-          "Command": "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /root/.ssh/id_rsa labuser@172.30.0.10 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT e.id, e.first_name, e.last_name, t.title, s.amount as salary FROM employee e JOIN title t ON e.id = t.employee_id JOIN salary s ON e.id = s.employee_id WHERE t.title LIKE \\$\\$%Senior%\\$\\$ AND s.to_date = \\$\\$9999-01-01\\$\\$ ORDER BY s.amount DESC LIMIT 15;\" 2>&1'",
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT e.id, e.first_name, e.last_name, t.title, s.amount as salary FROM employee e JOIN title t ON e.id = t.employee_id JOIN salary s ON e.id = s.employee_id WHERE t.title LIKE \\$\\$%Senior%\\$\\$ AND s.to_date = \\$\\$9999-01-01\\$\\$ ORDER BY s.amount DESC LIMIT 15;\" 2>&1'",
           "CommandArgs": [],
           "DelayBefore": 5000,
           "DelayAfter": 35000
         },
         {
-          "Command": "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /root/.ssh/id_rsa labuser@172.30.0.10 \"echo '[JOHN_SCOTT] Work session cycle completed at $(date)'\"",
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" \"echo '[JOHN_SCOTT] Work session cycle completed at $(date)'\"",
           "CommandArgs": [],
           "DelayBefore": 5000,
           "DelayAfter": 60000
