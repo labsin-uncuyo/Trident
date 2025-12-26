@@ -1,0 +1,88 @@
+{
+  "Status": "Run",
+  "TimeLineHandlers": [
+    {
+      "HandlerType": "Bash",
+      "Initial": "",
+      "UtcTimeOn": "00:00:00",
+      "UtcTimeOff": "23:59:00",
+      "Loop": true,
+      "HandlerArgs": {
+        "ShadowsEnabled": true,
+        "ShadowsUrl": "http://shadows:5900",
+        "ContentType": "activity",
+        "NpcContext": "Senior Developer performing database queries"
+      },
+      "TimeLineEvents": [
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" \"echo '[JOHN_SCOTT_LLM] Senior Developer starting LLM-driven work session at $(date)'\"",
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 10000
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" \"PGPASSWORD='john_scott' psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c 'SELECT current_database(), current_user, version();' 2>&1\"",
+          "CommandArgs": [],
+          "DelayBefore": 3000,
+          "DelayAfter": 15000,
+          "TrackableId": "db_connection_check"
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT schemaname, tablename FROM pg_tables WHERE schemaname = \\$\\$public\\$\\$ ORDER BY tablename;\" 2>&1'",
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 20000,
+          "TrackableId": "schema_exploration"
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT e.first_name, e.last_name, e.hire_date, d.dept_name FROM employee e JOIN department_employee de ON e.id = de.employee_id JOIN department d ON de.department_id = d.id WHERE d.dept_name = \\$\\$Development\\$\\$ ORDER BY e.hire_date DESC LIMIT 10;\" 2>&1'",
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 25000,
+          "TrackableId": "dev_team_query"
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT d.dept_name, COUNT(de.employee_id) as employee_count, AVG(s.amount)::numeric(10,2) as avg_salary FROM department d JOIN department_employee de ON d.id = de.department_id JOIN salary s ON de.employee_id = s.employee_id WHERE s.to_date = \\$\\$9999-01-01\\$\\$ GROUP BY d.dept_name ORDER BY avg_salary DESC;\" 2>&1'",
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 30000,
+          "TrackableId": "salary_analytics"
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT e.id, e.first_name, e.last_name, t.title, t.from_date, t.to_date FROM employee e JOIN title t ON e.id = t.employee_id WHERE t.title LIKE \\$\\$%Senior%\\$\\$ AND t.to_date = \\$\\$9999-01-01\\$\\$ ORDER BY t.from_date DESC LIMIT 15;\" 2>&1'",,
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 35000,
+          "TrackableId": "senior_titles_query"
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT e.first_name, e.last_name, s.amount as current_salary, s.from_date as salary_since FROM employee e JOIN salary s ON e.id = s.employee_id WHERE s.to_date = \\$\\$9999-01-01\\$\\$ ORDER BY s.amount DESC LIMIT 10;\" 2>&1'",
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 30000,
+          "TrackableId": "top_salaries"
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT dm.employee_id, e.first_name, e.last_name, d.dept_name, dm.from_date FROM department_manager dm JOIN employee e ON dm.employee_id = e.id JOIN department d ON dm.department_id = d.id WHERE dm.to_date = \\$\\$9999-01-01\\$\\$ ORDER BY d.dept_name;\" 2>&1'",,
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 25000,
+          "TrackableId": "current_managers"
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" 'PGPASSWORD=\"john_scott\" psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c \"SELECT EXTRACT(YEAR FROM hire_date) as hire_year, COUNT(*) as hires FROM employee GROUP BY EXTRACT(YEAR FROM hire_date) ORDER BY hire_year DESC LIMIT 10;\" 2>&1'",
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 20000,
+          "TrackableId": "hiring_trends"
+        },
+        {
+          "Command": "sshpass -p \"${SSH_PASSWORD}\" ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"${SSH_PORT}\" \"${SSH_USER}@${SSH_HOST}\" \"echo '[JOHN_SCOTT_LLM] Work session cycle completed at $(date)'\"",,
+          "CommandArgs": [],
+          "DelayBefore": 5000,
+          "DelayAfter": 60000
+        }
+      ]
+    }
+  ]
+}

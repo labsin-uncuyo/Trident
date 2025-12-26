@@ -86,7 +86,7 @@ setup_environment() {
     log "Setting up experiment environment for ID: $EXPERIMENT_ID"
 
     # Create outputs directory
-    mkdir -p "$EXPERIMENT_OUTPUTS"/{pcaps,slips_output,logs}
+    mkdir -p "$EXPERIMENT_OUTPUTS"/{pcaps,slips,logs}
 
     # Set RUN_ID in the Makefile's run ID file
     echo "$EXPERIMENT_ID" > "$RUN_ID_FILE"
@@ -201,9 +201,9 @@ collect_results() {
     docker cp lab_compromised:/tmp/hydra_results.txt "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
 
     # Collect SLIPS output
-    mkdir -p "$EXPERIMENT_OUTPUTS/slips_output"
+    mkdir -p "$EXPERIMENT_OUTPUTS/slips"
     if docker ps --format "table {{.Names}}" | grep -q "lab_slips_defender"; then
-        docker cp lab_slips_defender:/StratosphereLinuxIPS/output/ "$EXPERIMENT_OUTPUTS/slips_output/" 2>/dev/null || true
+        docker cp lab_slips_defender:/StratosphereLinuxIPS/output/ "$EXPERIMENT_OUTPUTS/slips/" 2>/dev/null || true
     fi
 
     # List PCAP files collected
