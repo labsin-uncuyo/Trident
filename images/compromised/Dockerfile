@@ -29,7 +29,7 @@ RUN apt-get update \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        # Additional networking tools
-       nmap netcat-openbsd socat \
+       nmap netcat-openbsd socat hydra sshpass \
        # Python
        python3 python3-pip \
        # PostgreSQL client for remote database access

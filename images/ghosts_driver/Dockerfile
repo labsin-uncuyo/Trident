@@ -4,9 +4,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Dependencias base: Git, SSH, herramientas de red
 RUN apt-get update && apt-get install -y \
-    wget curl git openssh-client iputils-ping \
+    wget curl git openssh-client sshpass iputils-ping \
     ca-certificates gnupg2 software-properties-common \
-    libicu-dev libssl-dev \
+    libicu-dev libssl-dev jq gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar .NET SDK 9.0
@@ -34,14 +34,16 @@ WORKDIR /opt/ghosts
 RUN ln -s /opt/ghosts/bin/Ghosts.Client.Universal /opt/ghosts/ghosts.client.linux \
     && chmod +x /opt/ghosts/ghosts.client.linux
 
-# Configuración SSH (Llave Privada)
-COPY images/ghosts_driver/john_scott_dummy/id_rsa /root/.ssh/id_rsa
-RUN chmod 600 /root/.ssh/id_rsa \
-    && chmod 700 /root/.ssh
+# Configuración SSH básica (sin claves, usará contraseña)
+RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
 # Configuración del Timeline de John Scott (debe ir en bin/config donde GHOSTS lo busca)
 COPY images/ghosts_driver/john_scott_dummy/timeline_john_scott.json /opt/ghosts/bin/config/timeline.json
 COPY images/ghosts_driver/application.json /opt/ghosts/bin/config/application.json
+
+# Copiar configuraciones LLM para GHOSTS nativo
+COPY images/ghosts_driver/john_scott_llm /opt/ghosts/john_scott_llm
+COPY images/ghosts_driver/john_scott_dummy /opt/ghosts/john_scott_dummy
 
 # Script de inicio
 COPY images/ghosts_driver/entrypoint.sh /entrypoint.sh

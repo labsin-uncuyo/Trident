@@ -1,55 +1,77 @@
 #!/bin/bash
-# Script to generate GHOSTS timeline using LLM
-# This script will be run inside the container to create the timeline dynamically
+# Generate GHOSTS timeline using LLM queries
+# This script is called by the docker entrypoint or can be run standalone
 
 set -e
 
-echo "[INFO] Starting LLM Timeline Generator for John Scott"
+# Parameters with defaults
+NUM_QUERIES=${NUM_QUERIES:-5}
+SCENARIO=${SCENARIO:-developer_routine}
+ROLE=${ROLE:-senior_developer_role}
+DELAY_BEFORE=${DELAY_BEFORE:-5000}
+DELAY_AFTER=${DELAY_AFTER:-10000}
+LOOP=${LOOP:-false}
+OUTPUT_FILE=${OUTPUT_FILE:-/opt/ghosts/bin/config/timeline.json}
 
-# Set environment variables from Docker if available
-export OPENAI_API_KEY="${OPENAI_API_KEY:-YOUR_API_KEY}"
-export OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://chat.ai.e-infra.cz/api/v1}"
-export LLM_MODEL="${LLM_MODEL:-qwen3-coder}"
-export LLM_TEMPERATURE="${LLM_TEMPERATURE:-0.7}"
+echo "=== Generating GHOSTS Timeline with LLM ==="
+echo "Parameters:"
+echo "  - Number of queries: $NUM_QUERIES"
+echo "  - Scenario: $SCENARIO"
+echo "  - Database Role: $ROLE"
+echo "  - Delay before: ${DELAY_BEFORE}ms"
+echo "  - Delay after: ${DELAY_AFTER}ms"
+echo "  - Loop: $LOOP"
+echo "  - Output: $OUTPUT_FILE"
+echo ""
 
-echo "[INFO] LLM Configuration:"
-echo "  - Base URL: $OPENAI_BASE_URL"
-echo "  - Model: $LLM_MODEL"
-echo "  - Temperature: $LLM_TEMPERATURE"
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Directory where timeline will be generated
-TIMELINE_DIR="/opt/john_scott_llm"
-TIMELINE_FILE="$TIMELINE_DIR/timeline_john_scott_llm.json"
-
-# Create directory if it doesn't exist
-mkdir -p "$TIMELINE_DIR"
-
-# Copy the generator script if not already there
-if [ ! -f "$TIMELINE_DIR/generate_timeline_llm.py" ]; then
-    echo "[INFO] Copying LLM timeline generator script..."
-    cp /opt/john_scott_llm/generate_timeline_llm.py "$TIMELINE_DIR/"
+# Check Python availability
+if ! command -v python3 &> /dev/null; then
+    echo "✗ Error: python3 not found"
+    exit 1
 fi
 
-cd "$TIMELINE_DIR"
+# Install requirements if needed
+if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+    echo "Installing Python requirements..."
+    pip3 install -q -r "$SCRIPT_DIR/requirements.txt" || true
+fi
 
-# Generate the timeline
-echo "[INFO] Generating timeline with LLM..."
-python3 generate_timeline_llm.py
+# Generate timeline
+echo "Calling LLM to generate SQL queries..."
+LOOP_FLAG=""
+if [ "$LOOP" = "true" ]; then
+    LOOP_FLAG="--loop"
+fi
 
-if [ -f "$TIMELINE_FILE" ]; then
-    echo "[SUCCESS] Timeline generated successfully: $TIMELINE_FILE"
-    
-    # Show summary
-    QUERY_COUNT=$(grep -c "Command" "$TIMELINE_FILE" || echo "0")
-    echo "[INFO] Generated timeline with $QUERY_COUNT commands"
-    
-    # Copy to config location for GHOSTS
-    mkdir -p /app/config
-    cp "$TIMELINE_FILE" /app/config/timeline.json
-    echo "[INFO] Timeline copied to /app/config/timeline.json"
-    
-    exit 0
-else
-    echo "[ERROR] Failed to generate timeline"
+python3 "$SCRIPT_DIR/generate_timeline_llm.py" \
+    --num-queries "$NUM_QUERIES" \
+    --scenario "$SCENARIO" \
+    --role "$ROLE" \
+    --delay-before "$DELAY_BEFORE" \
+    --delay-after "$DELAY_AFTER" \
+    $LOOP_FLAG \
+    --output "$OUTPUT_FILE" 2>&1 | grep -E "^(✓|⚠|✗|Generating|Creating)" || true
+
+if [ ! -f "$OUTPUT_FILE" ]; then
+    echo "✗ Error: Timeline file not created at $OUTPUT_FILE"
     exit 1
+fi
+
+echo ""
+echo "✓ Timeline generation complete"
+echo "  Location: $OUTPUT_FILE"
+echo "  Size: $(du -h "$OUTPUT_FILE" | cut -f1)"
+
+# Validate JSON
+if command -v jq &> /dev/null; then
+    if jq empty "$OUTPUT_FILE" 2>/dev/null; then
+        EVENT_COUNT=$(jq '.TimeLineHandlers[0].TimeLineEvents | length' "$OUTPUT_FILE")
+        echo "  Events: $EVENT_COUNT"
+        echo "✓ Timeline JSON is valid"
+    else
+        echo "✗ Warning: Timeline JSON validation failed"
+    fi
 fi

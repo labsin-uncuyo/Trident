@@ -8,7 +8,7 @@
 - Router tcpdump rotates every 30s (`images/router/entrypoint.sh`), writing `router_*.pcap` to `outputs/<RUN_ID>/pcaps` (mounted as `/StratosphereLinuxIPS/dataset`).
 - Watcher (`watch_pcaps.py`) polls every 5s, ignores live stream files, and processes only completed rotated PCAPs.
 - Per-PCAP processing timeout: 60s. If exceeded, the run is marked timed out and the watcher moves on.
-- SLIPS outputs per PCAP land in `outputs/<RUN_ID>/slips_output/<pcap_ts>/` (alerts.log/json, zeek_files, flows.sqlite, errors.log, etc.), with sentinels in `_watch_events/alerts.log`.
+- SLIPS outputs per PCAP land in `outputs/<RUN_ID>/slips/<pcap_ts>/` (alerts.log/json, zeek_files, flows.sqlite, errors.log, etc.), with sentinels in `_watch_events/alerts.log`.
 
 ## Zeek preprocessing settings (`images/slips_defender/slips.yaml`)
 - `pcapfilter`: `not port 5353 and not port 67 and not port 68` (keeps ICMP/ARP; avoids link-layer multicast/broadcast keywords that break on SLL captures).

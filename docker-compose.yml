@@ -3,6 +3,8 @@ services:
     build: ./images/router
     image: lab/router:latest
     container_name: lab_router
+    profiles:
+      - core
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
@@ -26,6 +28,8 @@ services:
     build: ./images/switch
     image: lab/switch:latest
     container_name: lab_switch
+    profiles:
+      - defender
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
@@ -42,11 +46,13 @@ services:
     build: ./images/slips_defender
     image: lab/slips_defender:latest
     container_name: lab_slips_defender
+    profiles:
+      - defender
     environment:
       - RUN_ID=${RUN_ID}
       - DEFENDER_PORT=${DEFENDER_PORT:-8000}
       - PLANNER_PORT=${PLANNER_PORT:-1654}
-      - PLANNER_URL=${PLANNER_URL:-http://127.0.0.1:8000/plan}
+      - PLANNER_URL=${PLANNER_URL:-http://127.0.0.1:1654/plan}
       - OPENCODE_TIMEOUT=${OPENCODE_TIMEOUT:-450}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
@@ -55,7 +61,7 @@ services:
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
-      - ./outputs/${RUN_ID}/slips_output:/StratosphereLinuxIPS/output
+      - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
       - ./outputs:/outputs
       - ./images/slips_defender:/opt/lab
       - ./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml
@@ -80,6 +86,8 @@ services:
     build: ./images/compromised
     image: lab/compromised:latest
     container_name: lab_compromised
+    profiles:
+      - core
     environment:
       - LAB_PASSWORD=${LAB_PASSWORD}
       - RUN_ID=${RUN_ID}
@@ -117,10 +125,25 @@ services:
       dockerfile: images/ghosts_driver/Dockerfile
     image: lab/ghosts_driver:latest
     container_name: lab_ghosts_driver
+    profiles:
+      - benign
     environment:
       - RUN_ID=${RUN_ID}
       - GHOSTS_REPEATS=${GHOSTS_REPEATS:-1}
       - GHOSTS_DELAY=${GHOSTS_DELAY:-5}
+      - GHOSTS_MODE=${GHOSTS_MODE:-dummy}
+      - GHOSTS_NUM_QUERIES=${GHOSTS_NUM_QUERIES:-5}
+      - GHOSTS_SCENARIO=${GHOSTS_SCENARIO:-developer_routine}
+      - GHOSTS_ROLE=${GHOSTS_ROLE:-senior_developer_role}
+      - LAB_PASSWORD=${LAB_PASSWORD}
+      - SSH_HOST=${SSH_HOST:-172.30.0.10}
+      - SSH_PORT=${SSH_PORT:-22}
+      - SSH_USER=${SSH_USER:-labuser}
+      - SSH_PASSWORD=${SSH_PASSWORD:-${LAB_PASSWORD}}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL:-qwen3-coder}
     volumes:
       - ./outputs:/outputs
     networks:
@@ -135,6 +158,8 @@ services:
     build: ./images/server
     image: lab/server:latest
     container_name: lab_server
+    profiles:
+      - core
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
@@ -161,6 +186,30 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  aracne_attacker:
+    build:
+      context: .
+      dockerfile: images/aracne/Dockerfile
+    image: lab/aracne:latest
+    container_name: lab_aracne_attacker
+    profiles:
+      - attackers
+    env_file:
+      - ./configs/aracne_lab/.env
+    environment:
+      - RUN_ID=${RUN_ID}
+      - GOAL=${GOAL:-Create the file /home/labuser/aracne_was_here.txt containing 'aracne ok' and then read it back to confirm.}
+    volumes:
+      - ./outputs/${RUN_ID}/aracne:/logs
+      - ./configs/aracne_lab/config:/agent/config:ro
+      - ./configs/aracne_lab/.env:/agent/.env:ro
+      - ./configs/aracne_lab/start_lab.sh:/agent/start_lab.sh:ro
+    network_mode: host
+    depends_on:
+      compromised:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/agent/start_lab.sh"]
 
 volumes:
   opencode_data:

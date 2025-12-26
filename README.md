@@ -1,6 +1,6 @@
 # Research Cyber Lab Phase 1
 
-This phase-1 lab now focuses on a tiny, fully routed environment that still exposes enough moving pieces to exercise IDS/IPS workflows. A privileged router stitches together two /24 networks, mirrors traffic to a collector “switch”, and a combined SLIPS + FastAPI defender ingests PCAPs (from disk and a live TCP stream) and writes alerts under `outputs/<RUN_ID>/`.
+This phase-1 lab now focuses on a tiny, fully routed environment that still exposes enough moving pieces to exercise IDS/IPS workflows. A privileged router stitches together two /24 networks, mirrors traffic to a collector “switch”, and a combined SLIPS + FastAPI defender ingests PCAPs (from disk and a live TCP stream) and writes alerts under `outputs/<RUN_ID>/slips/`.
 
 ## Pre-reqs
 - Docker 23+
@@ -14,8 +14,12 @@ cp .env.example .env
 # optionally tweak RUN_ID / DEFENDER_PORT / LAB_PASSWORD / OPENCODE_API_KEY
 python3 -m pip install -r requirements.txt
 make build
-make up
-# wait for the five containers to become healthy (~30s)
+make up          # core only (router, server, compromised)
+make defend      # start defender components (switch + slips_defender)
+# start other roles when needed
+# make ghosts_psql   # benign workload
+# make aracne_attack # attacker
+# wait for core/defender containers to become healthy (~30s)
 make verify
 # inspect artifacts
 ls outputs/${RUN_ID}/
@@ -32,6 +36,8 @@ Use `make COMPOSE=docker-compose up` if you rely on the legacy binary. Point `PY
 - **slips_defender (lab_slips_defender)** – now runs the official `stratosphereips/slips:latest` container in host-network mode. Helper scripts under `images/slips_defender/` keep our FastAPI endpoint (127.0.0.1:${DEFENDER_PORT}) alive, watch `/outputs/<RUN_ID>/pcaps` for rotated captures, invoke `slips.py -f dataset/<file>.pcap`, and forward the resulting alerts to FastAPI so they land in `/outputs/<RUN_ID>/defender_alerts.ndjson`.
 - **compromised (lab_compromised)** – 172.30.0.10 with SSH exposed on `127.0.0.1:2223`, includes enhanced tooling, GHOSTS framework, OpenCode, and routes 172.31.0.0/24 via the router.
 - **server (lab_server)** – 172.31.0.10 with nginx on `127.0.0.1:8080` and PostgreSQL on `127.0.0.1:5432`, both also exposed to the host via port mappings. Postgres boots with a demo `labdb` + `events` table. **OpenCode v1.0.77** is installed and configured with e-INFRA CZ Chat API for AI-assisted operations.
+ - **ghosts_driver (lab_ghosts_driver)** – benign workload generator; only starts when invoked via `make ghosts_psql`.
+ - **aracne_attacker (lab_aracne_attacker)** – attacker container; only starts when invoked via `make aracne_attack`.
 
 Traffic path: `compromised ↔ router ↔ server`. Router mirrors packets to the switch for optional traffic replay, but the authoritative artifacts are the PCAP files under `outputs/<RUN_ID>/pcaps/`, which SLIPS ingests directly.
 
@@ -45,7 +51,7 @@ The lab uses reusable Dockerfile snippets for common functionality:
 Both `server` and `compromised` containers reference these shared components, ensuring consistent environments and simplified maintenance.
 
 ## Artifacts & operations
-- Every container mounts `./outputs` to `/outputs`, and everything is scoped under `/outputs/<RUN_ID>/`. See `outputs/README.md` for a detailed map.
+- Every container mounts `./outputs` to `/outputs`, and everything is scoped under `/outputs/<RUN_ID>/`. See `outputs/README.md` for the current map.
 - PCAPs: `router.pcap`, `router_stream.pcap`, and `switch_stream.pcap` accumulate under `outputs/<RUN_ID>/pcaps/`. Router and defender images ship logrotate configs plus `/management.sh rotate_pcaps` for forced rotations.
 - Alerts: `lab_slips_defender` appends JSON lines to `outputs/<RUN_ID>/slips/defender_alerts.ndjson` and writes per-PCAP `alerts.log`/`alerts.json` under `outputs/<RUN_ID>/slips/<pcap>_<timestamp>/`. Drop a new PCAP into `outputs/${RUN_ID}/pcaps/` to trigger processing.
 - ARACNE attacker: logs to `outputs/<RUN_ID>/aracne/agent.log` (remote shell transcript) and `context.log` (LLM traces). Each session is snapshotted under `aracne/experiments/<timestamp_goal>/` for reproducibility.
@@ -66,7 +72,7 @@ Both `server` and `compromised` containers reference these shared components, en
   export GOAL="Run a noisy nmap scan against 172.31.0.10 and save output"
   make aracne_attack
   ```
-- ARACNE logs land in `outputs/<RUN_ID>/aracne_output/` (`agent.log`, `context.log`, per-session snapshots under `experiments/`). SLIPS artifacts continue to flow into `outputs/<RUN_ID>/slips_output/`.
+- ARACNE logs land in `outputs/<RUN_ID>/aracne/` (`agent.log`, `context.log`, per-session snapshots under `experiments/`). SLIPS artifacts continue to flow into `outputs/<RUN_ID>/slips/`.
 - SSH auth for the attacker uses password access (`adminadmin`) to the compromised host; no SSH key is required. If you need to test connectivity from the host, use `scripts/test_aracne_ssh.sh`.
 - Bringing it back down: `make down` (same as the rest of the stack). When not running an attack, the attacker container stays idle.
 
@@ -75,7 +81,7 @@ Both `server` and `compromised` containers reference these shared components, en
 2. **Shared dataset** – The defender service mounts `./outputs/${RUN_ID}/pcaps` as `/StratosphereLinuxIPS/dataset` and `./outputs/${RUN_ID}/slips` as `/StratosphereLinuxIPS/output`. `make up` pre-creates both directories (or create them manually if you change `RUN_ID`).
 3. **Official SLIPS** – `lab_slips_defender` uses `stratosphereips/slips:latest` with host networking and NET_ADMIN. A lightweight watcher (`watch_pcaps.py`) polls the dataset directory, skips the actively written `router.pcap`, and calls `python3 /StratosphereLinuxIPS/slips.py -f dataset/<file>.pcap` for each rotated file it discovers.
 4. **Alert fan-out** – SLIPS writes its logs (including `alerts.log`) under `/StratosphereLinuxIPS/output/<timestamp>/`. `forward_alerts.py` tails every discovered `alerts.log` and POSTs the JSON lines to the built-in FastAPI endpoint at `http://127.0.0.1:${DEFENDER_PORT}/alerts`.
-5. **FastAPI persistence** – `defender_api.py` is the same FastAPI/uvicorn app as before; it responds to `/health` and appends alert JSON to `outputs/<RUN_ID>/defender_alerts.ndjson` when `/alerts` receives a POST. Tests watch both the SLIPS output tree and this NDJSON file to confirm end-to-end delivery.
+5. **FastAPI persistence** – `defender_api.py` is the same FastAPI/uvicorn app as before; it responds to `/health` and appends alert JSON to `outputs/<RUN_ID>/slips/defender_alerts.ndjson` when `/alerts` receives a POST. Tests watch both the SLIPS output tree and this NDJSON file to confirm end-to-end delivery.
 
 To enable SLIPS active blocking later, tweak `/opt/lab/watch_pcaps.py` (or override via an env var) to call `python3 /StratosphereLinuxIPS/slips.py -f dataset/<file>.pcap -p`; the container already runs with `NET_ADMIN`, so the capability is in place.
 

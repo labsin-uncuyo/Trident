@@ -1,304 +1,335 @@
 #!/usr/bin/env python3
 """
-LLM Query Generator for John Scott NPC
-Generates PostgreSQL queries dynamically using an LLM based on the NPC's profile and objectives
+LLM-based SQL Query Generator for John Scott persona
+Generates realistic database queries using an LLM agent with context about the database schema
 """
 
-import os
 import json
-import requests
-import logging
-from typing import Optional, Dict, Any
+import subprocess
+import sys
+import os
+import time
+from typing import List, Dict, Optional
+import argparse
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+
+class DatabaseSchema:
+    """Represents the employee database schema with role-based context"""
+    
+    SCHEMA_INFO = """
+    PostgreSQL Database: labdb
+    Connection: Two-step process
+      1. SSH to labuser@172.30.0.10 (compromised machine)
+      2. psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb
+
+    Tables and columns (exact):
+    - department
+      - id character(4) NOT NULL
+      - dept_name character varying(40) NOT NULL
+      Indexes: PRIMARY KEY(id), UNIQUE(dept_name)
+
+    - department_employee
+      - employee_id bigint NOT NULL
+      - department_id character(4) NOT NULL
+      - from_date date NOT NULL
+      - to_date date NOT NULL
+      Indexes: PRIMARY KEY(employee_id, department_id)
+      Foreign keys: employee(id) -> department_employee(employee_id), department(id) -> department_employee(department_id)
+
+    - employee
+      - id bigint NOT NULL (nextval('id_employee_seq'))
+      - birth_date date NOT NULL
+      - first_name character varying(14) NOT NULL
+      - last_name character varying(16) NOT NULL
+      - gender employee_gender NOT NULL
+      - hire_date date NOT NULL
+      Indexes: PRIMARY KEY(id)
+
+    - department_manager
+      - employee_id bigint NOT NULL
+      - department_id character(4) NOT NULL
+      - from_date date NOT NULL
+      - to_date date NOT NULL
+      Indexes: PRIMARY KEY(employee_id, department_id)
+
+    - salary
+      - employee_id bigint NOT NULL
+      - amount bigint NOT NULL
+      - from_date date NOT NULL
+      - to_date date NOT NULL
+      Indexes: PRIMARY KEY(employee_id, from_date)
+      Foreign key: salary.employee_id -> employee.id
+
+    - title
+      - employee_id bigint NOT NULL
+      - title character varying(50) NOT NULL
+      - from_date date NOT NULL
+      - to_date date
+      Indexes: PRIMARY KEY(employee_id, title, from_date)
+      Foreign key: title.employee_id -> employee.id
+
+    - events
+      - id integer NOT NULL (nextval events_id_seq)
+      - msg text
+      Indexes: PRIMARY KEY(id)
+
+    Common patterns and constraints:
+    - Current/active records often use to_date = '9999-01-01'
+    - Join employee <-> department via department_employee
+    - Use LIMIT and ORDER BY for predictable outputs
+    - Prefer selecting explicit columns rather than SELECT *
+    """
+    
+    ROLE_INFO = {
+        "senior_developer_role": """
+        Role: senior_developer_role
+        User: john_scott (password: john_scott)
+        
+        Permissions:
+        - DML: SELECT, INSERT, UPDATE, DELETE on all tables
+        - DDL: CREATE on schema public
+        - Can read/modify data for development and testing purposes
+        - Has elevated privileges for database structure changes
+        
+        Typical Activities:
+        - Query employee records and department data
+        - Check salary ranges for budget planning
+        - Analyze team composition and hiring patterns
+        - Review title progressions and career paths
+        - Create test data or temporary tables
+        - Run analytics queries for reporting
+        - Monitor system events and logs
+        """
+    }
+    
+    @staticmethod
+    def get_context(role: str = "senior_developer_role") -> str:
+        """Get database context with role-specific information"""
+        role_context = DatabaseSchema.ROLE_INFO.get(role, "")
+        return DatabaseSchema.SCHEMA_INFO + "\n" + role_context
 
 
 class LLMQueryGenerator:
-    """Generates PostgreSQL queries using LLM for realistic senior developer behavior"""
+    """Generates SQL queries using OpenCode LLM"""
     
-    def __init__(self):
-        """Initialize LLM connection parameters from environment"""
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        self.openai_base_url = os.getenv("OPENAI_BASE_URL", "https://chat.ai.e-infra.cz/api/v1")
-        self.llm_model = os.getenv("LLM_MODEL", "qwen3-coder")
-        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+    def __init__(self, num_queries: int = 5, scenario: str = "developer_routine", role: str = "senior_developer_role"):
+        self.num_queries = num_queries
+        self.scenario = scenario
+        self.role = role
+        self.opencode_available = self._check_opencode()
         
-        # SSH connection details (hardcoded as requested)
-        self.ssh_host = "172.30.0.10"
-        self.ssh_user = "labuser"
-        self.ssh_key_path = "/root/.ssh/id_rsa"
-        
-        # Database connection details
-        self.db_host = "172.31.0.10"
-        self.db_port = "5432"
-        self.db_name = "labdb"
-        self.db_user = "john_scott"
-        self.db_password = "john_scott"
-        
-        # NPC Profile
-        self.npc_profile = {
-            "name": "John Scott",
-            "role": "Senior Developer",
-            "department": "Engineering",
-            "description": "Experienced senior developer with deep expertise in database architecture and backend systems."
-        }
-        
-        # Database schema for context
-        self.db_schema = """
-Database: labdb
-Tables:
-- employee (id, first_name, last_name, hire_date, gender, birth_date)
-- department (id, dept_name)
-- department_employee (employee_id, department_id, from_date, to_date)
-- title (employee_id, title, from_date, to_date)
-- salary (employee_id, amount, from_date, to_date)
-        """
-        
-        logger.info(f"LLM Query Generator initialized with model: {self.llm_model}")
-    
-    def _call_llm(self, prompt: str) -> Optional[str]:
-        """Call LLM API to generate content"""
+    def _check_opencode(self) -> bool:
+        """Check if OpenCode is available"""
         try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.openai_api_key}"
-            }
-            
-            payload = {
-                "model": self.llm_model,
-                "messages": [
-                    {"role": "system", "content": self._get_system_prompt()},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": self.temperature,
-                "max_tokens": 500
-            }
-            
-            url = f"{self.openai_base_url}/chat/completions"
-            logger.debug(f"Calling LLM API: {url}")
-            
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
-            response.raise_for_status()
-            
-            result = response.json()
-            content = result['choices'][0]['message']['content'].strip()
-            
-            logger.debug(f"LLM Response: {content}")
-            return content
-            
-        except requests.exceptions.Timeout:
-            logger.error("LLM API request timed out")
-            return None
-        except requests.exceptions.RequestException as e:
-            logger.error(f"LLM API request failed: {e}")
-            return None
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to parse LLM response: {e}")
-            return None
+            result = subprocess.run(
+                ["opencode", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
     
-    def _get_system_prompt(self) -> str:
-        """Get the system prompt for the LLM"""
-        return f"""You are a SQL query generator for a senior database developer named {self.npc_profile['name']}.
-
-Your role: Generate realistic PostgreSQL queries that a {self.npc_profile['role']} would run during normal work activities.
-
-Database Schema:
-{self.db_schema}
-
-CRITICAL RULES:
-1. Return ONLY valid PostgreSQL SQL queries
-2. Do NOT include explanations, comments, or markdown formatting
-3. Use proper PostgreSQL syntax with double quotes for identifiers if needed
-4. Use $$ for string literals to avoid escaping issues
-5. Queries should be realistic for a senior developer's daily tasks
-6. Include analytical queries, performance checks, data exploration
-7. Each query should be on a single line or use standard SQL formatting
-
-Example queries you might generate:
-- SELECT current_database(), current_user, version();
-- SELECT e.first_name, e.last_name, d.dept_name FROM employee e JOIN department_employee de ON e.id = de.employee_id JOIN department d ON de.department_id = d.id WHERE d.dept_name = $$Engineering$$ LIMIT 10;
-- SELECT d.dept_name, COUNT(de.employee_id) as employee_count FROM department d JOIN department_employee de ON d.id = de.department_id GROUP BY d.dept_name;
-- SELECT AVG(s.amount) as avg_salary FROM salary s WHERE s.to_date = $$9999-01-01$$;
-
-Generate queries that show professional database work: joins, aggregations, analytics, data quality checks, etc."""
+    def _get_scenario_context(self) -> str:
+        """Get context based on scenario type"""
+        scenarios = {
+            "developer_routine": """
+                John Scott is a Senior Developer checking on:
+                - Team members in the Development department
+                - Recent hires and their backgrounds
+                - Salary information for budget planning
+                - Title progressions and promotions
+                - Department statistics and headcounts
+            """,
+            "hr_audit": """
+                John Scott is conducting an HR audit:
+                - Employee count by department
+                - Salary ranges and averages
+                - Long-tenured employees
+                - Recent organizational changes
+                - Manager assignments
+            """,
+            "performance_review": """
+                John Scott is preparing performance reviews:
+                - Direct reports and their titles
+                - Salary history and adjustments
+                - Time in current position
+                - Cross-department comparisons
+                - Career progression patterns
+            """,
+            "exploratory": """
+                John Scott is exploring the database:
+                - Random analytical queries
+                - Data quality checks
+                - Statistical aggregations
+                - Complex joins and subqueries
+                - Edge cases and corner scenarios
+            """
+        }
+        return scenarios.get(self.scenario, scenarios["developer_routine"])
     
-    def generate_query(self, task_description: str) -> Optional[str]:
-        """Generate a PostgreSQL query based on task description"""
-        logger.info(f"Generating query for task: {task_description}")
+    def generate_queries_with_llm(self) -> List[str]:
+        """Generate SQL queries using OpenCode LLM"""
         
-        prompt = f"""Generate a PostgreSQL query for the following task:
-Task: {task_description}
+        prompt = f"""Generate {self.num_queries} realistic PostgreSQL SQL queries for the following context:
 
-Remember: Return ONLY the SQL query, no explanations or formatting."""
+{DatabaseSchema.get_context(self.role)}
+
+Scenario: {self._get_scenario_context()}
+
+Important Requirements (STRICT):
+1. Generate EXACTLY {self.num_queries} different SQL queries.
+2. Each query MUST be a single-line valid PostgreSQL SELECT statement (no multi-line queries).
+3. Do NOT output any psql or shell commands. Output only the raw SQL SELECT statements.
+4. The timeline generator will wrap these SQL statements into SSH + psql -c '<SQL>' commands; therefore avoid statements that require interactive psql (no \\copy, no psql meta-commands, no prompts).
+5. Prefer explicit column lists (no SELECT *), use proper JOINs, WHERE clauses, aggregations, ORDER BY and LIMIT for readability.
+6. Use to_date = '9999-01-01' when referring to current records where appropriate.
+7. Do NOT include explanations, comments, or any extra text. Output only SQL queries separated by the exact token: ---QUERY--- on its own line.
+8. Keep result sizes reasonable (use LIMIT when listing rows).
+
+Output format (every query must end with a semicolon):
+SELECT ... FROM ... WHERE ... ;
+---QUERY---
+SELECT ... FROM ... WHERE ... ;
+---QUERY---
+...
+
+Begin generating queries now:"""
+
+        try:
+            # Use OpenCode to generate queries
+            result = subprocess.run(
+                ["opencode", "chat", "--no-stream"],
+                input=prompt,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0:
+                output = result.stdout
+                queries = self._parse_llm_output(output)
+                if queries:
+                    return queries
+                else:
+                    print("⚠ LLM output could not be parsed, using fallback queries", file=sys.stderr)
+                    return self._get_fallback_queries()
+            else:
+                print(f"⚠ OpenCode failed: {result.stderr}", file=sys.stderr)
+                return self._get_fallback_queries()
+                
+        except subprocess.TimeoutExpired:
+            print("⚠ OpenCode timeout, using fallback queries", file=sys.stderr)
+            return self._get_fallback_queries()
+        except Exception as e:
+            print(f"⚠ Error calling OpenCode: {e}", file=sys.stderr)
+            return self._get_fallback_queries()
+    
+    def _parse_llm_output(self, output: str) -> List[str]:
+        """Parse SQL queries from LLM output"""
+        queries = []
         
-        query = self._call_llm(prompt)
-        
-        if query:
-            # Clean up the query
-            query = self._clean_query(query)
-            logger.info(f"Generated query: {query[:100]}...")
-            return query
+        # Try splitting by ---QUERY---
+        if "---QUERY---" in output:
+            parts = output.split("---QUERY---")
+            for part in parts:
+                query = part.strip()
+                if query and "SELECT" in query.upper():
+                    # Clean up the query
+                    query = self._clean_query(query)
+                    if query:
+                        queries.append(query)
         else:
-            logger.warning("Failed to generate query, using fallback")
-            return self._get_fallback_query(task_description)
+            # Try to find SELECT statements
+            lines = output.split('\n')
+            current_query = []
+            in_query = False
+            
+            for line in lines:
+                if "SELECT" in line.upper():
+                    in_query = True
+                    current_query = [line]
+                elif in_query:
+                    current_query.append(line)
+                    if ';' in line:
+                        query = self._clean_query(' '.join(current_query))
+                        if query:
+                            queries.append(query)
+                        current_query = []
+                        in_query = False
+        
+        return queries[:self.num_queries]
     
     def _clean_query(self, query: str) -> str:
-        """Clean up LLM-generated query"""
+        """Clean and validate a SQL query"""
         # Remove markdown code blocks
-        query = query.replace("```sql", "").replace("```", "")
+        query = query.replace('```sql', '').replace('```', '')
         
-        # Remove leading/trailing whitespace
+        # Remove extra whitespace
+        query = ' '.join(query.split())
+        
+        # Ensure it ends with semicolon
         query = query.strip()
+        if not query.endswith(';'):
+            query += ';'
         
-        # Remove multiple spaces
-        import re
-        query = re.sub(r'\s+', ' ', query)
+        # Basic validation
+        if "SELECT" in query.upper() and "FROM" in query.upper():
+            return query
         
-        return query
+        return ""
     
-    def _get_fallback_query(self, task_description: str) -> str:
-        """Return a fallback query if LLM fails"""
-        fallback_queries = [
-            "SELECT current_database(), current_user, inet_server_addr(), inet_server_port();",
+    def _get_fallback_queries(self) -> List[str]:
+        """Fallback queries if LLM fails"""
+        fallback = [
+            "SELECT current_database(), current_user, version();",
             "SELECT COUNT(*) as total_employees FROM employee;",
-            "SELECT d.dept_name, COUNT(de.employee_id) as count FROM department d LEFT JOIN department_employee de ON d.id = de.department_id GROUP BY d.dept_name;",
-            "SELECT e.first_name, e.last_name, e.hire_date FROM employee e ORDER BY e.hire_date DESC LIMIT 5;",
+            "SELECT d.dept_name, COUNT(de.employee_id) as employee_count FROM department d JOIN department_employee de ON d.id = de.department_id GROUP BY d.dept_name ORDER BY employee_count DESC;",
+            "SELECT e.first_name, e.last_name, t.title FROM employee e JOIN title t ON e.id = t.employee_id WHERE t.to_date = '9999-01-01' LIMIT 10;",
+            "SELECT AVG(s.amount) as avg_salary FROM salary s WHERE s.to_date = '9999-01-01';"
         ]
-        
-        import random
-        return random.choice(fallback_queries)
+        return fallback[:self.num_queries]
     
-    def generate_ssh_command(self, sql_query: str) -> str:
-        """Generate complete SSH command with SQL query"""
-        # Escape query for shell
-        escaped_query = sql_query.replace('"', '\\"').replace('$', '\\$')
+    def generate_queries(self) -> List[str]:
+        """Main method to generate queries"""
+        if self.opencode_available:
+            print(f"✓ Using OpenCode LLM to generate {self.num_queries} queries...", file=sys.stderr)
+            queries = self.generate_queries_with_llm()
+        else:
+            print(f"⚠ OpenCode not available, using fallback queries", file=sys.stderr)
+            queries = self._get_fallback_queries()
         
-        ssh_command = (
-            f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null '
-            f'-i {self.ssh_key_path} {self.ssh_user}@{self.ssh_host} '
-            f'\'PGPASSWORD="{self.db_password}" psql -h {self.db_host} -p {self.db_port} '
-            f'-U {self.db_user} -d {self.db_name} -c "{escaped_query}" 2>&1\''
-        )
-        
-        return ssh_command
-    
-    def generate_activity_sequence(self, num_queries: int = 5) -> list[Dict[str, Any]]:
-        """Generate a sequence of database activities"""
-        logger.info(f"Generating sequence of {num_queries} activities")
-        
-        tasks = [
-            "Check database connection and version information",
-            "List all departments with employee counts",
-            "Find recently hired employees in Engineering department",
-            "Calculate average salary by department",
-            "Find senior-level employees and their salaries",
-            "Check database performance statistics",
-            "List employees with their current titles",
-            "Find highest paid employees",
-            "Count employees by gender in each department",
-            "Find employees hired in the last year"
-        ]
-        
-        import random
-        selected_tasks = random.sample(tasks, min(num_queries, len(tasks)))
-        
-        activities = []
-        
-        # Initial connection message
-        activities.append({
-            "type": "echo",
-            "command": f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {self.ssh_key_path} {self.ssh_user}@{self.ssh_host} "echo \'[JOHN_SCOTT_LLM] Senior Developer starting LLM-powered work session at $(date)\'"',
-            "delay_before": 5000,
-            "delay_after": 10000
-        })
-        
-        # Generate queries
-        for task in selected_tasks:
-            query = self.generate_query(task)
-            if query:
-                ssh_cmd = self.generate_ssh_command(query)
-                activities.append({
-                    "type": "query",
-                    "task": task,
-                    "sql": query,
-                    "command": ssh_cmd,
-                    "delay_before": 5000,
-                    "delay_after": random.randint(20000, 35000)
-                })
-        
-        # Final message
-        activities.append({
-            "type": "echo",
-            "command": f'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {self.ssh_key_path} {self.ssh_user}@{self.ssh_host} "echo \'[JOHN_SCOTT_LLM] LLM-powered work session cycle completed at $(date)\'"',
-            "delay_before": 5000,
-            "delay_after": 60000
-        })
-        
-        logger.info(f"Generated {len(activities)} activities")
-        return activities
-    
-    def generate_timeline_json(self, output_file: str = "timeline_john_scott_llm.json"):
-        """Generate complete GHOSTS timeline JSON file"""
-        logger.info(f"Generating timeline JSON: {output_file}")
-        
-        activities = self.generate_activity_sequence()
-        
-        timeline_events = []
-        for activity in activities:
-            timeline_events.append({
-                "Command": activity["command"],
-                "CommandArgs": [],
-                "DelayBefore": activity["delay_before"],
-                "DelayAfter": activity["delay_after"]
-            })
-        
-        timeline = {
-            "Status": "Run",
-            "TimeLineHandlers": [
-                {
-                    "HandlerType": "Bash",
-                    "Initial": "",
-                    "UtcTimeOn": "00:00:00",
-                    "UtcTimeOff": "23:59:00",
-                    "Loop": True,
-                    "TimeLineEvents": timeline_events
-                }
-            ]
-        }
-        
-        with open(output_file, 'w') as f:
-            json.dump(timeline, f, indent=2)
-        
-        logger.info(f"Timeline generated successfully: {output_file}")
-        return output_file
+        return queries
 
 
 def main():
-    """Main function for testing"""
-    logger.info("=== LLM Query Generator Test ===")
+    parser = argparse.ArgumentParser(description="Generate SQL queries using LLM")
+    parser.add_argument("--num-queries", type=int, default=5, help="Number of queries to generate")
+    parser.add_argument("--scenario", type=str, default="developer_routine",
+                       choices=["developer_routine", "hr_audit", "performance_review", "exploratory"],
+                       help="Scenario type for query generation")
+    parser.add_argument("--role", type=str, default="senior_developer_role",
+                       help="Database role (determines permissions and behavior)")
+    parser.add_argument("--output", type=str, help="Output file (default: stdout)")
     
-    generator = LLMQueryGenerator()
+    args = parser.parse_args()
     
-    # Test single query generation
-    logger.info("\n--- Testing Single Query Generation ---")
-    query = generator.generate_query("Find all employees in the Engineering department")
-    print(f"\nGenerated Query:\n{query}\n")
+    generator = LLMQueryGenerator(num_queries=args.num_queries, scenario=args.scenario, role=args.role)
+    queries = generator.generate_queries()
     
-    # Test SSH command generation
-    logger.info("\n--- Testing SSH Command Generation ---")
-    ssh_cmd = generator.generate_ssh_command(query)
-    print(f"\nSSH Command:\n{ssh_cmd}\n")
+    print(f"\n✓ Generated {len(queries)} queries", file=sys.stderr)
     
-    # Test full timeline generation
-    logger.info("\n--- Testing Timeline Generation ---")
-    timeline_file = generator.generate_timeline_json()
-    print(f"\nTimeline generated: {timeline_file}\n")
+    # Output queries
+    output_content = "\n\n".join(queries)
+    
+    if args.output:
+        with open(args.output, 'w') as f:
+            f.write(output_content)
+        print(f"✓ Queries saved to {args.output}", file=sys.stderr)
+    else:
+        print("\n=== Generated Queries ===\n")
+        print(output_content)
 
 
 if __name__ == "__main__":
