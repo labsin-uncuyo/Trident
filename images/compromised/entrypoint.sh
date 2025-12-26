@@ -48,6 +48,23 @@ mkdir -p "/outputs/${RUN_ID}"
 mkdir -p "/outputs/${RUN_ID}/ghosts_logs/john_scott"
 mkdir -p "/outputs/backups/john_scott"
 
+# Setup SSH authorized_keys for auto_responder from shared volume
+# The auto_responder_ssh_keys volume contains the public key that defender will use
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+touch /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+
+# Copy the auto_responder public key to root's authorized_keys
+if [ -f /root/.ssh_auto_responder/id_rsa_auto_responder.pub ]; then
+    pub_key=$(cat /root/.ssh_auto_responder/id_rsa_auto_responder.pub)
+    # Add key if not already present
+    if ! grep -qxF "${pub_key}" /root/.ssh/authorized_keys 2>/dev/null; then
+        echo "${pub_key}" >> /root/.ssh/authorized_keys
+        echo "✓ Auto-responder SSH key installed for root"
+    fi
+fi
+
 # Fix permissions for labuser to write logs
 chown -R labuser:labuser "/outputs/${RUN_ID}/ghosts_logs"
 chown -R labuser:labuser "/outputs/backups/john_scott"

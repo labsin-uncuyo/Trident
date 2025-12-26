@@ -26,7 +26,7 @@ RUN_ID = os.getenv("RUN_ID", "run_local")
 ALERT_FILE = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
 PROCESSED_FILE = Path("/outputs") / RUN_ID / "processed_alerts.json"
 PLANNER_URL = os.getenv("PLANNER_URL", "http://127.0.0.1:1654/plan")
-OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "300"))  # 5 minutes
+OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "600"))  # 10 minutes
 POLL_INTERVAL = float(os.getenv("AUTO_RESPONDER_INTERVAL", "5"))
 MAX_EXECUTION_RETRIES = int(os.getenv("MAX_EXECUTION_RETRIES", "3"))
 
@@ -403,13 +403,15 @@ CONTEXT:
 
 Execute all containment and remediation steps immediately. Be decisive and thorough."""
 
-        # Escape the context properly for shell command
-        escaped_context = context.replace('"', '\\"').replace('\n', '\\n')
-        
+        # Use base64 encoding to safely pass context with special characters
+        import base64
+        context_b64 = base64.b64encode(context.encode('utf-8')).decode('utf-8')
+
         # Build the full SSH command
-        opencode_api_key = os.environ.get("OPENCODE_API_KEY", "")
-        ssh_base = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile={SSH_KNOWN_HOSTS} -i {SSH_KEY_PATH} -p {SSH_PORT} {SSH_USER}@{target_ip}"
-        full_ssh_cmd = f"{ssh_base} 'OPENCODE_API_KEY={opencode_api_key} opencode run --agent soc_god \"{escaped_context}\"'"
+        # Use environment variable for API key
+        opencode_api_key = os.environ.get("OPENCODE_API_KEY")
+        if not opencode_api_key:
+            raise ValueError("OPENCODE_API_KEY environment variable is not set")
 
         for attempt in range(MAX_EXECUTION_RETRIES):
             try:
@@ -418,20 +420,27 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                     "target": target_name,
                     "target_ip": target_ip,
                     "attempt": attempt + 1,
-                    "command": f"{ssh_base} 'OPENCODE_API_KEY=*** opencode run --agent soc_god \"...\"'",
+                    "command": f"ssh ... 'echo <base64> | base64 -d | opencode run --agent soc_god'",
                     "context": context,
                     "timeout": OPENCODE_TIMEOUT
                 })
 
                 # Use SSH to connect to target machine and run OpenCode
+                # Use base64 encoding to safely pass the context without shell escaping issues
+                # Log timing data directly on the target machine before/after OpenCode
+                ssh_command = f'''export OPENCODE_API_KEY={opencode_api_key}
+echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
+(opencode run --agent soc_god -- "$(echo '{context_b64}' | base64 -d)"; echo "OPENCODE_END=$(date -Iseconds) EXIT_CODE=$?" >> /tmp/opencode_exec_times.log) || echo "OPENCODE_ERROR=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
+'''
+
                 ssh_cmd = [
-                    "bash", "-c", f"""
-                    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile={SSH_KNOWN_HOSTS} \\
-                        -i {SSH_KEY_PATH} \\
-                        -p {SSH_PORT} \\
-                        {SSH_USER}@{target_ip} \\
-                        'OPENCODE_API_KEY={opencode_api_key} opencode run --agent soc_god "{escaped_context}"'
-                    """
+                    "ssh",
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", f"UserKnownHostsFile={SSH_KNOWN_HOSTS}",
+                    "-i", SSH_KEY_PATH,
+                    "-p", str(SSH_PORT),
+                    f"{SSH_USER}@{target_ip}",
+                    ssh_command
                 ]
 
                 result = subprocess.run(
@@ -445,8 +454,8 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                 self.log("EXEC", f"✓ Success on {target_name}", alert_hash, execution_id, extra_data={
                     "status": "success",
                     "target": target_name,
-                    "output": result.stdout,
-                    "stderr": result.stderr if result.stderr else None
+                    "output": result.stdout[:1000] if result.stdout else None,
+                    "stderr": result.stderr[:1000] if result.stderr else None
                 })
                 return True
 
@@ -467,8 +476,8 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                     "status": "ssh_error" if ssh_failed else "exec_error",
                     "target": target_name,
                     "exit_code": e.returncode,
-                    "stdout": e.stdout,
-                    "stderr": e.stderr
+                    "stdout": e.stdout[:1000] if e.stdout else None,
+                    "stderr": e.stderr[:1000] if e.stderr else None
                 })
 
             except Exception as e:

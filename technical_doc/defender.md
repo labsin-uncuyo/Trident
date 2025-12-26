@@ -69,23 +69,14 @@ Skips system messages: `heartbeat`, `queued`, `completed`
 
 ### 3. Plan Generation
 
-**LLM-Based Planning (via external planner service)**
-**File:** `defender/app/planner.py`
+**Built-in Planner (Defender API)**
+**File:** `defender_api.py` → `/plan` endpoint on port 8000
 
-Uses LangChain with OpenAI-compatible API:
-```python
-llm = ChatOpenAI(
-    model="gpt-oss-120b",  # or configured model
-    base_url=os.getenv("OPENAI_BASE_URL"),
-    api_key=os.getenv("OPENAI_API_KEY")
-)
-```
-
-**Prompt (from `prompts.yaml`):**
-- System: Incident response planner for blue-team
-- Extracts `executor_host_ip` (where to run remediation)
-- Generates actionable plan without code snippets
-- Returns strict JSON: `{"executor_host_ip": "...", "plan": "..."}`
+The planner is integrated into the Defender API service. When called, it:
+- Parses the alert to extract source/destination IPs
+- Determines which target machine should execute the remediation
+- Generates a structured response plan
+- Returns JSON: `{"executor_host_ip": "...", "plan": "..."}`
 
 
 ### 4. SSH Execution
@@ -101,13 +92,16 @@ llm = ChatOpenAI(
 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -i /root/.ssh/id_rsa_auto_responder -p 22 \
     root@<target_ip> \
-    'OPENCODE_API_KEY=*** opencode run --agent soc_god "<context>"'
+    'export OPENCODE_API_KEY=***
+echo "<base64_context>" | base64 -d | opencode run --agent soc_god --'
 ```
+
+The context is base64-encoded to avoid shell escaping issues with special characters. The `export` ensures the API key is available to the `opencode` child process.
 
 **Retry Logic:**
 - 3 attempts max
 - Exponential backoff: 10s, 20s, 30s
-- 300s timeout per attempt
+- 600s timeout per attempt (10 minutes)
 
 ### 5. OpenCode Execution
 
@@ -167,10 +161,10 @@ Each line is a JSON object with these fields:
 ### Example Timeline
 
 ```jsonl
-{"ts":"2025-11-27T15:47:28Z","level":"INIT","msg":"AutoResponder started","data":{"config":{"alert_file":"/outputs/diego/slips/defender_alerts.ndjson","planner_url":"http://127.0.0.1:1654/plan"}}}
+{"ts":"2025-11-27T15:47:28Z","level":"INIT","msg":"AutoResponder started","data":{"config":{"alert_file":"/outputs/diego/slips/defender_alerts.ndjson","planner_url":"http://127.0.0.1:8000/plan"}}}
 {"ts":"2025-11-27T15:48:39Z","level":"ALERT","msg":"New: 172.30.0.10 → 172.31.0.10","alert":"a130b248","exec":"891e75f5","data":{"source_ip":"172.30.0.10","dest_ip":"172.31.0.10","raw":"...threat level: high."}}
 {"ts":"2025-11-27T15:48:39Z","level":"PLAN","msg":"Generated for 172.31.0.10 (0.01s)","alert":"a130b248","exec":"891e75f5","data":{"executor_ip":"172.31.0.10","plan":"SECURITY INCIDENT RESPONSE:..."}}
-{"ts":"2025-11-27T15:48:40Z","level":"SSH","msg":"→ server@172.31.0.10 (attempt 1/3)","alert":"a130b248","exec":"891e75f5","data":{"target":"server","command":"ssh ... opencode run --agent soc_god \"...\""}}
+{"ts":"2025-11-27T15:48:40Z","level":"SSH","msg":"→ server@172.31.0.10 (attempt 1/3)","alert":"a130b248","exec":"891e75f5","data":{"target":"server","command":"ssh ... 'echo <base64> | base64 -d | opencode run --agent soc_god'"}}
 {"ts":"2025-11-27T15:51:31Z","level":"EXEC","msg":"✓ Success on server","alert":"a130b248","exec":"891e75f5","data":{"status":"success","output":"Security incident response completed..."}}
 {"ts":"2025-11-27T15:51:31Z","level":"DONE","msg":"Completed in 172.4s (plan: 0.0s, exec: 171.1s)","alert":"a130b248","exec":"891e75f5","data":{"total_duration":172.41,"status":"success"}}
 ```
@@ -184,8 +178,8 @@ Each line is a JSON object with these fields:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RUN_ID` | `run_local` | Output directory name |
-| `PLANNER_URL` | `http://127.0.0.1:1654/plan` | Plan generation endpoint |
-| `OPENCODE_TIMEOUT` | `300` | Seconds before SSH timeout |
+| `PLANNER_URL` | `http://127.0.0.1:8000/plan` | Plan generation endpoint |
+| `OPENCODE_TIMEOUT` | `600` | Seconds before SSH timeout (10 minutes) |
 | `AUTO_RESPONDER_INTERVAL` | `5` | Alert poll interval (seconds) |
 | `MAX_EXECUTION_RETRIES` | `3` | SSH retry attempts |
 | `OPENCODE_API_KEY` | - | API key for OpenCode LLM |
@@ -221,13 +215,10 @@ Each line is a JSON object with these fields:
 images/slips_defender/
 ├── defender/
 │   ├── auto_responder.py      # Main orchestrator
-│   ├── app/
-│   │   ├── main.py           # FastAPI planner service
-│   │   └── planner.py        # LangChain LLM planner
-│   └── prompts.yaml          # LLM system/human prompts
-├── defender_api.py           # Defender API (alerts storage)
+│   └── setup_ssh_keys.sh      # SSH key setup script
+├── defender_api.py           # Defender API (alerts storage + /plan endpoint)
 ├── forward_alerts.py         # SLIPS → Defender API forwarder
-└── watch_pcaps.py            # PCAP sentinel alerts
+└── watch_pcaps.py            # PCAP watcher + SLIPS executor
 
 outputs/<run_id>/
 ├── slips/defender_alerts.ndjson    # Raw alerts from SLIPS
@@ -280,7 +271,7 @@ SSH returns 255 for both connection failures AND when the remote command exits n
 - Contains OpenCode output → SSH worked, OpenCode had error
 
 ### 3. Long Execution Times
-OpenCode execution can take 60-180 seconds depending on plan complexity. The 300s timeout is intentional.
+OpenCode execution can take 60-180 seconds depending on plan complexity. The 600s timeout (10 minutes) is intentional to allow complex remediation tasks to complete.
 
 ---
 
