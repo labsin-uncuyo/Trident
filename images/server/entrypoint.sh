@@ -22,6 +22,31 @@ if [ -f /root/.config/opencode/opencode.json.template ]; then
     cp /root/.config/opencode/opencode.json.template /root/.config/opencode/opencode.json
 fi
 
+# Setup SSH authorized_keys for auto_responder from shared volume
+# The auto_responder_ssh_keys volume contains the public key that defender will use
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+touch /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+
+# Copy the auto_responder public key to root's authorized_keys
+if [ -f /root/.ssh_auto_responder/id_rsa_auto_responder.pub ]; then
+    pub_key=$(cat /root/.ssh_auto_responder/id_rsa_auto_responder.pub)
+    # Add key if not already present
+    if ! grep -qxF "${pub_key}" /root/.ssh/authorized_keys 2>/dev/null; then
+        echo "${pub_key}" >> /root/.ssh/authorized_keys
+        echo "✓ Auto-responder SSH key installed for root"
+    fi
+    # Also add to admin user's authorized_keys for compatibility
+    mkdir -p /home/admin/.ssh
+    chmod 700 /home/admin/.ssh
+    if ! grep -qxF "${pub_key}" /home/admin/.ssh/authorized_keys 2>/dev/null; then
+        echo "${pub_key}" >> /home/admin/.ssh/authorized_keys
+        chown -R admin:admin /home/admin/.ssh
+        echo "✓ Auto-responder SSH key installed for admin"
+    fi
+fi
+
 mkdir -p "/outputs/${RUN_ID}" /var/log/nginx
 
 pg_version="$(ls /etc/postgresql | head -n1)"
