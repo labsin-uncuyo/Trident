@@ -29,6 +29,7 @@ COPY pgdg.list /etc/apt/sources.list.d/pgdg.list
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        nginx postgresql-11 postgresql-contrib-11 rsyslog \
+       python3 python3-pip \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/run/sshd \
@@ -36,6 +37,11 @@ RUN apt-get update \
     && echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 
 COPY app/index.html /var/www/html/index.html
+COPY nginx-login.conf /etc/nginx/sites-available/default
+
+RUN mkdir -p /opt/flask_app
+COPY flask_app/ /opt/flask_app/
+RUN pip3 install --no-cache-dir -r /opt/flask_app/requirements.txt
 
 # Copy SQL database file for manual execution
 RUN mkdir -p /opt/database

@@ -2,6 +2,11 @@
 set -euo pipefail
 
 : "${RUN_ID:=run_local}"
+: "${LOGIN_USER:=admin}"
+: "${LOGIN_PASSWORD:=admin}"
+
+export LOGIN_USER
+export LOGIN_PASSWORD
 
 pcap_dir="/outputs/${RUN_ID}/pcaps"
 mkdir -p "${pcap_dir}"
@@ -85,6 +90,11 @@ fi
 
 systemctl start nginx
 
+# Start the lab login app behind nginx.
+login_log=/var/log/flask-login.log
+touch "${login_log}"
+python3 /opt/flask_app/app.py >>"${login_log}" 2>&1 &
+
 # Ensure hosts on net_a are reachable through router
 ip route replace 172.30.0.0/24 via 172.31.0.1 || true
 
@@ -97,4 +107,4 @@ TCPDUMP_PID=$!
 
 trap 'kill "${TCPDUMP_PID}" >/dev/null 2>&1 || true' EXIT
 
-tail -n0 -F /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}"
+tail -n0 -F /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}" "${login_log}"

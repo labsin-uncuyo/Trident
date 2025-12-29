@@ -4,6 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
+Environment=LOGIN_USER=admin
+Environment=LOGIN_PASSWORD=admin
+EnvironmentFile=-/etc/default/lab-env
 ExecStart=/entrypoint.sh
 Restart=always
 

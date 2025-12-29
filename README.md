@@ -36,7 +36,8 @@ Use `make COMPOSE=docker-compose up` if you rely on the legacy binary. Point `PY
 - **slips_defender (lab_slips_defender)** – now runs the official `stratosphereips/slips:latest` container in host-network mode. Helper scripts under `images/slips_defender/` keep our FastAPI endpoint (127.0.0.1:${DEFENDER_PORT}) alive, watch `/outputs/<RUN_ID>/pcaps` for rotated captures, invoke `slips.py -f dataset/<file>.pcap`, and forward the resulting alerts to FastAPI so they land in `/outputs/<RUN_ID>/defender_alerts.ndjson`.
 - **compromised (lab_compromised)** – 172.30.0.10 with SSH exposed on `127.0.0.1:2223`, includes enhanced tooling, GHOSTS framework, OpenCode, and routes 172.31.0.0/24 via the router.
 - **server (lab_server)** – 172.31.0.10 with nginx on `127.0.0.1:8080` and PostgreSQL on `127.0.0.1:5432`, both also exposed to the host via port mappings. Postgres boots with a demo `labdb` + `events` table. **OpenCode v1.0.77** is installed and configured with e-INFRA CZ Chat API for AI-assisted operations.
- - **ghosts_driver (lab_ghosts_driver)** – benign workload generator; only starts when invoked via `make ghosts_psql`.
+  - **Web login test app** – nginx proxies `/login` to a Flask service on port 5000 inside the server container (code in `images/server/flask_app/`). Default credentials are `admin/admin`; override via `.env` (`LOGIN_USER`/`LOGIN_PASSWORD`) and recreate the server container. Logs land in `/var/log/flask-login.log` plus nginx access logs.
+ - **ghosts_driver (lab_ghosts_driver)** – benign workload generator; only starts when invoked via `make ghosts_psql`. Default image is built for `linux-arm64`; on amd64 hosts you must rebuild the client (e.g., `dotnet publish -c Release -r linux-x64 --self-contained true -o /opt/ghosts/bin`) or use a multi-arch build to avoid `exec format error`.
  - **aracne_attacker (lab_aracne_attacker)** – attacker container; only starts when invoked via `make aracne_attack`.
 
 Traffic path: `compromised ↔ router ↔ server`. Router mirrors packets to the switch for optional traffic replay, but the authoritative artifacts are the PCAP files under `outputs/<RUN_ID>/pcaps/`, which SLIPS ingests directly.
@@ -75,6 +76,7 @@ Both `server` and `compromised` containers reference these shared components, en
 - ARACNE logs land in `outputs/<RUN_ID>/aracne/` (`agent.log`, `context.log`, per-session snapshots under `experiments/`). SLIPS artifacts continue to flow into `outputs/<RUN_ID>/slips/`.
 - SSH auth for the attacker uses password access (`adminadmin`) to the compromised host; no SSH key is required. If you need to test connectivity from the host, use `scripts/test_aracne_ssh.sh`.
 - Bringing it back down: `make down` (same as the rest of the stack). When not running an attack, the attacker container stays idle.
+- The compromised host ships with common tools preinstalled (nmap, hydra, sshpass, netcat-openbsd, socat, curl, git, ripgrep, unzip, PostgreSQL client, Python3/pip, etc.) and includes a small bundled wordlist at `/usr/share/wordlists/rockyou.txt` for quick SSH brute-force experiments. `labuser` is configured for passwordless sudo to enable privileged actions when needed.
 
 ## SLIPS mode (official image, PCAP ingestion)
 1. **Router capture** – `lab_router` runs tcpdump and logrotate inside the container, writing rolling PCAPs to `outputs/<RUN_ID>/pcaps/` on the host. Use `/management.sh rotate_pcaps` whenever you want a fresh on-disk artifact.
