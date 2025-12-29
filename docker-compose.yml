@@ -164,10 +164,14 @@ services:
     environment:
       - RUN_ID=${RUN_ID}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - LAB_PASSWORD=${LAB_PASSWORD}
+      - LOGIN_USER=${LOGIN_USER:-admin}
+      - LOGIN_PASSWORD=${LOGIN_PASSWORD:-admin}
     volumes:
       - ./outputs:/outputs
       - opencode_data:/root/.opencode
       - postgres_data:/var/lib/postgresql
+      - ./.env:/etc/default/lab-env:ro
     ports:
       - "8080:80"
       - "5432:5432"

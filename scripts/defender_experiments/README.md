@@ -50,6 +50,15 @@ LAB_PASSWORD=admin123 ./run_experiment.sh
 PCAP_ROTATE_SECS=10 ./run_experiment.sh
 ```
 
+### Web Login Smoke Test (manual)
+Run from inside the compromised container:
+```bash
+for i in $(seq 1 50); do
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+    -d "username=admin&password=wrongpass" http://172.31.0.10/login
+done
+```
+
 ### Multiple Experiments
 ```bash
 # Run 5 experiments and generate comprehensive report
