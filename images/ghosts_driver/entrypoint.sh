@@ -4,30 +4,29 @@ set -e
 echo "=== GHOSTS Driver Starting ==="
 
 # Check for parameters
-GHOSTS_MODE=${GHOSTS_MODE:-dummy}
+GHOSTS_MODE=${GHOSTS_MODE:-shadows}
 GHOSTS_REPEATS=${GHOSTS_REPEATS:-1}
 GHOSTS_DELAY=${GHOSTS_DELAY:-5}
 GHOSTS_NUM_QUERIES=${GHOSTS_NUM_QUERIES:-5}
 GHOSTS_SCENARIO=${GHOSTS_SCENARIO:-developer_routine}
 GHOSTS_ROLE=${GHOSTS_ROLE:-senior_developer_role}
 
-# SSH credentials (like ARACNE)
+# Shadows API Configuration
+SHADOWS_API_URL=${SHADOWS_API_URL:-http://ghosts-shadows:5900}
+
+# SSH credentials
 SSH_HOST=${SSH_HOST:-172.30.0.10}
 SSH_PORT=${SSH_PORT:-22}
 SSH_USER=${SSH_USER:-labuser}
 SSH_PASSWORD=${SSH_PASSWORD:-${LAB_PASSWORD:-adminadmin}}
 
 echo "Parameters:"
-echo "  - Mode: $GHOSTS_MODE"
-if [ "$GHOSTS_MODE" = "llm" ]; then
-    echo "  - Number of queries: $GHOSTS_NUM_QUERIES"
-    echo "  - Scenario: $GHOSTS_SCENARIO"
-    echo "  - Database Role: $GHOSTS_ROLE"
-    echo "  - Delay between commands: $GHOSTS_DELAY seconds"
-else
-    echo "  - Workflow repeats: $GHOSTS_REPEATS"
-    echo "  - Delay between commands: $GHOSTS_DELAY seconds"
-fi
+echo "  - Mode: $GHOSTS_MODE (shadows only)"
+echo "  - Number of queries: $GHOSTS_NUM_QUERIES"
+echo "  - Scenario: $GHOSTS_SCENARIO"
+echo "  - Database Role: $GHOSTS_ROLE"
+echo "  - Delay between commands: $GHOSTS_DELAY seconds"
+echo "  - Shadows API: $SHADOWS_API_URL"
 echo "  - SSH Target: $SSH_USER@$SSH_HOST:$SSH_PORT"
 echo ""
 
@@ -71,151 +70,186 @@ fi
 # Generate or adjust timeline based on mode
 TIMELINE_FILE="/opt/ghosts/bin/config/timeline.json"
 
-if [ "$GHOSTS_MODE" = "llm" ]; then
-    echo "=== LLM Mode: Dynamic Query Generation ==="
+if [ "$GHOSTS_MODE" = "shadows" ]; then
+    echo "=== SHADOWS Mode: GHOSTS Native LLM Integration ==="
     echo "Timestamp: $(date -Iseconds)"
     
     # Configuration paths
     LLM_SCRIPT_DIR="/opt/ghosts/john_scott_llm"
-    LLM_CONFIG="/opt/ghosts/john_scott_llm/application_llm.json"
+    SHADOWS_CONFIG="/opt/ghosts/john_scott_llm/application_shadows.json"
     
-    # Copy LLM-enhanced application config if available
-    if [ -f "$LLM_CONFIG" ]; then
-        echo "✓ Copying LLM-enhanced application config..."
-        cp "$LLM_CONFIG" /opt/ghosts/bin/config/application.json
-        
-        # Replace environment variables in config
-        if [ -n "$OPENAI_API_KEY" ]; then
-            sed -i "s|\${OPENAI_API_KEY}|$OPENAI_API_KEY|g" /opt/ghosts/bin/config/application.json
-            echo "✓ OPENAI_API_KEY configured (${#OPENAI_API_KEY} chars)"
-        fi
-        if [ -n "$OPENAI_BASE_URL" ]; then
-            sed -i "s|\${OPENAI_BASE_URL}|$OPENAI_BASE_URL|g" /opt/ghosts/bin/config/application.json
-            echo "✓ OPENAI_BASE_URL: $OPENAI_BASE_URL"
-        fi
-        if [ -n "$LLM_MODEL" ]; then
-            sed -i "s|\${LLM_MODEL}|$LLM_MODEL|g" /opt/ghosts/bin/config/application.json
-            echo "✓ LLM_MODEL: $LLM_MODEL"
-        fi
+    # Copy Shadows-enhanced application config if available
+    if [ -f "$SHADOWS_CONFIG" ]; then
+        echo "✓ Copying Shadows-enhanced application config..."
+        cp "$SHADOWS_CONFIG" /opt/ghosts/bin/config/application.json
     fi
     
-    # Generate timeline dynamically using LLM
-    GENERATE_SCRIPT="$LLM_SCRIPT_DIR/generate_timeline_llm.sh"
-    if [ -f "$GENERATE_SCRIPT" ] && [ -n "$OPENAI_API_KEY" ] && [ -n "$OPENAI_BASE_URL" ]; then
-        echo ""
-        echo "=== Generating Timeline with LLM ==="
-        chmod +x "$GENERATE_SCRIPT"
-        chmod +x "$LLM_SCRIPT_DIR/generate_queries_llm.sh" 2>/dev/null
-        
-        # Export variables for the LLM scripts
-        export NUM_QUERIES="$GHOSTS_NUM_QUERIES"
-        export SCENARIO="$GHOSTS_SCENARIO"
-        export ROLE="$GHOSTS_ROLE"
-        export DELAY_BEFORE=$((GHOSTS_DELAY * 1000))
-        export DELAY_AFTER=$((GHOSTS_DELAY * 2000))
-        export OUTPUT_FILE="$TIMELINE_FILE"
-        
-        echo "LLM Generation Parameters:"
-        echo "  - NUM_QUERIES: $NUM_QUERIES"
-        echo "  - SCENARIO: $SCENARIO"
-        echo "  - ROLE: $ROLE"
-        echo "  - DELAY_BEFORE: ${DELAY_BEFORE}ms"
-        echo ""
-        
-        # Run the LLM timeline generator
-        if "$GENERATE_SCRIPT"; then
-            echo "✓ LLM-generated timeline created successfully"
-            
-            # Verify the generated timeline
-            if [ -f "$TIMELINE_FILE" ]; then
-                NUM_COMMANDS=$(grep -c '"Command":' "$TIMELINE_FILE" 2>/dev/null || echo 0)
-                echo "✓ Timeline contains $NUM_COMMANDS LLM-generated commands"
-                
-                # Show first few queries for debugging
-                echo ""
-                echo "=== Generated SQL Queries Preview ==="
-                grep '"Command":' "$TIMELINE_FILE" | head -3 | while read line; do
-                    echo "  $line" | cut -c1-100
-                done
-                echo "  ..."
-            fi
-        else
-            echo "⚠ LLM generation failed, using static fallback timeline"
-            if [ -f "$LLM_SCRIPT_DIR/timeline_john_scott_llm.json" ]; then
-                cp "$LLM_SCRIPT_DIR/timeline_john_scott_llm.json" "$TIMELINE_FILE"
-            else
-                cp /opt/ghosts/john_scott_dummy/timeline_john_scott.json "$TIMELINE_FILE"
-            fi
+    # Wait for Shadows API to be available
+    echo "Checking Shadows API availability..."
+    SHADOWS_READY=false
+    for i in {1..30}; do
+        if curl -sf "${SHADOWS_API_URL}/health" > /dev/null 2>&1; then
+            SHADOWS_READY=true
+            echo "✓ Shadows API is available at $SHADOWS_API_URL"
+            break
         fi
+        echo "  Attempt $i/30..."
+        sleep 2
+    done
+    
+    if [ "$SHADOWS_READY" = "false" ]; then
+        echo "⚠ Shadows API not available, using static timeline as fallback"
+        echo "Using static timeline..."
+        cp "$LLM_SCRIPT_DIR/timeline_john_scott_llm.json" "$TIMELINE_FILE"
     else
-        echo "⚠ LLM generator not available or credentials missing"
-        echo "  - Script exists: $([ -f \"$GENERATE_SCRIPT\" ] && echo 'yes' || echo 'no')"
-        echo "  - API Key set: $([ -n \"$OPENAI_API_KEY\" ] && echo 'yes' || echo 'no')"
-        echo "  - Base URL set: $([ -n \"$OPENAI_BASE_URL\" ] && echo 'yes' || echo 'no')"
+        # Generate timeline dynamically using Shadows API
+        GENERATE_SCRIPT="$LLM_SCRIPT_DIR/generate_timeline_shadows.sh"
         
-        # Use static fallback
-        if [ -f "$LLM_SCRIPT_DIR/timeline_john_scott_llm.json" ]; then
-            echo "Using static LLM timeline as fallback..."
-            cp "$LLM_SCRIPT_DIR/timeline_john_scott_llm.json" "$TIMELINE_FILE"
+        # Create timeline generator for Shadows if it doesn't exist
+        if [ ! -f "$GENERATE_SCRIPT" ]; then
+            echo "Creating Shadows timeline generator..."
+            cat > "$GENERATE_SCRIPT" << 'SHADOWSGEN'
+#!/bin/bash
+# Timeline generator using Shadows API
+set -e
+
+SHADOWS_API_URL=${SHADOWS_API_URL:-http://ghosts-shadows:5900}
+NUM_QUERIES=${NUM_QUERIES:-5}
+OUTPUT_FILE=${OUTPUT_FILE:-/opt/ghosts/bin/config/timeline.json}
+
+# Generate queries using Shadows
+QUERY_SCRIPT="/opt/ghosts/john_scott_llm/generate_queries_shadows.sh"
+chmod +x "$QUERY_SCRIPT"
+
+QUERIES=$("$QUERY_SCRIPT")
+export QUERIES
+
+# Convert to timeline format
+python3 << 'PYEOF'
+import json
+import os
+import sys
+
+queries = os.environ.get('QUERIES', '').strip().split('\n')
+queries = [q.strip() for q in queries if q.strip()]
+
+timeline = {
+    "Status": "Run",
+    "TimeLineHandlers": [
+        {
+            "HandlerType": "Bash",
+            "Initial": "",
+            "UtcTimeOn": "00:00:00",
+            "UtcTimeOff": "24:00:00",
+            "Loop": False,
+            "TimeLineEvents": []
+        }
+    ]
+}
+
+for i, query in enumerate(queries):
+    event = {
+        "Command": f"sshpass -p \"${{SSH_PASSWORD}}\" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{SSH_PORT}} ${{SSH_USER}}@${{SSH_HOST}} \"psql -h 172.31.0.10 -p 5432 -U john_scott -d labdb -c '{query}'\"",
+        "CommandArgs": [],
+        "DelayBefore": int(os.environ.get('DELAY_BEFORE', '5000')),
+        "DelayAfter": int(os.environ.get('DELAY_AFTER', '10000'))
+    }
+    timeline["TimeLineHandlers"][0]["TimeLineEvents"].append(event)
+
+output_file = os.environ.get('OUTPUT_FILE', '/opt/ghosts/bin/config/timeline.json')
+with open(output_file, 'w') as f:
+    json.dump(timeline, f, indent=2)
+
+print(f"Timeline generated with {len(queries)} commands")
+PYEOF
+SHADOWSGEN
+            chmod +x "$GENERATE_SCRIPT"
+        fi
+        
+        if [ -f "$GENERATE_SCRIPT" ]; then
+            echo ""
+            echo "=== Generating Timeline with Shadows API ==="
+            
+            # Remove old timeline to force regeneration
+            rm -f "$TIMELINE_FILE"
+            
+            # Export variables for the Shadows scripts
+            export NUM_QUERIES="$GHOSTS_NUM_QUERIES"
+            export SCENARIO="$GHOSTS_SCENARIO"
+            export ROLE="$GHOSTS_ROLE"
+            export DELAY_BEFORE=$((GHOSTS_DELAY * 1000))
+            export DELAY_AFTER=$((GHOSTS_DELAY * 2000))
+            export OUTPUT_FILE="$TIMELINE_FILE"
+            export SHADOWS_API_URL="$SHADOWS_API_URL"
+            
+            echo "Shadows Generation Parameters:"
+            echo "  - NUM_QUERIES: $NUM_QUERIES"
+            echo "  - SCENARIO: $SCENARIO"
+            echo "  - ROLE: $ROLE"
+            echo "  - Shadows API: $SHADOWS_API_URL"
+            echo ""
+            
+            # Run the Shadows timeline generator
+            if "$GENERATE_SCRIPT"; then
+                echo "✓ Shadows-generated timeline created successfully"
+                
+                # Verify the generated timeline
+                if [ -f "$TIMELINE_FILE" ]; then
+                    NUM_COMMANDS=$(grep -c '"Command":' "$TIMELINE_FILE" 2>/dev/null || echo 0)
+                    echo "✓ Timeline contains $NUM_COMMANDS Shadows-generated commands"
+                    
+                    # Show first few queries for debugging
+                    echo ""
+                    echo "=== Generated SQL Queries Preview (Shadows) ==="
+                    grep '"Command":' "$TIMELINE_FILE" | head -3 | while read line; do
+                        echo "  $line" | cut -c1-100
+                    done
+                    echo "  ..."
+                fi
+            else
+                echo "⚠ Shadows generation failed, using static fallback timeline"
+                cp "$LLM_SCRIPT_DIR/timeline_john_scott_llm.json" "$TIMELINE_FILE"
+            fi
         else
-            cp /opt/ghosts/john_scott_dummy/timeline_john_scott.json "$TIMELINE_FILE"
+            echo "⚠ Shadows generator creation failed, using static fallback"
+            cp "$LLM_SCRIPT_DIR/timeline_john_scott_llm.json" "$TIMELINE_FILE"
         fi
     fi
     
-    # Adjust delays based on GHOSTS_DELAY parameter
+    # Expand environment variables in the generated timeline
     if [ -f "$TIMELINE_FILE" ]; then
-        DELAY_MS=$((GHOSTS_DELAY * 1000))
-        sed -i "s/\"DelayBefore\": [0-9]*/\"DelayBefore\": $DELAY_MS/g" "$TIMELINE_FILE"
-        sed -i "s/\"DelayAfter\": [0-9]*/\"DelayAfter\": $((DELAY_MS * 2))/g" "$TIMELINE_FILE"
         echo ""
-        echo "✓ Delays adjusted: ${DELAY_MS}ms before / $((DELAY_MS * 2))ms after"
+        echo "Expanding environment variables in timeline..."
+        cp "$TIMELINE_FILE" "${TIMELINE_FILE}.original"
+        # Only substitute SSH_* variables to avoid breaking SQL dollar-quoted strings ($$)
+        envsubst '$SSH_PASSWORD $SSH_PORT $SSH_USER $SSH_HOST' < "${TIMELINE_FILE}.original" > "$TIMELINE_FILE"
+        echo "✓ Environment variables expanded (SSH credentials)"
     fi
     
     NUM_COMMANDS=$(grep -c '"Command":' "$TIMELINE_FILE" 2>/dev/null || echo 0)
     echo ""
-    echo "=== LLM Mode Ready ==="
+    echo "=== SHADOWS Mode Ready ==="
     echo "✓ Timeline ready with $NUM_COMMANDS commands"
     
 else
-    # Original dummy/hardcoded mode
-    echo "Adjusting timeline with delay settings..."
+    echo "⚠ Invalid GHOSTS_MODE: $GHOSTS_MODE"
+    echo "Only 'shadows' mode is supported."
+    echo "Using static timeline as fallback..."
+    cp "/opt/ghosts/john_scott_llm/timeline_john_scott_llm.json" "$TIMELINE_FILE"
+    
+    # Expand environment variables
     if [ -f "$TIMELINE_FILE" ]; then
-        DELAY_MS=$((GHOSTS_DELAY * 1000))
-        # Backup original
         cp "$TIMELINE_FILE" "${TIMELINE_FILE}.original"
-        
-        # Expand environment variables first (like ARACNE does)
-        envsubst < "${TIMELINE_FILE}.original" > "$TIMELINE_FILE"
-        
-        # Adjust delays
-        sed -i "s/\"DelayBefore\": [0-9]*/\"DelayBefore\": $DELAY_MS/g" "$TIMELINE_FILE"
-        sed -i "s/\"DelayAfter\": [0-9]*/\"DelayAfter\": $DELAY_MS/g" "$TIMELINE_FILE"
-        
-        # Adjust Loop setting based on REPEATS
-        if [ "$GHOSTS_REPEATS" -eq 1 ]; then
-            echo "  - Setting Loop to false (single execution)"
-            sed -i 's/"Loop": true/"Loop": false/g' "$TIMELINE_FILE"
-        else
-            echo "  - Keeping Loop enabled (will run continuously)"
-        fi
-        
-        echo "✓ Timeline delays adjusted to $DELAY_MS ms"
+        envsubst '$SSH_PASSWORD $SSH_PORT $SSH_USER $SSH_HOST' < "${TIMELINE_FILE}.original" > "$TIMELINE_FILE"
         echo "✓ Environment variables expanded (SSH credentials)"
-    else
-        echo "⚠ Timeline file not found at $TIMELINE_FILE"
     fi
 fi
 echo ""
 
 # Calculate execution time for controlled termination
 NUM_COMMANDS=$(grep -c '"Command":' "$TIMELINE_FILE" 2>/dev/null || echo 6)
-if [ "$GHOSTS_MODE" = "llm" ]; then
-    CYCLE_TIME=$((NUM_COMMANDS * GHOSTS_DELAY * 2))
-    TOTAL_TIME=$((CYCLE_TIME + 60))
-else
-    CYCLE_TIME=$((NUM_COMMANDS * GHOSTS_DELAY * 2))
-    TOTAL_TIME=$((GHOSTS_REPEATS * CYCLE_TIME))
-fi
+CYCLE_TIME=$((NUM_COMMANDS * GHOSTS_DELAY * 2))
+TOTAL_TIME=$((GHOSTS_REPEATS * CYCLE_TIME))
 echo "Execution plan:"
 echo "  - Commands per cycle: $NUM_COMMANDS"
 echo "  - Time per cycle: ~$CYCLE_TIME seconds"

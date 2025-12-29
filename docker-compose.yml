@@ -149,6 +149,9 @@ services:
     networks:
       lab_net_a:
         ipv4_address: 172.30.0.20
+      ghosts-network:
+        aliases:
+          - ghosts_driver
     depends_on:
       compromised:
         condition: service_healthy
@@ -237,3 +240,6 @@ networks:
       config:
         - subnet: 172.31.0.0/24
           gateway: 172.31.0.254
+  ghosts-network:
+    name: ghosts-network
+    external: true
