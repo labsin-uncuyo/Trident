@@ -1,0 +1,3 @@
+# Additional requirements for OpenAI support
+langchain-openai>=0.0.5
+openai>=1.3.0
