@@ -122,7 +122,7 @@ The analysis script categorizes defender performance as:
 - `outputs/{experiment_id}/experiment_summary.json`: Basic experiment metadata
 - `outputs/{experiment_id}/pcaps/`: Network traffic captures
 - `outputs/{experiment_id}/logs/`: Attack logs and system outputs
-- `outputs/{experiment_id}/slips/`: Defender logs and alerts
+- `outputs/{experiment_id}/slips_output/`: Defender logs and alerts
 
 ### Multi-Experiment
 - `multi_experiment_results.json`: Comprehensive report with all experiments
@@ -146,7 +146,7 @@ The analysis script categorizes defender performance as:
 ### Logs and Debugging
 - Experiment logs: `outputs/{experiment_id}/logs/attack_log.txt`
 - Container logs: `docker logs lab_router`, `docker logs lab_server`, etc.
-- Defender logs: `outputs/{experiment_id}/slips/`
+- Defender logs: `outputs/{experiment_id}/slips_output/`
 
 ## Security Note
 

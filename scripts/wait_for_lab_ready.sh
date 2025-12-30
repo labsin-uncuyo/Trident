@@ -37,12 +37,24 @@ for i in $(seq 1 "$MAX_RETRIES"); do
         continue
     fi
 
-    if docker ps --filter "name=lab_slips_defender" --format '{{.Names}}' | grep -q lab_slips_defender; then
-        if ! curl -sf "http://localhost:${DEFENDER_PORT_VALUE}/health" >/dev/null; then
-            echo "[wait] SLIPS API not healthy yet"
-            sleep "$SLEEP"
-            continue
-        fi
+    if ! curl -sf "http://localhost:${DEFENDER_PORT_VALUE}/health" >/dev/null; then
+        echo "[wait] SLIPS API not healthy yet"
+        sleep "$SLEEP"
+        continue
+    fi
+
+    # Check if SSH keys are set up - defender can SSH to compromised
+    if ! docker exec lab_slips_defender ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes -i /root/.ssh/id_rsa_auto_responder -p 22 root@172.30.0.10 "echo SSH_OK" >/dev/null 2>&1; then
+        echo "[wait] SSH keys not ready (defender -> compromised)"
+        sleep "$SLEEP"
+        continue
+    fi
+
+    # Check if SSH keys are set up - defender can SSH to server
+    if ! docker exec lab_slips_defender ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o BatchMode=yes -i /root/.ssh/id_rsa_auto_responder -p 22 root@172.31.0.10 "echo SSH_OK" >/dev/null 2>&1; then
+        echo "[wait] SSH keys not ready (defender -> server)"
+        sleep "$SLEEP"
+        continue
     fi
 
     echo "[wait] LAB IS READY ✔"
