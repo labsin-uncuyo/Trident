@@ -74,10 +74,21 @@ if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='
 fi
 runuser -u postgres -- psql -d labdb -c "CREATE TABLE IF NOT EXISTS events (id serial PRIMARY KEY, msg text);" >/dev/null
 
-# Load employee database if not already loaded
-if ! runuser -u postgres -- psql -d labdb -tAc "SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='employee';" | grep -q 1; then
+# Start nginx early so healthcheck passes during database loading
+systemctl start nginx
+
+# Ensure hosts on net_a are reachable through router (do this BEFORE database loading)
+ip route replace 172.30.0.0/24 via 172.31.0.1 || true
+
+# Add route for simulated exfiltration IP (for data exfiltration simulation)
+# Traffic to 137.184.126.86 will be routed through the router for DNAT
+ip route add 137.184.126.86 via 172.31.0.1 dev eth0 2>/dev/null || true
+
+# Load employee database if not already loaded (check if employee table has data)
+employee_count=$(runuser -u postgres -- psql -d labdb -tAc "SELECT COUNT(*) FROM employee;" 2>/dev/null || echo "0")
+if [ "$employee_count" -eq 0 ]; then
     echo "Loading employee database (this may take a few minutes)..."
-    runuser -u postgres -- psql -d labdb -f /opt/database/employees_data_modified.sql >/dev/null 2>&1
+    runuser -u postgres -- psql -d labdb -f /opt/database/employees_data_modified.sql
     echo "Employee database loaded successfully."
 fi
 
@@ -88,15 +99,10 @@ if ! runuser -u postgres -- psql -d labdb -tAc "SELECT 1 FROM pg_roles WHERE rol
     echo "Roles and users created successfully."
 fi
 
-systemctl start nginx
-
 # Start the lab login app behind nginx.
 login_log=/var/log/flask-login.log
 touch "${login_log}"
 python3 /opt/flask_app/app.py >>"${login_log}" 2>&1 &
-
-# Ensure hosts on net_a are reachable through router
-ip route replace 172.30.0.0/24 via 172.31.0.1 || true
 
 capture_log=/var/log/server-capture.log
 touch /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}"

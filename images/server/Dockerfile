@@ -28,7 +28,7 @@ COPY pgdg.list /etc/apt/sources.list.d/pgdg.list
 # === SERVER-SPECIFIC PACKAGES ===
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       nginx postgresql-11 postgresql-contrib-11 rsyslog \
+       nginx postgresql-11 postgresql-contrib-11 rsyslog netcat \
        python3 python3-pip \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/log/nginx \
@@ -45,7 +45,7 @@ RUN pip3 install --no-cache-dir -r /opt/flask_app/requirements.txt
 
 # Copy SQL database file for manual execution
 RUN mkdir -p /opt/database
-COPY employees_data_modified.sql /opt/database/employees_data_modified.sql
+COPY employees_data_large.sql /opt/database/employees_data_modified.sql
 COPY roles_users.sql /opt/database/roles_users.sql
 
 COPY entrypoint.sh /entrypoint.sh

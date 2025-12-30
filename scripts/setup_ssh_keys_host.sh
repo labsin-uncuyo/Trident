@@ -42,6 +42,21 @@ add_key_to_container() {
         chmod 600 /root/.ssh/authorized_keys"
 }
 
+add_key_to_server() {
+    local container=$1
+    local pub_key=$2
+    docker exec "${container}" bash -c "\
+        mkdir -p /root/.ssh && chmod 700 /root/.ssh && \
+        touch /root/.ssh/authorized_keys && \
+        grep -qxF '${pub_key}' /root/.ssh/authorized_keys || echo '${pub_key}' >> /root/.ssh/authorized_keys && \
+        chmod 600 /root/.ssh/authorized_keys && \
+        mkdir -p /home/admin/.ssh && chmod 700 /home/admin/.ssh && \
+        touch /home/admin/.ssh/authorized_keys && \
+        grep -qxF '${pub_key}' /home/admin/.ssh/authorized_keys || echo '${pub_key}' >> /home/admin/.ssh/authorized_keys && \
+        chmod 600 /home/admin/.ssh/authorized_keys && \
+        chown -R admin:admin /home/admin/.ssh"
+}
+
 main() {
     log "Setting up SSH key access for auto_responder from host"
 
@@ -56,7 +71,7 @@ main() {
     wait_for_container lab_server || true
     wait_for_container lab_compromised || true
 
-    add_key_to_container lab_server "${pub_key}" || log "Failed to add key to lab_server"
+    add_key_to_server lab_server "${pub_key}" || log "Failed to add key to lab_server"
     add_key_to_container lab_compromised "${pub_key}" || log "Failed to add key to lab_compromised"
 
     log "Host-side SSH key setup complete"

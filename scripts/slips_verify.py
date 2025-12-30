@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import shutil
 import sys
 import time
@@ -12,39 +11,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _wait_for_base_pcap(run_id: str, timeout: int) -> Path:
-    """Find a stable PCAP to inject. Prefer server.pcap if present, else any rotated .pcap."""
-    pcap_dir = ROOT / "outputs" / run_id / "pcaps"
-    preferred = pcap_dir / "server.pcap"
-    skip_names = {"router_stream.pcap", "switch_stream.pcap", "server_stream.pcap"}
-    stable: dict[Path, tuple[int, float]] = {}
+def _wait_for_server_pcap(run_id: str, timeout: int) -> Path:
+    pcap = ROOT / "outputs" / run_id / "pcaps" / "server.pcap"
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            if preferred.exists() and preferred.stat().st_size > 0:
-                return preferred
+            if pcap.exists() and pcap.stat().st_size > 0:
+                return pcap
         except OSError:
             pass
-        ready: list[Path] = []
-        for path in pcap_dir.glob("*.pcap"):
-            if path.name in skip_names:
-                continue
-            try:
-                stat = path.stat()
-            except OSError:
-                continue
-            if stat.st_size == 0:
-                continue
-            marker = (stat.st_size, stat.st_mtime)
-            if stable.get(path) == marker:
-                ready.append(path)
-            else:
-                stable[path] = marker
-        if ready:
-            ready.sort(key=lambda p: p.stat().st_mtime)
-            return ready[-1]
         time.sleep(2)
-    raise RuntimeError(f"No PCAP ready in {pcap_dir} after {timeout}s")
+    raise RuntimeError(f"server.pcap not ready after {timeout}s")
 
 
 def _copy_pcap(src: Path, run_id: str) -> Path:
@@ -56,29 +33,19 @@ def _copy_pcap(src: Path, run_id: str) -> Path:
 
 
 def _read_defender_alerts(run_id: str) -> list[dict]:
-    """
-    Read alerts from the main defender file plus a local sentinel file we control.
-    This allows verification to work even if the main file is owned by root.
-    """
-    base = ROOT / "outputs" / run_id / "slips"
-    paths = [
-        base / "defender_alerts.ndjson",  # created by SLIPS (often root-owned)
-        base / "slips_verify_sentinels.ndjson",  # writable by the host user
-    ]
-
+    alerts_path = ROOT / "outputs" / run_id / "defender_alerts.ndjson"
+    if not alerts_path.exists():
+        return []
     entries: list[dict] = []
-    for path in paths:
-        if not path.exists():
-            continue
-        try:
-            with path.open("r", encoding="utf-8") as handle:
-                for line in handle:
-                    try:
-                        entries.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-        except OSError:
-            continue
+    try:
+        with alerts_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return []
     return entries
 
 
@@ -120,76 +87,16 @@ def _wait_for_alert(pcap_name: str, run_id: str, timeout: int) -> None:
     raise RuntimeError(f"Timed out waiting for SLIPS alert for {pcap_name} after {timeout}s")
 
 
-def _force_defender_process(pcap_name: str, run_id: str) -> None:
-    """
-    Manually invoke SLIPS inside the defender container to process the given PCAP.
-    This is a fallback in case the watcher misses the file.
-    """
-    cmd = [
-        "docker",
-        "exec",
-        "lab_slips_defender",
-        "python3",
-        "/StratosphereLinuxIPS/slips.py",
-        "-f",
-        f"dataset/{pcap_name}",
-    ]
-    try:
-        subprocess.run(
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=180,
-        )
-        print(f"[slips_verify] Forced SLIPS processing for {pcap_name}", flush=True)
-    except subprocess.TimeoutExpired:  # pragma: no cover - best effort fallback
-        print(f"[slips_verify] WARNING: manual SLIPS run timed out for {pcap_name}", flush=True)
-    except subprocess.CalledProcessError as exc:  # pragma: no cover - best effort fallback
-        print(f"[slips_verify] WARNING: manual SLIPS run failed for {pcap_name}: {exc}", flush=True)
-
-
-def _write_manual_sentinel(pcap_name: str, run_id: str, note: str) -> None:
-    """Append a sentinel line to defender_alerts.ndjson and _watch_events/alerts.log."""
-    line = json.dumps(
-        {
-            "run_id": run_id,
-            "pcap": pcap_name,
-            "source": "slips_verify_manual",
-            "timestamp": time.time(),
-            "note": note,
-        }
-    )
-    slips_dir = ROOT / "outputs" / run_id / "slips"
-    slips_dir.mkdir(parents=True, exist_ok=True)
-    sentinel_file = slips_dir / "slips_verify_sentinels.ndjson"
-    with sentinel_file.open("a", encoding="utf-8") as handle:
-        handle.write(line + "\n")
-    watch_events = ROOT / "outputs" / run_id / "slips" / "_watch_events"
-    try:
-        watch_events.mkdir(parents=True, exist_ok=True)
-        with (watch_events / "alerts.log").open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-    except OSError:
-        # Best-effort only; lack of permission in slips should not block the verify run
-        pass
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Trigger SLIPS processing and wait for alert")
     parser.add_argument("--run-id", required=True, help="RUN_ID to target (matches outputs/<run_id>)")
-    parser.add_argument("--pcap-timeout", type=int, default=180, help="Seconds to wait for any PCAP capture")
+    parser.add_argument("--pcap-timeout", type=int, default=180, help="Seconds to wait for server.pcap")
     parser.add_argument("--alert-timeout", type=int, default=300, help="Seconds to wait for SLIPS alert")
     args = parser.parse_args()
 
     try:
-        base_pcap = _wait_for_base_pcap(args.run_id, args.pcap_timeout)
+        base_pcap = _wait_for_server_pcap(args.run_id, args.pcap_timeout)
         injected = _copy_pcap(base_pcap, args.run_id)
-        # Nudge defender in case the watcher misses the injected file
-        _force_defender_process(injected.name, args.run_id)
-        # Emit manual sentinels so wait logic can succeed even if watcher is noisy
-        _write_manual_sentinel(injected.name, args.run_id, "queued")
-        _write_manual_sentinel(injected.name, args.run_id, "completed")
         _wait_for_alert(injected.name, args.run_id, args.alert_timeout)
         print(f"[slips_verify] SLIPS alert confirmed for {injected.name}")
         return 0

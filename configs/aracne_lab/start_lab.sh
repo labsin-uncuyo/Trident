@@ -42,6 +42,10 @@ data = expand(data)
 dst.write_text(yaml.safe_dump(data))
 PY
 
+# Start netcat listener in background to receive database dumps
+nc -lvnp 443 > /tmp/labdb_dump.sql 2>/tmp/nc_listener.log &
+echo "Netcat listener started on port 443"
+
 exec python3 aracne.py \
   -e /agent/.env \
   -c "$CONFIG_DST" \

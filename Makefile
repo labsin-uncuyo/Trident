@@ -19,9 +19,7 @@ up:
 	docker network rm lab_net_a >/dev/null 2>&1 || true; \
 	docker network rm lab_net_b >/dev/null 2>&1 || true; \
 	opts="--profile core"; \
-	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d; \
-	echo "Setting up SSH keys for auto_responder..."; \
-	./scripts/setup_ssh_keys_host.sh
+	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d
 
 down:
 	$(COMPOSE) down --volumes
@@ -117,7 +115,9 @@ defend:
 	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips ./outputs/$$RUN_ID_VALUE/aracne ./outputs/$$RUN_ID_VALUE/ghosts; \
 	opts="--profile core --profile defender"; \
 	echo "[defend] Starting defender components"; \
-	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d --no-recreate --no-build router server compromised switch slips_defender
+	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d --no-recreate --no-build router server compromised switch slips_defender; \
+	echo "[defend] Setting up SSH keys for auto_responder..."; \
+	./scripts/setup_ssh_keys_host.sh
 
 not_defend:
 	@echo "[not_defend] Stopping defender components (containers stay present)"
