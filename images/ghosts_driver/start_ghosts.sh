@@ -6,7 +6,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$REPO_ROOT"
 
 echo "==========================================="
 echo "Starting GHOSTS Driver"
@@ -26,9 +27,7 @@ if [ "$GHOSTS_MODE" = "shadows" ]; then
     
     if ! docker ps | grep -q "ghosts-shadows"; then
         echo "⚠ Shadows API not running. Starting GHOSTS infrastructure..."
-        cd images/ghosts_driver
-        ./start_ghosts_api.sh
-        cd "$SCRIPT_DIR"
+        "$SCRIPT_DIR/start_ghosts_api.sh"
     else
         echo "✓ Shadows API already running"
     fi

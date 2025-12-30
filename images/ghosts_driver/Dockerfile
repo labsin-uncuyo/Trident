@@ -37,13 +37,13 @@ RUN ln -s /opt/ghosts/bin/Ghosts.Client.Universal /opt/ghosts/ghosts.client.linu
 # Configuración SSH básica (sin claves, usará contraseña)
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
-# Configuración del Timeline de John Scott (debe ir en bin/config donde GHOSTS lo busca)
-COPY images/ghosts_driver/john_scott_dummy/timeline_john_scott.json /opt/ghosts/bin/config/timeline.json
-COPY images/ghosts_driver/application.json /opt/ghosts/bin/config/application.json
-
-# Copiar configuraciones LLM para GHOSTS nativo
+# Copiar configuraciones LLM para GHOSTS (incluye scripts y templates)
 COPY images/ghosts_driver/john_scott_llm /opt/ghosts/john_scott_llm
-COPY images/ghosts_driver/john_scott_dummy /opt/ghosts/john_scott_dummy
+
+# Configuración del Timeline de John Scott (debe ir en bin/config donde GHOSTS lo busca)
+# Por defecto usa el timeline estático y configuración de Shadows
+COPY images/ghosts_driver/john_scott_llm/timeline_john_scott_llm.json /opt/ghosts/bin/config/timeline.json
+COPY images/ghosts_driver/john_scott_llm/application_shadows.json /opt/ghosts/bin/config/application.json
 
 # Script de inicio
 COPY images/ghosts_driver/entrypoint.sh /entrypoint.sh
