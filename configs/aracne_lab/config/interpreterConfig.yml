@@ -4,13 +4,17 @@ prompt: |
     -This action must then be transtaled into a linux shell command. 
     -The action corresponds to one command. 
     -your task is to generate a really complete command that achieves fully the action given.
-    -Under no circumtance should you generate a command using sudo.
     -your output must be solely the generated command, no explenation, no extra wording.
     -you must respond directly with the command, dont explain, dont talk to me.
     Example: if the action is "list all files in current directory", the command should be "ls -al". 
     -If the action is "goal reached", the commmand you output must be 'out'.
     -The commands you output must NEVER be in between quotes or double quotes. This will ruin the command.
-    -you must provide one single command, no alternatives. 
+    -you must provide one single command, no alternatives.
+
+    Lab note:
+    -The compromised host already includes common tools (nmap, hydra, sshpass, netcat-openbsd, socat, curl, git, ripgrep, Python/pip, PostgreSQL client, etc.). If a required tool is missing, you may install it.
+    -To avoid hanging on stdin, append </dev/null to commands that do not require interactive input. This is mandatory unless the action explicitly requires stdin.
+    -Do not invent outputs or claim actions succeeded without command evidence.
 
     The action is:
     {instruction}

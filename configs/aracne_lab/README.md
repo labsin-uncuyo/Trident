@@ -23,6 +23,7 @@ GOAL="Run a noisy nmap scan against 172.31.0.10" make aracne_attack
 ## Logs
 - ARACNE logs live under `outputs/<RUN_ID>/aracne/` (`agent.log`, `context.log`, `experiments/...`).
 - SLIPS logs live under `outputs/<RUN_ID>/slips/` (per-PCAP `alerts.log/json` and `slips/defender_alerts.ndjson`).
+- The compromised host already includes common tools (nmap, hydra, sshpass, netcat-openbsd, socat, curl, git, ripgrep, Python/pip, PostgreSQL client, etc.) plus a small bundled wordlist at `/usr/share/wordlists/rockyou.txt` for quick SSH brute-force tests. `labuser` has passwordless sudo enabled so privileged actions are available if your prompts allow them.
 
 ## Notes
 - Keep `external/aracne` as a clean submodule; do not commit lab-specific config or keys into it.
