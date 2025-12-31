@@ -87,6 +87,8 @@ klogin,543,tcp,
 klogin,543,udp,
 kshell,544,tcp,krcmd
 kshell,544,udp,krcmd
+postgresql,5432,tcp,PostgreSQL Database
+postgresql,5432,udp,PostgreSQL Database
 dhcpv6-client,546,tcp,DHCPv6 Client
 dhcpv6-client,546,udp,DHCPv6 Client
 rtsp,554,tcp,Real Time Streaming Protocol
