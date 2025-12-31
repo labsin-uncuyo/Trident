@@ -37,6 +37,7 @@ Use `make COMPOSE=docker-compose up` if you rely on the legacy binary. Point `PY
 - **compromised (lab_compromised)** – 172.30.0.10 with SSH exposed on `127.0.0.1:2223`, includes enhanced tooling, GHOSTS framework, OpenCode, and routes 172.31.0.0/24 via the router.
 - **server (lab_server)** – 172.31.0.10 with nginx on `127.0.0.1:8080` and PostgreSQL on `127.0.0.1:5432`, both also exposed to the host via port mappings. Postgres boots with a demo `labdb` + `events` table. **OpenCode v1.0.77** is installed and configured with e-INFRA CZ Chat API for AI-assisted operations.
   - **Web login test app** – nginx proxies `/login` to a Flask service on port 5000 inside the server container (code in `images/server/flask_app/`). Default credentials are `admin/admin`; override via `.env` (`LOGIN_USER`/`LOGIN_PASSWORD`) and recreate the server container. Logs land in `/var/log/flask-login.log` plus nginx access logs.
+  - **PostgreSQL auth** – remote access requires password auth (`md5`). Default DB creds are `labuser/labpass`, configurable via `.env` (`DB_USER`/`DB_PASSWORD`). SSL stays disabled to keep traffic visible in PCAPs.
  - **ghosts_driver (lab_ghosts_driver)** – benign workload generator; only starts when invoked via `make ghosts_psql`. Default image is built for `linux-arm64`; on amd64 hosts you must rebuild the client (e.g., `dotnet publish -c Release -r linux-x64 --self-contained true -o /opt/ghosts/bin`) or use a multi-arch build to avoid `exec format error`.
  - **aracne_attacker (lab_aracne_attacker)** – attacker container; only starts when invoked via `make aracne_attack`.
 
@@ -89,7 +90,8 @@ To enable SLIPS active blocking later, tweak `/opt/lab/watch_pcaps.py` (or overr
 
 ## Access checklist
 - Compromised host: `ssh labuser@127.0.0.1 -p 2223` (password from `.env`).
-- Server services: `http://127.0.0.1:8080/` and `psql -h 127.0.0.1 -p 5432 -U postgres labdb`.
+- Server services: `http://127.0.0.1:8080/` and `PGPASSWORD=labpass psql -h 127.0.0.1 -p 5432 -U labuser labdb`.
+- DB auth smoke test (from host via compromised): `docker exec lab_compromised bash -lc 'PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb -c "SELECT current_user;"'`
 - Defender health: `docker exec lab_slips_defender curl -fsS http://127.0.0.1:${DEFENDER_PORT}/health`.
 - OpenCode AI: Use the helper script `./opencode.sh "your prompt"` or directly `docker exec lab_server opencode run "your prompt"`.
 

@@ -217,4 +217,4 @@ For questions or feedback:
 
 ---
 
-Built with ❤️ by the Trident team | © 2024
+Built with ❤️ by the Trident team | © 2025

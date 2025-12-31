@@ -51,12 +51,22 @@ PCAP_ROTATE_SECS=10 ./run_experiment.sh
 ```
 
 ### Web Login Smoke Test (manual)
-Run from inside the compromised container:
+Run from the host (executes inside the compromised container):
 ```bash
-for i in $(seq 1 50); do
+docker exec lab_compromised bash -lc 'for i in $(seq 1 50); do
   curl -s -o /dev/null -w "%{http_code}\n" -X POST \
     -d "username=admin&password=wrongpass" http://172.31.0.10/login
-done
+done'
+```
+
+### PostgreSQL Brute Force Smoke Test (manual)
+Run from the host (executes inside the compromised container):
+```bash
+docker exec lab_compromised bash -lc 'for i in $(seq 1 50); do
+  PGPASSWORD="wrongpass" psql -h 172.31.0.10 -U labuser -d labdb -c "SELECT 1;" >/dev/null 2>&1 \
+    && echo "hit" && break
+  echo "try $i"
+done'
 ```
 
 ### Multiple Experiments
