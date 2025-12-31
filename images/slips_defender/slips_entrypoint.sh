@@ -12,6 +12,9 @@ mkdir -p "/outputs/${RUN_ID}/pcaps" "/outputs/${RUN_ID}/slips"
 mkdir -p "${SLIPS_DATASET_DIR}" "${SLIPS_OUTPUT_DIR}"
 mkdir -p "/StratosphereLinuxIPS/slips_files/ports_info"
 
+# Sync local ports_info overrides into the Slips runtime path.
+cp -f /opt/lab/slips_files/ports_info/services.csv /StratosphereLinuxIPS/slips_files/ports_info/services.csv
+
 # Clear stale pcaps so the watcher processes fresh captures promptly
 find "${SLIPS_DATASET_DIR}" -maxdepth 1 -type f -name "*.pcap*" \
   ! -name "router.pcap" ! -name "router_stream.pcap" ! -name "switch_stream.pcap" ! -name "server.pcap" \
