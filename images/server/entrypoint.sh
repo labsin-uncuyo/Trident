@@ -4,9 +4,13 @@ set -euo pipefail
 : "${RUN_ID:=run_local}"
 : "${LOGIN_USER:=admin}"
 : "${LOGIN_PASSWORD:=admin}"
+: "${DB_USER:=labuser}"
+: "${DB_PASSWORD:=labpass}"
 
 export LOGIN_USER
 export LOGIN_PASSWORD
+export DB_USER
+export DB_PASSWORD
 
 pcap_dir="/outputs/${RUN_ID}/pcaps"
 mkdir -p "${pcap_dir}"
@@ -62,12 +66,17 @@ pg_log="/var/log/postgresql/postgresql-${pg_version}-main.log"
 sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" "${pg_conf}"
 # Force plaintext connections so router captures show queries without SSL wrapping
 sed -i "s/^#\\?ssl = .*/ssl = off/" "${pg_conf}"
-if ! grep -q "0.0.0.0/0" "${pg_hba}"; then
-    echo "host all all 0.0.0.0/0 trust" >> "${pg_hba}"
+sed -i '/0.0.0.0\/0.*trust/d' "${pg_hba}"
+if ! grep -q "0.0.0.0/0.*md5" "${pg_hba}"; then
+    echo "host all all 0.0.0.0/0 md5" >> "${pg_hba}"
 fi
 
 systemctl start postgresql
 systemctl start ssh
+
+runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}';" | grep -q 1 \
+    || runuser -u postgres -- psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" >/dev/null
+runuser -u postgres -- psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" >/dev/null
 
 if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='labdb';" | grep -q 1; then
     runuser -u postgres -- createdb labdb
