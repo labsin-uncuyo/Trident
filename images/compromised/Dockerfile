@@ -41,6 +41,13 @@ RUN apt-get update \
     && mkdir -p /var/run/sshd \
     && ssh-keygen -A
 
+# Allow labuser passwordless sudo (used by ARACNE when elevated actions are required)
+RUN echo "labuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/labuser \
+    && chmod 440 /etc/sudoers.d/labuser
+
+# Provide a small built-in wordlist for brute-force experiments (used by ARACNE)
+COPY wordlists/rockyou.txt /usr/share/wordlists/rockyou.txt
+
 # --------------------------------------------------------------------
 # OPENCODE INSTALLATION (from shared/opencode-install.dockerfile)
 # --------------------------------------------------------------------
