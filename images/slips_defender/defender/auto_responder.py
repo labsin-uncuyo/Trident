@@ -428,9 +428,10 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                 # Use SSH to connect to target machine and run OpenCode
                 # Use base64 encoding to safely pass the context without shell escaping issues
                 # Log timing data directly on the target machine before/after OpenCode
+                # Capture OpenCode JSON output for full reasoning trace
                 ssh_command = f'''export OPENCODE_API_KEY={opencode_api_key}
 echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
-(opencode run --agent soc_god -- "$(echo '{context_b64}' | base64 -d)"; echo "OPENCODE_END=$(date -Iseconds) EXIT_CODE=$?" >> /tmp/opencode_exec_times.log) || echo "OPENCODE_ERROR=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
+(opencode run --agent soc_god --format json --log-level DEBUG -- "$(echo '{context_b64}' | base64 -d)" 2>&1; echo "OPENCODE_END=$(date -Iseconds) EXIT_CODE=$?" >> /tmp/opencode_exec_times.log) || echo "OPENCODE_ERROR=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
 '''
 
                 ssh_cmd = [
@@ -451,11 +452,74 @@ echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
                     check=True
                 )
 
+                # Parse and log OpenCode JSON events to timeline
+                # Each event gets its own timeline entry for full traceability
+                tool_calls = []
+                llm_calls = 0
+                final_output = None
+                errors = []
+                text_outputs = []
+
+                structured_log_file = Path("/outputs") / RUN_ID / "auto_responder_timeline.jsonl"
+
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+
+                        # Extract metrics based on actual OpenCode event types
+                        event_type = event.get("type", "")
+
+                        if event_type == "step_start":
+                            # Each reasoning step involves LLM processing
+                            llm_calls += 1
+                        elif event_type == "tool_use":
+                            # Extract tool name from tool_use events
+                            part = event.get("part", {})
+                            tool_name = part.get("tool", "unknown")
+                            tool_calls.append(tool_name)
+                        elif event_type == "text":
+                            # Collect text output
+                            part = event.get("part", {})
+                            text_content = part.get("text", "")
+                            if text_content:
+                                text_outputs.append(text_content)
+                        elif event_type == "Error":
+                            errors.append(str(event))
+
+                        # Log each OpenCode event to timeline with OPENCODE level
+                        timestamp = datetime.now(timezone.utc).isoformat()
+                        timeline_entry = {
+                            "ts": timestamp,
+                            "level": "OPENCODE",
+                            "msg": event_type,
+                            "exec": execution_id[:8],
+                            "data": event
+                        }
+                        with open(structured_log_file, "a") as f:
+                            f.write(json.dumps(timeline_entry, separators=(',', ':')) + "\n")
+
+                    except (json.JSONDecodeError, ValueError):
+                        # Non-JSON output - save as final output if we haven't captured one yet
+                        if final_output is None and line:
+                            final_output = line[:500]
+
+                # Use collected text outputs as final output
+                if not final_output and text_outputs:
+                    final_output = " ".join(text_outputs)[-500:]
+
+                # Final EXEC entry with summary
                 self.log("EXEC", f"✓ Success on {target_name}", alert_hash, execution_id, extra_data={
                     "status": "success",
                     "target": target_name,
-                    "output": result.stdout[:1000] if result.stdout else None,
-                    "stderr": result.stderr[:1000] if result.stderr else None
+                    "output": final_output[:500] if final_output else None,
+                    "llm_calls": llm_calls,
+                    "tool_calls": tool_calls,
+                    "unique_tools": len(set(tool_calls)),
+                    "errors": errors if errors else None,
+                    "stderr": result.stderr[:500] if result.stderr else None
                 })
                 return True
 
@@ -471,13 +535,38 @@ echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
                 ssh_failed = "connection refused" in (e.stderr or "").lower() or \
                              "no route to host" in (e.stderr or "").lower() or \
                              "permission denied" in (e.stderr or "").lower()
-                
+
+                # Parse any partial OpenCode output even on failure
+                partial_events = []
+                if e.stdout:
+                    structured_log_file = Path("/outputs") / RUN_ID / "auto_responder_timeline.jsonl"
+                    for line in e.stdout.split('\n'):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            event = json.loads(line)
+                            partial_events.append(event)
+                            timestamp = datetime.now(timezone.utc).isoformat()
+                            timeline_entry = {
+                                "ts": timestamp,
+                                "level": "OPENCODE",
+                                "msg": event.get("type", ""),
+                                "exec": execution_id[:8],
+                                "data": event
+                            }
+                            with open(structured_log_file, "a") as f:
+                                f.write(json.dumps(timeline_entry, separators=(',', ':')) + "\n")
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
                 self.log("ERROR", f"{'SSH failed' if ssh_failed else 'OpenCode failed'} on {target_name} (exit {e.returncode})", alert_hash, execution_id, extra_data={
                     "status": "ssh_error" if ssh_failed else "exec_error",
                     "target": target_name,
                     "exit_code": e.returncode,
                     "stdout": e.stdout[:1000] if e.stdout else None,
-                    "stderr": e.stderr[:1000] if e.stderr else None
+                    "stderr": e.stderr[:1000] if e.stderr else None,
+                    "partial_opencode_events": len(partial_events)
                 })
 
             except Exception as e:
