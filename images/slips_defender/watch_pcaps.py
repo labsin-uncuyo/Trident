@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import json
 import shutil
 import subprocess
@@ -9,7 +10,7 @@ from pathlib import Path
 
 DATASET_DIR = Path("/StratosphereLinuxIPS/dataset")
 OUTPUT_DIR = Path("/StratosphereLinuxIPS/output")
-RUN_ID = "run_local"
+RUN_ID = os.getenv("RUN_ID", "run_local")
 # Fixed cadence and behavior: no active stream snapshots, 5s poll, 60s per-PCAP timeout.
 POLL_INTERVAL = 5.0
 PROCESS_ACTIVE = False
