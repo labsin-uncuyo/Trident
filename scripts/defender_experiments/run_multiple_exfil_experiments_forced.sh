@@ -7,11 +7,12 @@
 # NO traps that exit - we want to ignore interrupts
 
 # Configuration
-NUM_EXPERIMENTS=30
+NUM_EXPERIMENTS=50
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EXPERIMENT_SCRIPT="$SCRIPT_DIR/exfiltration_experiment.sh"
-EXPERIMENT_OUTPUT_ROOT="$PROJECT_ROOT/experiment_output"
+EXPERIMENT_OUTPUT_ROOT="$PROJECT_ROOT/exfil_experiment_output_75_new"
+RUN_ID_FILE="$PROJECT_ROOT/outputs/.current_run"
 
 # Colors for output
 RED='\033[0;31m'
@@ -63,50 +64,44 @@ run_forced_exfil_experiments() {
 
         # Generate a unique experiment ID
         local experiment_id="exfil_forced_$(date +%s)_run_$i"
-
-        # Create experiment directory
-        local experiment_dir="$EXPERIMENT_OUTPUT_ROOT/exfil_forced_run_${i}_$experiment_id"
-        mkdir -p "$experiment_dir/logs"
-
+        
+        # The single experiment script will create its own directory structure in $PROJECT_ROOT/outputs/$experiment_id
+        # We'll collect results from there after completion
+        
         # ALWAYS run the experiment, ignore all errors
         log "FORCED: Running exfiltration experiment $i with ID: $experiment_id"
-
+        
         # Use timeout to prevent hanging, but continue on any failure
         # Increased timeout to 30 minutes (exfil can take up to 15 min max + setup time)
-        timeout 1800 "$EXPERIMENT_SCRIPT" "$experiment_id" > "$experiment_dir/logs/experiment_output.log" 2>&1 || {
+        timeout 1800 "$EXPERIMENT_SCRIPT" "$experiment_id" 2>&1 | tee -a /tmp/exfil_forced_runner_experiment_${i}.log || {
             local exit_code=$?
             log_error "Exfil experiment $i failed with code $exit_code - CONTINUING ANYWAY"
-            echo "Exfil experiment $i failed with exit code $exit_code at $(date)" >> "$experiment_dir/logs/forced_status.log"
-
+            
             # Log additional context for debugging
             if [[ $exit_code -eq 137 ]]; then
                 log_error "Exfil experiment $i was terminated (likely blocked by defender or timeout)"
-                echo "Possible defender action detected - experiment terminated" >> "$experiment_dir/logs/forced_status.log"
             elif [[ $exit_code -eq 124 ]]; then
                 log_error "Exfil experiment $i timed out after 30 minutes"
-                echo "Experiment timeout" >> "$experiment_dir/logs/forced_status.log"
             fi
         }
 
-        # ALWAYS copy results if they exist
+        # ALWAYS move results from outputs/$experiment_id to final location if they exist
         local source_dir="$PROJECT_ROOT/outputs/$experiment_id"
+        local final_dir="$EXPERIMENT_OUTPUT_ROOT/exfil_forced_run_${i}_$experiment_id"
+        
         if [[ -d "$source_dir" ]]; then
-            log "FORCED: Copying results for exfil experiment $i"
-            cp -r "$source_dir"/* "$experiment_dir/" 2>/dev/null || log_warning "Failed to copy some results for exfil experiment $i"
+            log "FORCED: Moving results for exfil experiment $i from outputs to final location"
+            mkdir -p "$final_dir"
+            mv "$source_dir"/* "$final_dir/" 2>/dev/null || log_warning "Failed to move some results for exfil experiment $i"
+            rmdir "$source_dir" 2>/dev/null || true
             ((completed_experiments++))
-            log_success "Exfil experiment $i results copied"
+            log_success "Exfil experiment $i results saved to $final_dir"
         else
-            log_warning "No results directory found for exfil experiment $i"
+            log_warning "No results directory found for exfil experiment $i at $source_dir"
         fi
 
         # Always log progress
         log "FORCED: Exfil experiment $i processing complete. $i/$NUM_EXPERIMENTS processed."
-        echo "Exfil experiment $i processed at $(date)" >> /tmp/exfil_forced_runner_status.log
-
-        # Clean up original outputs if exists
-        if [[ -d "$source_dir" ]]; then
-            rm -rf "$source_dir" 2>/dev/null || true
-        fi
 
         # Wait between experiments
         if [[ $i -lt $NUM_EXPERIMENTS ]]; then
