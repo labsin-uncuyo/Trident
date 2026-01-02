@@ -476,8 +476,30 @@ if [[ -f "$EXPERIMENT_OUTPUTS/logs/monitoring.json" ]]; then
     fi
 fi
 
-# Create JSON summary
-cat > "$EXPERIMENT_OUTPUTS/exfil_experiment_summary.json" << EOF
+# Create JSON summary - with error handling to prevent silent failures
+# Set all required variables to defaults if not set
+: "${experiment_end_reason:=unknown}"
+: "${time_to_high_conf:=null}"
+: "${high_confidence_alert_time:=null}"
+: "${high_conf_alert_details:=null}"
+: "${time_to_plan:=null}"
+: "${first_plan_time:=null}"
+: "${time_to_exec:=null}"
+: "${first_successful_exec_time:=null}"
+: "${time_to_last_byte:=null}"
+: "${last_byte_time:=null}"
+: "${final_exfil_size:=0}"
+: "${final_exfil_size_human:=0 bytes}"
+: "${defender_failed:=false}"
+: "${blocked_mid_transfer:=false}"
+: "${block_time_seconds:=null}"
+: "${time_from_opencode_start_to_block:=null}"
+: "${transfer_duration_seconds:=null}"
+: "${transfer_speed_mbps:=0 Mbps}"
+: "${bytes_saved_from_exfil:=null}"
+
+# Generate JSON with error checking
+if ! cat > "$EXPERIMENT_OUTPUTS/exfil_experiment_summary.json" << EOF
 {
     "experiment_id": "$EXPERIMENT_ID",
     "exfiltration_start_time": "$exfil_start_iso",
@@ -485,29 +507,33 @@ cat > "$EXPERIMENT_OUTPUTS/exfil_experiment_summary.json" << EOF
     "total_duration_seconds": $TOTAL_DURATION,
     "end_reason": "$experiment_end_reason",
     "metrics": {
-        "time_to_high_confidence_alert_seconds": ${time_to_high_conf:-null},
-        "high_confidence_alert_time": "${high_confidence_alert_time:-null}",
-        "high_confidence_alert_details": ${high_conf_alert_details:-null},
-        "time_to_plan_generation_seconds": ${time_to_plan:-null},
-        "plan_generation_time": "${first_plan_time:-null}",
-        "time_to_opencode_execution_seconds": ${time_to_exec:-null},
-        "opencode_execution_time": "${first_successful_exec_time:-null}",
-        "time_to_last_byte_seconds": ${time_to_last_byte:-null},
-        "last_byte_time": "${last_byte_time:-null}",
+        "time_to_high_confidence_alert_seconds": ${time_to_high_conf},
+        "high_confidence_alert_time": "${high_confidence_alert_time}",
+        "high_confidence_alert_details": ${high_conf_alert_details},
+        "time_to_plan_generation_seconds": ${time_to_plan},
+        "plan_generation_time": "${first_plan_time}",
+        "time_to_opencode_execution_seconds": ${time_to_exec},
+        "opencode_execution_time": "${first_successful_exec_time}",
+        "time_to_last_byte_seconds": ${time_to_last_byte},
+        "last_byte_time": "${last_byte_time}",
         "exfil_file_size_bytes": $final_exfil_size,
         "exfil_file_size_human": "$final_exfil_size_human",
-        "defender_failed": ${defender_failed:-false},
+        "defender_failed": ${defender_failed},
         "blocking_analysis": {
             "blocked_mid_transfer": $blocked_mid_transfer,
-            "block_time_seconds": ${block_time_seconds:-null},
-            "time_from_opencode_start_to_block_seconds": ${time_from_opencode_start_to_block:-null},
-            "transfer_duration_seconds": ${transfer_duration_seconds:-null},
+            "block_time_seconds": ${block_time_seconds},
+            "time_from_opencode_start_to_block_seconds": ${time_from_opencode_start_to_block},
+            "transfer_duration_seconds": ${transfer_duration_seconds},
             "transfer_speed": "$transfer_speed_mbps",
-            "bytes_saved_from_exfiltration": "${bytes_saved_from_exfil:-null}"
+            "bytes_saved_from_exfiltration": "${bytes_saved_from_exfil}"
         }
     }
 }
 EOF
+then
+    log_error "Failed to generate summary JSON - saving minimal summary"
+    echo "{\"experiment_id\": \"$EXPERIMENT_ID\", \"error\": \"summary_generation_failed\"}" > "$EXPERIMENT_OUTPUTS/exfil_experiment_summary.json"
+fi
 
 # Print summary
 log ""
