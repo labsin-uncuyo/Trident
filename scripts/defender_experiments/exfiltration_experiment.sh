@@ -578,4 +578,11 @@ rm -rf "$EXPERIMENT_OUTPUTS/pcaps" 2>/dev/null || true
 rm -rf "/home/diego/Trident/outputs/$EXPERIMENT_ID/pcaps" 2>/dev/null || true
 log "PCAPs deleted"
 
+# Delete labdb_dump.sql to save disk space (~1.5GB per experiment)
+log "Deleting labdb_dump.sql to save disk space..."
+rm -f "$EXPERIMENT_OUTPUTS/logs/labdb_dump.sql" 2>/dev/null || true
+# Also delete from the original outputs directory
+rm -f "/home/diego/Trident/outputs/$EXPERIMENT_ID/logs/labdb_dump.sql" 2>/dev/null || true
+log "labdb_dump.sql deleted"
+
 exit 0

@@ -55,29 +55,44 @@ outputs/<EXPERIMENT_ID>/
 ---
 
 ### Batch Experiments
-**File**: `scripts/defender_experiments/run_multiple_exfil_experiments_forced.sh`
 
-Runs multiple experiments sequentially for statistical analysis.
+**Python Script**: `scripts/defender_experiments/run_50_experiments.py`
+
+Runs multiple experiments sequentially for statistical analysis using Python.
 
 ```bash
-# Run default 30 experiments
-./scripts/defender_experiments/run_multiple_exfil_experiments_forced.sh
-
-# Run custom number
-NUM_EXPERIMENTS=50 ./scripts/defender_experiments/run_multiple_exfil_experiments_forced.sh
+# Run with default number of experiments (edit NUM_EXPERIMENTS in script)
+python3 scripts/defender_experiments/run_50_experiments.py
 ```
 
 **Features**:
-- Forced execution (continues despite individual failures)
-- Automatic experiment ID generation
-- Per-experiment output isolation
-- Progress tracking and logging
+- Sequential experiment execution
+- 30-second wait between experiments
+- Automatic result organization
+- Success/failure tracking
+- Comprehensive logging to `/tmp/python_exfil_runner.log`
 
 **Outputs**:
 ```
-experiment_output/
-└── forced_run_<N>_exp_<timestamp>_<run_id>/
-    └── logs/
+exfil_experiment_output_50_python/
+└── exfil_py_run_<N>_<timestamp>/
+    ├── exfil_experiment_summary.json
+    ├── auto_responder_timeline.jsonl
+    ├── executions.jsonl
+    ├── logs/
+    └── pcaps/
+```
+
+**Alternative Shell Script**: `scripts/defender_experiments/run_multiple_experiments_forced.sh`
+
+Alternative batch runner using shell script (for SSH brute force experiments).
+
+```bash
+# Run default number of experiments
+./scripts/defender_experiments/run_multiple_experiments_forced.sh 5
+
+# Run with custom number
+./scripts/defender_experiments/run_multiple_experiments_forced.sh 10
 ```
 
 ---
@@ -230,18 +245,17 @@ tcpdump -r outputs/quick_test/pcaps/router_*.pcap -n 'host 137.184.126.86'
 
 ### Batch Experiments
 ```bash
-# 1. Run 30 experiments
-./scripts/defender_experiments/run_multiple_exfil_experiments_forced.sh
+# 1. Run multiple experiments (Python script)
+python3 scripts/defender_experiments/run_50_experiments.py
 
-# 2. Wait for completion (may take hours)
-tail -f /tmp/exfil_forced_runner.log
+# 2. Monitor progress
+tail -f /tmp/python_exfil_runner.log
 
-# 3. Plot results
-python3 scripts/defender_experiments/plot_experiment_results.py \
-    experiment_output/forced_run_*/
+# 3. Analyze results
+python3 scripts/defender_experiments/generate_opencode_analysis.py
 
 # 4. View statistics
-ls -la experiment_output/
+ls -la exfil_experiment_output_50_python/
 ```
 
 ---
@@ -284,8 +298,53 @@ ls -la experiment_output/
 | Purpose | Location |
 |---------|----------|
 | Experiment scripts | `scripts/defender_experiments/exfiltration_*.sh` |
-| Batch runner | `scripts/defender_experiments/run_multiple_exfil_experiments_forced.sh` |
+| Batch runner (Python) | `scripts/defender_experiments/run_50_experiments.py` |
+| Batch runner (Shell) | `scripts/defender_experiments/run_multiple_experiments_forced.sh` |
+| Analysis tools | `scripts/defender_experiments/generate_opencode_analysis.py` |
 | Plotting tool | `scripts/defender_experiments/plot_experiment_results.py` |
 | Experiment outputs | `outputs/<EXPERIMENT_ID>/` |
-| Batch outputs | `experiment_output/forced_run_*/` |
+| Batch outputs | `exfil_experiment_output_50_python/exfil_py_run_*/` |
 | PCAPs | `outputs/<RUN_ID>/pcaps/router_*.pcap` |
+
+---
+
+## Additional Analysis Tools
+
+### OpenCode Analysis
+**File**: `scripts/defender_experiments/generate_opencode_analysis.py`
+
+Comprehensive analysis of exfiltration experiment results with visualizations.
+
+```bash
+# Basic analysis
+python3 scripts/defender_experiments/generate_opencode_analysis.py
+
+# With LLM-powered pattern analysis
+python3 scripts/defender_experiments/generate_opencode_analysis.py --with-llm
+```
+
+**Generates**:
+- Summary statistics and success rates
+- Box plots for timing metrics
+- Command frequency analysis
+- Tool usage breakdown
+- Action categorization
+
+### Deep Dive Analysis
+**File**: `scripts/defender_experiments/expand_run_analysis.py`
+
+Uses LLM to provide detailed analysis of specific experiment runs.
+
+```bash
+python3 scripts/defender_experiments/expand_run_analysis.py
+```
+
+### Database Utilities
+**File**: `scripts/defender_experiments/enlarge_database_with_integrity.py`
+
+Enlarges test databases while maintaining referential integrity.
+
+```bash
+python3 scripts/defender_experiments/enlarge_database_with_integrity.py \
+    <input.sql> <output.sql> <multiplier>
+```
