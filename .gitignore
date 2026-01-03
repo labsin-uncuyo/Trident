@@ -30,3 +30,4 @@ wheels/
 *.egg
 
 !outputs/README.md
+# Configuration
