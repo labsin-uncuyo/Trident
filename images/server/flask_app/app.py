@@ -1,6 +1,8 @@
 from flask import Flask, Response, request
 import logging
 import os
+import json
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -12,6 +14,9 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logger = logging.getLogger("login_app")
+
+# Login attempts log file
+LOGIN_LOG_FILE = "/tmp/flask_login_attempts.jsonl"
 
 LOGIN_FORM = """<!doctype html>
 <html lang="en">
@@ -39,6 +44,21 @@ def login():
     username = request.form.get("username", "")
     password = request.form.get("password", "")
     remote = request.remote_addr or "unknown"
+
+    # Log this attempt to JSONL file
+    attempt_data = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "username": username,
+        "password_len": len(password),
+        "remote_addr": remote,
+        "success": username == EXPECTED_USER and password == EXPECTED_PASS
+    }
+
+    try:
+        with open(LOGIN_LOG_FILE, "a") as f:
+            f.write(json.dumps(attempt_data) + "\n")
+    except Exception as e:
+        logger.error("Failed to write login attempt log: %s", e)
 
     if username == EXPECTED_USER and password == EXPECTED_PASS:
         logger.info("login ok user=%s from=%s", username, remote)

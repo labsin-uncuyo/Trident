@@ -404,8 +404,18 @@ class OpenCodeAnalyzer:
             print("No timing data found")
             return
 
-        # Sort metrics by median value
-        sorted_metrics = sorted(timing_data.items(), key=lambda x: np.median(x[1]))
+        # Sort metrics by median value, but keep 'OpenCode Start to Block' last
+        opencode_start_key = 'time_from_opencode_start_to_block_seconds'
+
+        # Separate OpenCode Start to Block from other metrics
+        other_metrics = [(k, v) for k, v in timing_data.items() if k != opencode_start_key]
+        opencode_metric = [(k, v) for k, v in timing_data.items() if k == opencode_start_key]
+
+        # Sort other metrics by median value
+        sorted_other = sorted(other_metrics, key=lambda x: np.median(x[1]))
+
+        # Combine: sorted other metrics first, then OpenCode Start to Block last
+        sorted_metrics = sorted_other + opencode_metric
 
         fig, ax = plt.subplots(figsize=(12, 6))
 
