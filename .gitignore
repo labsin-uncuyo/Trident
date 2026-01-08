@@ -31,3 +31,4 @@ wheels/
 
 !outputs/README.md
 # Configuration
+images/server/employees_data_large.sql
