@@ -15,7 +15,7 @@ import subprocess
 import time
 import threading
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 import requests
@@ -29,6 +29,7 @@ PLANNER_URL = os.getenv("PLANNER_URL", "http://127.0.0.1:1654/plan")
 OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "600"))  # 10 minutes
 POLL_INTERVAL = float(os.getenv("AUTO_RESPONDER_INTERVAL", "5"))
 MAX_EXECUTION_RETRIES = int(os.getenv("MAX_EXECUTION_RETRIES", "3"))
+DUPLICATE_DETECTION_WINDOW = int(os.getenv("DUPLICATE_DETECTION_WINDOW", "300"))  # 5 minutes
 
 # SSH configuration
 SERVER_IP = "172.31.0.10"     # Server container IP
@@ -45,6 +46,7 @@ COMPROMISED_CONTAINER = "lab_compromised"
 class AutoResponder:
     def __init__(self):
         self.processed_alerts: Set[str] = set()
+        self.threat_history: Dict[str, datetime] = {}  # threat_hash -> first_seen
         self.lock = threading.Lock()
         self.setup_logging()
         self.load_processed_alerts()
@@ -56,7 +58,8 @@ class AutoResponder:
                 "poll_interval": POLL_INTERVAL,
                 "opencode_timeout": OPENCODE_TIMEOUT,
                 "server_ip": SERVER_IP,
-                "compromised_ip": COMPROMISED_IP
+                "compromised_ip": COMPROMISED_IP,
+                "duplicate_window": DUPLICATE_DETECTION_WINDOW
             }
         })
 
@@ -149,25 +152,48 @@ class AutoResponder:
                 with PROCESSED_FILE.open("r") as f:
                     data = json.load(f)
                     self.processed_alerts = set(data.get("processed_hashes", []))
-                print(f"[auto_responder] Loaded {len(self.processed_alerts)} processed alerts")
+                    # Load threat history with timestamps
+                    threat_history_data = data.get("threat_history", {})
+                    now = datetime.now(timezone.utc)
+                    # Only load threats within the duplicate window
+                    for threat_hash, timestamp_str in threat_history_data.items():
+                        try:
+                            threat_time = datetime.fromisoformat(timestamp_str)
+                            # Keep only recent threats (within duplicate window)
+                            if (now - threat_time).total_seconds() < DUPLICATE_DETECTION_WINDOW:
+                                self.threat_history[threat_hash] = threat_time
+                        except (ValueError, TypeError):
+                            continue
+                print(f"[auto_responder] Loaded {len(self.processed_alerts)} processed alerts, {len(self.threat_history)} recent threats")
         except Exception as e:
             print(f"[auto_responder] Failed to load processed alerts: {e}")
             self.processed_alerts = set()
+            self.threat_history = {}
 
     def save_processed_alerts(self) -> None:
-        """Save set of processed alert hashes"""
+        """Save set of processed alert hashes and threat history"""
         try:
             PROCESSED_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+            # Clean up old threats from history before saving
+            now = datetime.now(timezone.utc)
+            active_threats = {
+                threat_hash: threat_time.isoformat()
+                for threat_hash, threat_time in self.threat_history.items()
+                if (now - threat_time).total_seconds() < DUPLICATE_DETECTION_WINDOW
+            }
+
             with PROCESSED_FILE.open("w") as f:
                 json.dump({
                     "processed_hashes": list(self.processed_alerts),
-                    "last_updated": datetime.now().isoformat()
+                    "threat_history": active_threats,
+                    "last_updated": datetime.now(timezone.utc).isoformat()
                 }, f, indent=2)
         except Exception as e:
             print(f"[auto_responder] Failed to save processed alerts: {e}")
 
     def get_alert_hash(self, alert: Dict) -> str:
-        """Generate hash for alert deduplication"""
+        """Generate hash for alert deduplication (includes timestamp)"""
         # Use key fields that define uniqueness of an alert
         key_fields = {
             "sourceip": alert.get("sourceip", ""),
@@ -178,6 +204,68 @@ class AutoResponder:
         }
         alert_str = json.dumps(key_fields, sort_keys=True)
         return hashlib.md5(alert_str.encode()).hexdigest()
+
+    def get_threat_hash(self, alert: Dict) -> str:
+        """Generate hash for threat deduplication (excludes timestamp)"""
+        # Extract IPs from raw alert if not in structured fields
+        source_ip = alert.get("sourceip", "")
+        dest_ip = alert.get("destip", "")
+        raw_alert = alert.get("raw", "")
+
+        if not source_ip or not dest_ip:
+            import re
+            ip_match = re.findall(r'(\d+\.\d+\.\d+\.\d+)', raw_alert)
+            if len(ip_match) >= 2:
+                source_ip, dest_ip = ip_match[0], ip_match[1]
+            elif len(ip_match) == 1:
+                source_ip = ip_match[0]
+
+        # Extract attack type from raw alert
+        attack_type = "unknown"
+        if "horizontal port scan" in raw_alert.lower():
+            attack_type = "horizontal_port_scan"
+        elif "vertical port scan" in raw_alert.lower():
+            attack_type = "vertical_port_scan"
+        elif "brute force" in raw_alert.lower():
+            attack_type = "brute_force"
+        elif "denial of service" in raw_alert.lower() or "ddos" in raw_alert.lower():
+            attack_type = "dos"
+        elif alert.get("attackid"):
+            attack_type = alert.get("attackid", "unknown")
+
+        # Create hash based on threat characteristics (not timestamp)
+        threat_fields = {
+            "source_ip": source_ip,
+            "dest_ip": dest_ip,
+            "attack_type": attack_type,
+            "proto": alert.get("proto", "")
+        }
+        threat_str = json.dumps(threat_fields, sort_keys=True)
+        return hashlib.md5(threat_str.encode()).hexdigest()
+
+    def is_duplicate_threat(self, alert: Dict, alert_hash: str) -> bool:
+        """Check if this alert is a duplicate threat (same type+IPs within window)"""
+        threat_hash = self.get_threat_hash(alert)
+        now = datetime.now(timezone.utc)
+
+        with self.lock:
+            if threat_hash in self.threat_history:
+                first_seen = self.threat_history[threat_hash]
+                time_since_first = (now - first_seen).total_seconds()
+
+                if time_since_first < DUPLICATE_DETECTION_WINDOW:
+                    # This is a duplicate - update the processed set with this exact alert hash
+                    # so we don't process it again
+                    self.processed_alerts.add(alert_hash)
+                    return True
+                else:
+                    # Window expired, start fresh
+                    self.threat_history[threat_hash] = now
+                    return False
+            else:
+                # New threat, record it
+                self.threat_history[threat_hash] = now
+                return False
 
     def get_new_alerts(self) -> List[Dict]:
         """Read alerts file and return unprocessed alerts with high confidence"""
@@ -201,8 +289,16 @@ class AutoResponder:
 
                         alert_hash = self.get_alert_hash(alert)
 
-                        if alert_hash not in self.processed_alerts:
-                            new_alerts.append(alert)
+                        # Skip if already processed
+                        if alert_hash in self.processed_alerts:
+                            continue
+
+                        # Skip if this is a duplicate threat (same type+IPs within 5 min)
+                        if self.is_duplicate_threat(alert, alert_hash):
+                            print(f"[auto_responder] Skipping duplicate threat: {self.get_threat_hash(alert)[:8]}")
+                            continue
+
+                        new_alerts.append(alert)
                     except json.JSONDecodeError:
                         continue
         except Exception as e:

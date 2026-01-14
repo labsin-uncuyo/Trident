@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Configuration
-NUM_EXPERIMENTS = 30  # Adjust as needed
+NUM_EXPERIMENTS = 10  # Adjust as needed
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
 EXPERIMENT_SCRIPT = SCRIPT_DIR / "run_experiment.sh"
