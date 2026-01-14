@@ -16,7 +16,7 @@ set -e
 
 # Configuration
 EXPERIMENT_ID="${1:-flask_brute_$(date +%Y%m%d_%H%M%S)}"
-MAX_EXPERIMENT_TIME=900  # 15 minutes
+MAX_EXPERIMENT_TIME=1530  # 25.5 minutes (increased by 70%)
 PCAP_ROTATE_SECS="${PCAP_ROTATE_SECS:-30}"
 
 # Paths
@@ -388,16 +388,16 @@ flask_last_attempt_time=""
 flask_successful_attempt_time=""
 
 if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" ]]; then
-    flask_login_attempts=$(wc -l < "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null || echo "0")
-    flask_successful_attempts=$(grep -c '"success":true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null || echo "0")
+    flask_login_attempts=$(wc -l < "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
+    flask_successful_attempts=$(grep -c '"success":true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
 
     # Get first and last attempt timestamps
-    flask_first_attempt_time=$(head -1 "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | grep -o '"timestamp":"[^"]*"' | cut -d'"' -f4 || echo "null")
-    flask_last_attempt_time=$(tail -1 "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | grep -o '"timestamp":"[^"]*"' | cut -d'"' -f4 || echo "null")
+    flask_first_attempt_time=$(head -1 "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | grep -o '"timestamp": "[^"]*"' | cut -d'"' -f4 | head -1 || echo "null")
+    flask_last_attempt_time=$(tail -1 "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | grep -o '"timestamp": "[^"]*"' | cut -d'"' -f4 | head -1 || echo "null")
 
     # Get successful attempt timestamp if any
-    if [[ $flask_successful_attempts -gt 0 ]]; then
-        flask_successful_attempt_time=$(grep '"success":true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | head -1 | grep -o '"timestamp":"[^"]*"' | cut -d'"' -f4 || echo "null")
+    if [[ "$flask_successful_attempts" -gt 0 ]]; then
+        flask_successful_attempt_time=$(grep '"success":true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | head -1 | grep -o '"timestamp": "[^"]*"' | cut -d'"' -f4 | head -1 || echo "null")
         password_found="true"
     fi
 
@@ -405,7 +405,7 @@ if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" ]]; then
 else
     # Fallback to attack summary if Flask logs not available
     if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" ]]; then
-        attack_attempts=$(grep -o '"total_attempts_before_blocked": [0-9]*' "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" | cut -d: -f2 | tr -d ' ' || echo "0")
+        flask_login_attempts=$(grep -o '"total_attempts_before_blocked": [0-9]*' "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" | cut -d: -f2 | tr -d ' ' || echo "0")
         password_found=$(grep -o '"guess_password_successfully": [^,]*' "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" | cut -d: -f2 | tr -d ' ' || echo "false")
     fi
 fi
@@ -435,6 +435,24 @@ fi
 : "${flask_successful_attempt_time:=null}"
 : "${password_found:=false}"
 
+# Helper function to output null or quoted string
+json_string() {
+    if [[ "$1" == "null" ]] || [[ -z "$1" ]]; then
+        echo "null"
+    else
+        echo "\"$1\""
+    fi
+}
+
+# Convert values to proper JSON format
+high_conf_alert_time_json=$(json_string "$high_confidence_alert_time")
+first_plan_time_json=$(json_string "$first_plan_time")
+first_exec_time_json=$(json_string "$first_successful_exec_time")
+flask_blocked_time_json=$(json_string "$flask_blocked_time")
+first_attempt_json=$(json_string "$flask_first_attempt_time")
+last_attempt_json=$(json_string "$flask_last_attempt_time")
+successful_attempt_json=$(json_string "$flask_successful_attempt_time")
+
 # Generate JSON with error checking
 if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
 {
@@ -446,19 +464,19 @@ if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
     "end_reason": "$experiment_end_reason",
     "metrics": {
         "time_to_high_confidence_alert_seconds": ${time_to_high_conf},
-        "high_confidence_alert_time": "${high_confidence_alert_time}",
+        "high_confidence_alert_time": ${high_conf_alert_time_json},
         "high_confidence_alert_details": ${high_conf_alert_details},
         "time_to_plan_generation_seconds": ${time_to_plan},
-        "plan_generation_time": "${first_plan_time}",
+        "plan_generation_time": ${first_plan_time_json},
         "time_to_opencode_execution_seconds": ${time_to_exec},
-        "opencode_execution_time": "${first_successful_exec_time}",
+        "opencode_execution_time": ${first_exec_time_json},
         "time_to_port_blocked_seconds": ${time_to_blocked},
-        "port_blocked_time": "${flask_blocked_time}",
-        "flask_login_attempts": $flask_login_attempts,
-        "flask_successful_attempts": $flask_successful_attempts,
-        "flask_first_attempt_time": "${flask_first_attempt_time}",
-        "flask_last_attempt_time": "${flask_last_attempt_time}",
-        "flask_successful_attempt_time": "${flask_successful_attempt_time}",
+        "port_blocked_time": ${flask_blocked_time_json},
+        "flask_login_attempts": ${flask_login_attempts},
+        "flask_successful_attempts": ${flask_successful_attempts},
+        "flask_first_attempt_time": ${first_attempt_json},
+        "flask_last_attempt_time": ${last_attempt_json},
+        "flask_successful_attempt_time": ${successful_attempt_json},
         "password_found": ${password_found}
     }
 }
