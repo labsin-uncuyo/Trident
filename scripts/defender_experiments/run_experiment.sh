@@ -86,29 +86,54 @@ sleep 5
 log "Running 'make up'..."
 make up
 
-# Wait a bit for core services
-log "Waiting for core services (10s)..."
-sleep 10
+# Wait for containers to be fully started
+log "Waiting for containers to stabilize (20s)..."
+sleep 20
 
-# Verify core services are healthy (server HTTP)
+# Verify core services are healthy using docker health checks
 log "Checking core services health..."
-if ! docker exec lab_compromised curl -sf -o /dev/null http://172.31.0.10:80; then
-    log_error "Server not reachable from compromised"
-    exit 1
-fi
-log_success "Core services are healthy!"
-
-# Wait for Flask app to be ready
-log "Waiting for Flask app to be ready..."
-max_wait=120  # 2 minutes max
+max_wait=60
 elapsed=0
 while [ $elapsed -lt $max_wait ]; do
-    if docker exec lab_compromised curl -sf -o /dev/null http://172.31.0.10:5000/login 2>/dev/null; then
-        log_success "Flask app is ready!"
+    # Check if all core containers are healthy
+    if docker ps --format "{{.Names}}:{{.Status}}" | grep -q "lab_compromised.*healthy" && \
+       docker ps --format "{{.Names}}:{{.Status}}" | grep -q "lab_server.*healthy" && \
+       docker ps --format "{{.Names}}:{{.Status}}" | grep -q "lab_router.*healthy"; then
+        log_success "Core services are healthy!"
         break
     fi
     sleep 5
     elapsed=$((elapsed + 5))
+    if [ $((elapsed % 15)) -eq 0 ]; then
+        log "Still waiting for core services... (${elapsed}s elapsed)"
+    fi
+done
+
+if [ $elapsed -ge $max_wait ]; then
+    log_error "Core services failed to become healthy within ${max_wait}s"
+    docker ps --format "table {{.Names}}\t{{.Status}}"
+    exit 1
+fi
+
+# Verify network connectivity
+log "Verifying network connectivity..."
+if ! docker exec lab_compromised curl -sf -o /dev/null http://172.31.0.10:80; then
+    log_error "Server not reachable from compromised"
+    exit 1
+fi
+log_success "Network connectivity verified!"
+
+# Wait for Flask app to be ready
+log "Waiting for Flask app to be ready..."
+max_wait=60  # 1 minute max
+elapsed=0
+while [ $elapsed -lt $max_wait ]; do
+    if docker exec lab_compromised curl -sf -o /dev/null http://172.31.0.10:443/login 2>/dev/null; then
+        log_success "Flask app is ready!"
+        break
+    fi
+    sleep 3
+    elapsed=$((elapsed + 3))
     if [ $((elapsed % 15)) -eq 0 ]; then
         log "Still waiting for Flask app... (${elapsed}s elapsed)"
     fi
@@ -137,13 +162,34 @@ else
     log "Running 'make defend'..."
     make defend
 
-    # Wait for defender to be ready
+    # Wait for defender containers to be healthy
+    log "Waiting for defender containers to stabilize..."
+    sleep 15
+
     log "Waiting for defender to be ready..."
-    if ! make verify; then
-        log_error "Defender failed health checks"
+    max_wait=90
+    elapsed=0
+    while [ $elapsed -lt $max_wait ]; do
+        # Check if defender container is healthy
+        if docker ps --format "{{.Names}}:{{.Status}}" | grep -q "lab_slips_defender.*healthy"; then
+            # Also verify defender API is responding
+            if curl -sf http://localhost:8000/health >/dev/null 2>&1; then
+                log_success "Defender is ready!"
+                break
+            fi
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+        if [ $((elapsed % 15)) -eq 0 ]; then
+            log "Still waiting for defender... (${elapsed}s elapsed)"
+        fi
+    done
+
+    if [ $elapsed -ge $max_wait ]; then
+        log_error "Defender failed to become ready within ${max_wait}s"
+        docker ps --format "table {{.Names}}\t{{.Status}}"
         exit 1
     fi
-    log_success "Defender is ready!"
 fi
 
 # Phase 3: Start Flask brute force attack and monitoring
@@ -183,12 +229,13 @@ log "=== Phase 5: Monitoring Experiment Progress ==="
 high_confidence_alert_time=""
 first_plan_time=""
 first_successful_exec_time=""
+opencode_complete_time=""
 flask_blocked_time=""
 experiment_end_reason=""
 
 log "Monitoring experiment progress (max ${MAX_EXPERIMENT_TIME}s)..."
 log "Will terminate when:"
-log "  1. Flask port is blocked (3 consecutive connection failures)"
+log "  1. BOTH: Flask port is blocked AND OpenCode execution complete"
 log "  2. OR ${MAX_EXPERIMENT_TIME}s have passed since brute force started"
 
 # Monitoring loop
@@ -240,6 +287,32 @@ while true; do
                 first_successful_exec_time=$(echo "$successful_exec" | grep -o '"ts":"[^"]*"' | cut -d'"' -f4)
                 log "OpenCode execution succeeded at: $first_successful_exec_time"
             fi
+
+            # Also check the opencodetime log from inside the container
+            # This works even when auto_responder logs an error but opencode actually ran
+            if [[ -z "$first_successful_exec_time" ]]; then
+                opencodetime_from_container=$(docker exec lab_compromised cat /tmp/opencode_exec_times.log 2>/dev/null | grep '^OPENCODE_START=' | cut -d= -f2 || true)
+                if [[ -n "$opencodetime_from_container" ]]; then
+                    first_successful_exec_time="$opencodetime_from_container"
+                    log "OpenCode execution start time from container: $first_successful_exec_time"
+                fi
+            fi
+
+            # Check for OpenCode completion (OPENCODE_END in log file)
+            if [[ -z "$opencode_complete_time" ]]; then
+                opencodetime_end=$(docker exec lab_compromised cat /tmp/opencode_exec_times.log 2>/dev/null | grep '^OPENCODE_END=' | cut -d= -f2 | cut -d' ' -f1 || true)
+                if [[ -n "$opencodetime_end" ]]; then
+                    opencode_complete_time="$opencodetime_end"
+                    log "OpenCode execution completed at: $opencode_complete_time"
+
+                    # Check if Flask is already blocked
+                    if [[ "$flask_status" == "blocked" ]]; then
+                        log "✓ Flask already blocked, both conditions met"
+                        experiment_end_reason="both_complete"
+                        break
+                    fi
+                fi
+            fi
         fi
     fi
 
@@ -247,8 +320,16 @@ while true; do
     if [[ "$flask_status" == "blocked" && -z "$flask_blocked_time" ]]; then
         flask_blocked_time=$(docker exec lab_compromised cat /tmp/flask_bruteforce/monitoring.json 2>/dev/null | grep '"end_time"' | grep -o '"end_time":"[^"]*"' | cut -d'"' -f4 | tail -1)
         log "✓ Flask port blocked at: ${flask_blocked_time:-unknown}"
-        experiment_end_reason="flask_blocked"
-        break
+
+        # Check if we already have OpenCode execution complete
+        if [[ -n "$opencode_complete_time" ]]; then
+            log "✓ OpenCode execution already completed at: $opencode_complete_time"
+            log "Termination condition met: BOTH Flask blocked AND OpenCode execution complete"
+            experiment_end_reason="both_complete"
+            break
+        else
+            log "Waiting for OpenCode execution to complete..."
+        fi
     fi
 
     # Progress update every 30 seconds
@@ -268,15 +349,34 @@ while true; do
         fi
 
         if [[ -z "$first_successful_exec_time" ]]; then
-            log "  ⏳ Waiting for: OpenCode execution"
+            log "  ⏳ Waiting for: OpenCode execution start"
         else
-            log "  ✓ OpenCode exec: $first_successful_exec_time"
+            log "  ✓ OpenCode started: $first_successful_exec_time"
+        fi
+
+        if [[ -z "$opencode_complete_time" ]]; then
+            log "  ⏳ Waiting for: OpenCode execution complete"
+        else
+            log "  ✓ OpenCode completed: $opencode_complete_time"
         fi
 
         if [[ "$flask_status" != "blocked" ]]; then
             log "  ⏳ Waiting for: Flask port to be blocked"
         else
             log "  ✓ Flask port blocked"
+        fi
+
+        # NEW: Check if attack succeeded but defender didn't respond (early termination)
+        if [[ $elapsed -ge 300 ]]; then  # After 5 minutes
+            # Check if password was found in the attack
+            if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" ]]; then
+                if grep -q "SUCCESS: Password found" "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" 2>/dev/null; then
+                    log "⚠️  Attack succeeded (password found) but defender didn't respond after ${elapsed}s"
+                    log "⚠️  Ending experiment early - defender unresponsive"
+                    experiment_end_reason="attack_success_no_defender"
+                    break
+                fi
+            fi
         fi
     fi
 
@@ -320,6 +420,9 @@ docker cp lab_compromised:/tmp/nmap_discovery.txt "$EXPERIMENT_OUTPUTS/logs/" 2>
 docker cp lab_compromised:/tmp/nmap_ports.txt "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
 docker cp lab_compromised:/tmp/flask_hydra_results.txt "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
 
+# Copy OpenCode execution time log from compromised container
+docker cp lab_compromised:/tmp/opencode_exec_times.log "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
+
 # Copy Flask login attempt logs from server
 docker cp lab_server:/tmp/flask_login_attempts.jsonl "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
 log "Flask login attempts log copied from server"
@@ -351,6 +454,34 @@ to_epoch() {
 
 high_conf_epoch=$(to_epoch "$high_confidence_alert_time")
 plan_epoch=$(to_epoch "$first_plan_time")
+
+# Try to get OpenCode execution time from the copied log file if not already set
+if [[ -z "$first_successful_exec_time" ]] && [[ -f "$EXPERIMENT_OUTPUTS/logs/opencode_exec_times.log" ]]; then
+    first_successful_exec_time=$(grep '^OPENCODE_START=' "$EXPERIMENT_OUTPUTS/logs/opencode_exec_times.log" 2>/dev/null | cut -d= -f2 | head -1 || true)
+    if [[ -n "$first_successful_exec_time" ]]; then
+        log "Found OpenCode execution start time in copied log: $first_successful_exec_time"
+    fi
+fi
+
+# Get OpenCode completion time from the copied log file if not already set
+if [[ -z "$opencode_complete_time" ]] && [[ -f "$EXPERIMENT_OUTPUTS/logs/opencode_exec_times.log" ]]; then
+    opencode_complete_time=$(grep '^OPENCODE_END=' "$EXPERIMENT_OUTPUTS/logs/opencode_exec_times.log" 2>/dev/null | cut -d= -f2 | cut -d' ' -f1 | head -1 || true)
+    if [[ -n "$opencode_complete_time" ]]; then
+        log "Found OpenCode completion time in copied log: $opencode_complete_time"
+    fi
+fi
+
+# Calculate OpenCode execution duration
+opencode_duration_seconds=""
+if [[ -n "$first_successful_exec_time" ]] && [[ -n "$opencode_complete_time" ]]; then
+    start_epoch=$(to_epoch "$first_successful_exec_time")
+    end_epoch=$(to_epoch "$opencode_complete_time")
+    if [[ $start_epoch -gt 0 ]] && [[ $end_epoch -gt 0 ]]; then
+        opencode_duration_seconds=$((end_epoch - start_epoch))
+        log "OpenCode execution duration: ${opencode_duration_seconds}s"
+    fi
+fi
+
 exec_epoch=$(to_epoch "$first_successful_exec_time")
 blocked_epoch=$(to_epoch "$flask_blocked_time")
 
@@ -387,6 +518,18 @@ flask_first_attempt_time=""
 flask_last_attempt_time=""
 flask_successful_attempt_time=""
 
+# First check Flask attack log for password found (more reliable)
+if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" ]]; then
+    # Check if password was found in attack log
+    if grep -q "SUCCESS: Password found" "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" 2>/dev/null; then
+        password_found="true"
+        # Extract the successful attempt timestamp
+        flask_successful_attempt_time=$(grep "SUCCESS: Password found" "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" | head -1 | grep -o '\[.*\]' | tr -d '[]' | date -Iseconds -f- 2>/dev/null || echo "null")
+        log "Password found in Flask attack log at: $flask_successful_attempt_time"
+    fi
+fi
+
+# Then parse Flask login attempt logs from server
 if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" ]]; then
     flask_login_attempts=$(wc -l < "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
     flask_successful_attempts=$(grep -c '"success":true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
@@ -448,6 +591,7 @@ json_string() {
 high_conf_alert_time_json=$(json_string "$high_confidence_alert_time")
 first_plan_time_json=$(json_string "$first_plan_time")
 first_exec_time_json=$(json_string "$first_successful_exec_time")
+opencode_complete_time_json=$(json_string "$opencode_complete_time")
 flask_blocked_time_json=$(json_string "$flask_blocked_time")
 first_attempt_json=$(json_string "$flask_first_attempt_time")
 last_attempt_json=$(json_string "$flask_last_attempt_time")
@@ -470,6 +614,8 @@ if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
         "plan_generation_time": ${first_plan_time_json},
         "time_to_opencode_execution_seconds": ${time_to_exec},
         "opencode_execution_time": ${first_exec_time_json},
+        "opencode_execution_duration_seconds": ${opencode_duration_seconds:-null},
+        "opencode_execution_end_time": ${opencode_complete_time_json:-null},
         "time_to_port_blocked_seconds": ${time_to_blocked},
         "port_blocked_time": ${flask_blocked_time_json},
         "flask_login_attempts": ${flask_login_attempts},
@@ -498,6 +644,7 @@ log "Timing Metrics:"
 log "  - Time to high confidence alert: ${time_to_high_conf:-N/A}s"
 log "  - Time to plan generation: ${time_to_plan:-N/A}s"
 log "  - Time to OpenCode execution: ${time_to_exec:-N/A}s"
+log "  - OpenCode execution duration: ${opencode_duration_seconds:-N/A}s"
 log "  - Time to port blocked: ${time_to_blocked:-N/A}s"
 log ""
 log "Flask Login Data (from server logs):"
