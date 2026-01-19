@@ -17,9 +17,16 @@ import threading
 import hashlib
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 import requests
 import logging
+
+try:
+    import pexpect
+    HAS_PEXPECT = True
+except ImportError:
+    HAS_PEXPECT = False
+    print("[auto_responder] WARNING: pexpect not available. Multi-alert mode disabled.")
 
 # Configuration
 RUN_ID = os.getenv("RUN_ID", "run_local")
@@ -30,6 +37,12 @@ OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "600"))  # 10 minutes
 POLL_INTERVAL = float(os.getenv("AUTO_RESPONDER_INTERVAL", "5"))
 MAX_EXECUTION_RETRIES = int(os.getenv("MAX_EXECUTION_RETRIES", "3"))
 DUPLICATE_DETECTION_WINDOW = int(os.getenv("DUPLICATE_DETECTION_WINDOW", "300"))  # 5 minutes
+
+# Multi-alert configuration
+ENABLE_MULTI_ALERT = os.getenv("ENABLE_MULTI_ALERT", "true").lower() == "true"
+ALERT_POOL_WINDOW = int(os.getenv("ALERT_POOL_WINDOW", "10"))  # Pool alerts within 10s window
+MULTI_ALERT_DELAY = float(os.getenv("MULTI_ALERT_DELAY", "0.5"))  # Delay between commands (0.5s)
+MULTI_ALERT_SESSION_TIMEOUT = int(os.getenv("MULTI_ALERT_SESSION_TIMEOUT", "300"))  # 5 minutes
 
 # SSH configuration
 SERVER_IP = "172.31.0.10"     # Server container IP
@@ -59,9 +72,25 @@ class AutoResponder:
                 "opencode_timeout": OPENCODE_TIMEOUT,
                 "server_ip": SERVER_IP,
                 "compromised_ip": COMPROMISED_IP,
-                "duplicate_window": DUPLICATE_DETECTION_WINDOW
+                "duplicate_window": DUPLICATE_DETECTION_WINDOW,
+                "multi_alert_enabled": ENABLE_MULTI_ALERT,
+                "multi_alert_pexpect_available": HAS_PEXPECT,
+                "multi_alert_mode": "enabled" if (ENABLE_MULTI_ALERT and HAS_PEXPECT) else "disabled"
             }
         })
+
+        # Log multi-alert mode status
+        if ENABLE_MULTI_ALERT:
+            if HAS_PEXPECT:
+                print(f"[auto_responder] ✓ Multi-alert mode ENABLED (pexpect available)")
+                print(f"[auto_responder]   - Alert pool window: {ALERT_POOL_WINDOW}s")
+                print(f"[auto_responder]   - Delay between commands: {MULTI_ALERT_DELAY}s")
+                print(f"[auto_responder]   - Session timeout: {MULTI_ALERT_SESSION_TIMEOUT}s")
+            else:
+                print(f"[auto_responder] ⚠ Multi-alert mode requested but pexpect NOT available")
+                print(f"[auto_responder]   Falling back to single-alert mode")
+        else:
+            print(f"[auto_responder] Multi-alert mode DISABLED (ENABLE_MULTI_ALERT={ENABLE_MULTI_ALERT})")
 
     def setup_logging(self):
         """Setup detailed logging with timestamps"""
@@ -504,10 +533,13 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
         context_b64 = base64.b64encode(context.encode('utf-8')).decode('utf-8')
 
         # Build the full SSH command
-        # Use environment variable for API key
+        # Use environment variables for API key and base URL
         opencode_api_key = os.environ.get("OPENCODE_API_KEY")
         if not opencode_api_key:
             raise ValueError("OPENCODE_API_KEY environment variable is not set")
+
+        # Get OPENAI_BASE_URL (needed for OpenCode to authenticate)
+        openai_base_url = os.environ.get("OPENAI_BASE_URL", "https://chat.ai.e-infra.cz/api/")
 
         for attempt in range(MAX_EXECUTION_RETRIES):
             try:
@@ -526,6 +558,7 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                 # Log timing data directly on the target machine before/after OpenCode
                 # Capture OpenCode JSON output for full reasoning trace
                 ssh_command = f'''export OPENCODE_API_KEY={opencode_api_key}
+export OPENAI_BASE_URL={openai_base_url}
 echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
 (opencode run --agent soc_god --format json --log-level DEBUG -- "$(echo '{context_b64}' | base64 -d)" 2>&1; echo "OPENCODE_END=$(date -Iseconds) EXIT_CODE=$?" >> /tmp/opencode_exec_times.log) || echo "OPENCODE_ERROR=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
 '''
@@ -679,6 +712,129 @@ echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
         self.log("ERROR", f"All {MAX_EXECUTION_RETRIES} attempts failed for {target_name}", alert_hash, execution_id)
         return False
 
+    def execute_multiple_alerts_with_opencode_interactive(
+        self,
+        alerts_with_plans: List[Tuple[Dict, str, str]],  # List of (alert, plan, executor_ip)
+        target_container: str,
+        execution_id: str = None
+    ) -> bool:
+        """
+        Execute multiple alerts in a single OpenCode interactive session.
+
+        Args:
+            alerts_with_plans: List of tuples (alert, plan, executor_ip)
+            target_container: Docker container name (e.g., 'lab_server')
+            execution_id: Execution ID for logging
+
+        Returns:
+            bool: True if all alerts executed successfully
+        """
+        if not HAS_PEXPECT:
+            self.log("ERROR", "pexpect not available, cannot use multi-alert mode", execution_id=execution_id)
+            return False
+
+        if not alerts_with_plans:
+            return True
+
+        target_info = self.determine_target_ssh_info(alerts_with_plans[0][2])  # Use first alert's executor IP
+        if not target_info:
+            self.log("ERROR", f"Unknown target for alerts", execution_id=execution_id)
+            return False
+
+        target_ip, target_name = target_info
+
+        # Build combined prompts for all alerts
+        prompts = []
+        for alert, plan, executor_ip in alerts_with_plans:
+            context = f"""Execute this security remediation plan:
+
+PLAN: {plan}
+
+CONTEXT:
+- Alert Source IP: {alert.get('sourceip', 'unknown')}
+- Alert Target IP: {alert.get('destip', 'unknown')}
+- Attack Type: {alert.get('attackid', 'unknown')}
+- Target Machine: {target_name} ({target_ip})
+- Target IP: {executor_ip}
+
+Execute all containment and remediation steps immediately."""
+            prompts.append(context)
+
+        self.log("SSH", f"→ {target_name} (multi-alert: {len(prompts)} alerts)", execution_id=execution_id, extra_data={
+            "target": target_name,
+            "target_ip": target_ip,
+            "alert_count": len(prompts),
+            "mode": "interactive_multi_alert"
+        })
+
+        try:
+            # Start OpenCode in interactive mode via docker exec
+            # Use bash -c to ensure proper PTY allocation
+            cmd = f"docker exec -it {target_container} /root/.opencode/bin/opencode"
+
+            child = pexpect.spawn(cmd, encoding='utf-8', timeout=MULTI_ALERT_SESSION_TIMEOUT)
+
+            # Wait for OpenCode TUI to initialize (look for "Ask anything")
+            self.log("SSH", f"Waiting for OpenCode to initialize...", execution_id=execution_id)
+            child.expect('Ask anything', timeout=30)
+            self.log("SSH", f"OpenCode ready, sending {len(prompts)} alerts...", execution_id=execution_id)
+
+            # Send first prompt
+            child.sendline(prompts[0])
+
+            # Send subsequent prompts with 0.5s delay (while first is processing)
+            for i, prompt in enumerate(prompts[1:], start=2):
+                time.sleep(MULTI_ALERT_DELAY)
+                child.sendline(prompt)
+                self.log("SSH", f"Sent alert {i}/{len(prompts)}", execution_id=execution_id)
+
+            # Wait for all commands to complete
+            self.log("SSH", f"Waiting for completion (timeout: {MULTI_ALERT_SESSION_TIMEOUT}s)...", execution_id=execution_id)
+            time.sleep(MULTI_ALERT_SESSION_TIMEOUT)
+
+            # Try to gracefully exit
+            if child.isalive():
+                child.sendline('/exit')
+                time.sleep(2)
+
+            # Force close if still alive
+            if child.isalive():
+                child.terminate(force=True)
+
+            self.log("EXEC", f"✓ Multi-alert execution completed on {target_name}", execution_id=execution_id, extra_data={
+                "status": "success",
+                "target": target_name,
+                "alert_count": len(prompts)
+            })
+            return True
+
+        except pexpect.exceptions.TIMEOUT as e:
+            self.log("ERROR", f"Timeout on {target_name} ({MULTI_ALERT_SESSION_TIMEOUT}s)", execution_id=execution_id, extra_data={
+                "status": "timeout",
+                "target": target_name,
+                "timeout": MULTI_ALERT_SESSION_TIMEOUT
+            })
+            # Try to clean up
+            try:
+                if child.isalive():
+                    child.terminate(force=True)
+            except:
+                pass
+            return False
+
+        except Exception as e:
+            self.log("ERROR", f"Multi-alert execution failed on {target_name}: {e}", execution_id=execution_id, extra_data={
+                "status": "exception",
+                "target": target_name,
+                "error": str(e)
+            })
+            try:
+                if child.isalive():
+                    child.terminate(force=True)
+            except:
+                pass
+            return False
+
     def diagnose_ssh_connectivity(self, target_ip: str, alert_hash: str = None, execution_id: str = None) -> bool:
         """Quick SSH connectivity check - returns True if SSH works"""
         try:
@@ -792,7 +948,7 @@ echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
             return False
 
     def run_once(self) -> None:
-        """Single run of the alert processing loop"""
+        """Single run of the alert processing loop with multi-alert batching"""
         try:
             new_alerts = self.get_new_alerts()
 
@@ -801,21 +957,14 @@ echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
 
             print(f"[auto_responder] Found {len(new_alerts)} new alerts")
 
-            processed_count = 0
-            for alert in new_alerts:
-                alert_hash = self.get_alert_hash(alert)
-
-                try:
-                    success = self.process_alert(alert)
-                    if success:
-                        with self.lock:
-                            self.processed_alerts.add(alert_hash)
-                        processed_count += 1
-                    else:
-                        print(f"[auto_responder] Failed to process alert, will retry later")
-
-                except Exception as e:
-                    print(f"[auto_responder] Error processing alert: {e}")
+            # Check if multi-alert mode is enabled
+            if ENABLE_MULTI_ALERT and HAS_PEXPECT and len(new_alerts) > 1:
+                processed_count = self.run_multi_alert_mode(new_alerts)
+            else:
+                # Fall back to single-alert mode
+                if ENABLE_MULTI_ALERT and not HAS_PEXPECT:
+                    print("[auto_responder] Multi-alert mode requested but pexpect not available, using single-alert mode")
+                processed_count = self.run_single_alert_mode(new_alerts)
 
             if processed_count > 0:
                 self.save_processed_alerts()
@@ -823,6 +972,130 @@ echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
 
         except Exception as e:
             print(f"[auto_responder] Error in run_once: {e}")
+
+    def run_single_alert_mode(self, alerts: List[Dict]) -> int:
+        """Process alerts one at a time (legacy mode)"""
+        processed_count = 0
+        for alert in alerts:
+            alert_hash = self.get_alert_hash(alert)
+
+            try:
+                success = self.process_alert(alert)
+                if success:
+                    with self.lock:
+                        self.processed_alerts.add(alert_hash)
+                    processed_count += 1
+                else:
+                    print(f"[auto_responder] Failed to process alert, will retry later")
+
+            except Exception as e:
+                print(f"[auto_responder] Error processing alert: {e}")
+
+        return processed_count
+
+    def run_multi_alert_mode(self, alerts: List[Dict]) -> int:
+        """
+        Process alerts in batches by target machine using multi-alert mode.
+
+        This method:
+        1. Groups alerts by target container
+        2. Generates plans for all alerts
+        3. Executes each batch in a single OpenCode session
+        """
+        processed_count = 0
+
+        # Step 1: Group alerts by target container and generate plans
+        alerts_by_container = {}  # container_name -> [(alert, plan, executor_ip)]
+        failed_plans = []  # Alerts that failed plan generation
+
+        for alert in alerts:
+            alert_hash = self.get_alert_hash(alert)
+            execution_id = hashlib.md5(f"{alert_hash}{time.time()}".encode()).hexdigest()[:16]
+
+            try:
+                # Generate plan for this alert
+                alert_text = self.format_alert_for_planner(alert)
+                plan_response = self.call_planner(alert_text)
+
+                if not plan_response:
+                    print(f"[auto_responder] Plan generation failed for alert {alert_hash[:8]}")
+                    failed_plans.append(alert)
+                    continue
+
+                plan = plan_response.get("plan", "")
+                executor_ip = plan_response.get("executor_host_ip", "")
+
+                if not plan or not executor_ip:
+                    print(f"[auto_responder] Invalid plan response for alert {alert_hash[:8]}")
+                    failed_plans.append(alert)
+                    continue
+
+                # Determine target container
+                target_info = self.determine_target_ssh_info(executor_ip)
+                if not target_info:
+                    print(f"[auto_responder] Unknown target IP: {executor_ip}")
+                    failed_plans.append(alert)
+                    continue
+
+                target_ip, target_name = target_info
+
+                # Map target name to container name
+                if target_name == "server":
+                    container_name = SERVER_CONTAINER
+                elif target_name == "compromised":
+                    container_name = COMPROMISED_CONTAINER
+                else:
+                    print(f"[auto_responder] Unknown target name: {target_name}")
+                    failed_plans.append(alert)
+                    continue
+
+                # Add to batch
+                if container_name not in alerts_by_container:
+                    alerts_by_container[container_name] = []
+                alerts_by_container[container_name].append((alert, plan, executor_ip))
+
+                self.log("PLAN", f"Generated for {executor_ip} (batching)", alert_hash, execution_id, extra_data={
+                    "executor_ip": executor_ip,
+                    "plan": plan,
+                    "container": container_name
+                })
+
+            except Exception as e:
+                print(f"[auto_responder] Error processing alert {alert_hash[:8]}: {e}")
+                failed_plans.append(alert)
+
+        # Step 2: Execute each batch
+        for container_name, alerts_batch in alerts_by_container.items():
+            execution_id = hashlib.md5(f"batch_{container_name}_{time.time()}".encode()).hexdigest()[:16]
+
+            try:
+                print(f"[auto_responder] Executing {len(alerts_batch)} alerts on {container_name} in single session")
+
+                success = self.execute_multiple_alerts_with_opencode_interactive(
+                    alerts_batch,
+                    container_name,
+                    execution_id
+                )
+
+                if success:
+                    # Mark all alerts in batch as processed
+                    for alert, _, _ in alerts_batch:
+                        alert_hash = self.get_alert_hash(alert)
+                        with self.lock:
+                            self.processed_alerts.add(alert_hash)
+                        processed_count += 1
+                else:
+                    print(f"[auto_responder] Batch execution failed for {container_name}")
+
+            except Exception as e:
+                print(f"[auto_responder] Error executing batch on {container_name}: {e}")
+
+        # Step 3: Process any alerts that failed plan generation using single-alert mode
+        if failed_plans:
+            print(f"[auto_responder] Processing {len(failed_plans)} failed plans in single-alert mode")
+            processed_count += self.run_single_alert_mode(failed_plans)
+
+        return processed_count
 
     def run(self) -> None:
         """Main monitoring loop"""

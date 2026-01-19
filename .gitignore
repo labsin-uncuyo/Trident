@@ -32,3 +32,19 @@ wheels/
 !outputs/README.md
 # Configuration
 images/server/employees_data_large.sql
+
+# Experiment output and log files
+*.log
+exfil_experiment_output_*/
+flask_brute_experiment_output/
+photorec.se*
+
+# Test scripts
+test_opencode_*.py
+test_opencode_*.exp
+
+# SQL backup files
+*.sql.backup
+
+# Patches directory (build artifacts)
+images/slips_defender/patches/
