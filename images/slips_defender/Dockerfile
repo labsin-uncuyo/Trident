@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install umap and other missing Python dependencies
-RUN pip3 install --no-cache-dir umap-learn
+RUN pip3 install --no-cache-dir umap-learn pexpect
 
 # Install defender requirements
 COPY ./defender/requirements.txt /tmp/requirements.txt
@@ -32,6 +32,10 @@ RUN if [ ! -f /root/.ssh/id_rsa_auto_responder ]; then \
 # Copy custom defender scripts and SSH setup
 COPY ./defender /opt/lab/defender/
 COPY ./setup_ssh_keys.sh /opt/lab/setup_ssh_keys.sh
+
+# Apply HTTP analyzer password guessing detection patches
+COPY ./patches/http_analyzer/http_analyzer.py /StratosphereLinuxIPS/modules/http_analyzer/http_analyzer.py
+COPY ./patches/http_analyzer/set_evidence.py /StratosphereLinuxIPS/modules/http_analyzer/set_evidence.py
 
 # Set proper permissions
 RUN chmod +x /opt/lab/defender/*.py /opt/lab/setup_ssh_keys.sh
