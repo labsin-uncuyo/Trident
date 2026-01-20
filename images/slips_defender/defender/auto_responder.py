@@ -500,6 +500,57 @@ class AutoResponder:
             print(f"[auto_responder] Error setting up SSH access: {e}")
             return False
 
+    def execute_multiple_plans_parallel(self, plans_list: List[Dict], alert: Dict, alert_hash: str = None, base_execution_id: str = None) -> bool:
+        """
+        Execute multiple plans in parallel, one per IP.
+
+        Each plan gets its own execution thread and they run simultaneously.
+        Returns True only if ALL executions succeed.
+        """
+        import concurrent.futures
+
+        results = {}
+        threads = []
+
+        def execute_single_plan(plan_data: Dict, ip_index: int):
+            """Execute a single plan in a thread"""
+            executor_ip = plan_data.get("executor_host_ip", "")
+            plan = plan_data.get("plan", "")
+
+            # Create unique execution ID for this IP (include IP for clarity)
+            ip_safe = executor_ip.replace('.', '_')
+            ip_execution_id = f"{base_execution_id}_{ip_safe}"
+
+            self.log("EXEC", f"Starting execution for {executor_ip}", alert_hash, ip_execution_id, extra_data={
+                "executor_ip": executor_ip,
+                "ip_index": ip_index,
+                "total_plans": len(plans_list)
+            })
+
+            success = self.execute_plan_with_opencode(plan, executor_ip, alert, alert_hash, ip_execution_id)
+            results[executor_ip] = success
+            return success
+
+        # Execute all plans in parallel using thread pool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(plans_list)) as executor:
+            futures = {
+                executor.submit(execute_single_plan, plan_data, i): plan_data.get("executor_host_ip", "")
+                for i, plan_data in enumerate(plans_list)
+            }
+
+            # Wait for all to complete
+            concurrent.futures.wait(futures)
+
+        # Check if all executions succeeded
+        all_success = all(results.values())
+
+        self.log("EXEC", f"Parallel execution complete: {sum(results.values())}/{len(results)} succeeded", alert_hash, base_execution_id, extra_data={
+            "results": results,
+            "all_success": all_success
+        })
+
+        return all_success
+
     def execute_plan_with_opencode(self, plan: str, executor_ip: str, alert: Dict, alert_hash: str = None, execution_id: str = None) -> bool:
         """Execute remediation plan using OpenCode via SSH on target machine"""
         target_info = self.determine_target_ssh_info(executor_ip)
@@ -867,16 +918,16 @@ Execute all containment and remediation steps immediately."""
             return False
 
     def process_alert(self, alert: Dict) -> bool:
-        """Process single alert through plan generation and execution"""
+        """Process single alert through plan generation and execution - supports multiple plans per IP"""
         alert_hash = self.get_alert_hash(alert)
-        execution_id = hashlib.md5(f"{alert_hash}{time.time()}".encode()).hexdigest()[:16]
+        base_execution_id = hashlib.md5(f"{alert_hash}{time.time()}".encode()).hexdigest()[:16]
         start_time = time.time()
 
         # Extract alert info for logging
         source_ip = alert.get('sourceip', 'unknown')
         dest_ip = alert.get('destip', 'unknown')
         raw_alert = alert.get('raw', '')
-        
+
         # Try to extract IPs from raw if not in structured fields
         if source_ip == 'unknown' or dest_ip == 'unknown':
             import re
@@ -886,7 +937,7 @@ Execute all containment and remediation steps immediately."""
             elif len(ip_match) == 1:
                 source_ip = ip_match[0]
 
-        self.log("ALERT", f"New: {source_ip} → {dest_ip}", alert_hash, execution_id, extra_data={
+        self.log("ALERT", f"New: {source_ip} → {dest_ip}", alert_hash, base_execution_id, extra_data={
             "source_ip": source_ip,
             "dest_ip": dest_ip,
             "attack_type": alert.get('attackid', 'unknown'),
@@ -895,45 +946,54 @@ Execute all containment and remediation steps immediately."""
         })
 
         try:
-            # Step 1: Format and generate plan
+            # Step 1: Format and generate plans (may return multiple plans)
             alert_text = self.format_alert_for_planner(alert)
             plan_start = time.time()
             plan_response = self.call_planner(alert_text)
             plan_duration = time.time() - plan_start
 
             if not plan_response:
-                self.log("ERROR", f"Plan generation failed ({plan_duration:.2f}s)", alert_hash, execution_id)
+                self.log("ERROR", f"Plan generation failed ({plan_duration:.2f}s)", alert_hash, base_execution_id)
                 return False
 
-            plan = plan_response.get("plan", "")
-            executor_ip = plan_response.get("executor_host_ip", "")
+            # Handle both old format (single plan) and new format (multiple plans)
+            plans_list = []
+            if "plans" in plan_response:
+                # New format: multiple plans
+                plans_list = plan_response.get("plans", [])
+            else:
+                # Old format: single plan - convert to list for backward compatibility
+                plan = plan_response.get("plan", "")
+                executor_ip = plan_response.get("executor_host_ip", "")
+                if plan and executor_ip:
+                    plans_list = [{"executor_host_ip": executor_ip, "plan": plan}]
 
-            if not plan or not executor_ip:
-                self.log("ERROR", "Invalid plan response", alert_hash, execution_id, extra_data={"plan_response": plan_response})
+            if not plans_list:
+                self.log("ERROR", "No valid plans in response", alert_hash, base_execution_id, extra_data={"plan_response": plan_response})
                 return False
 
-            self.log("PLAN", f"Generated for {executor_ip} ({plan_duration:.2f}s)", alert_hash, execution_id, extra_data={
-                "executor_ip": executor_ip,
-                "plan": plan,
+            self.log("PLAN", f"Generated {len(plans_list)} plan(s) ({plan_duration:.2f}s)", alert_hash, base_execution_id, extra_data={
+                "num_plans": len(plans_list),
+                "plans": plans_list,
                 "model": plan_response.get("model", "unknown"),
                 "formatted_alert": alert_text
             })
 
-            # Step 2: Execute plan
+            # Step 2: Execute all plans in parallel (one thread per IP)
             exec_start = time.time()
-            success = self.execute_plan_with_opencode(plan, executor_ip, alert, alert_hash, execution_id)
+            success = self.execute_multiple_plans_parallel(plans_list, alert, alert_hash, base_execution_id)
             exec_duration = time.time() - exec_start
             total_duration = time.time() - start_time
 
             if success:
-                self.log("DONE", f"Completed in {total_duration:.1f}s (plan: {plan_duration:.1f}s, exec: {exec_duration:.1f}s)", alert_hash, execution_id, extra_data={
+                self.log("DONE", f"Completed in {total_duration:.1f}s (plan: {plan_duration:.1f}s, exec: {exec_duration:.1f}s)", alert_hash, base_execution_id, extra_data={
                     "total_duration": total_duration,
                     "plan_duration": plan_duration,
                     "exec_duration": exec_duration,
                     "status": "success"
                 })
             else:
-                self.log("ERROR", f"Execution failed after {exec_duration:.1f}s", alert_hash, execution_id, extra_data={
+                self.log("ERROR", f"Execution failed after {exec_duration:.1f}s", alert_hash, base_execution_id, extra_data={
                     "total_duration": total_duration,
                     "status": "failed"
                 })
@@ -941,7 +1001,7 @@ Execute all containment and remediation steps immediately."""
             return success
 
         except Exception as e:
-            self.log("ERROR", f"Exception: {e}", alert_hash, execution_id, extra_data={
+            self.log("ERROR", f"Exception: {e}", alert_hash, base_execution_id, extra_data={
                 "exception": str(e),
                 "alert": alert
             })
