@@ -6,6 +6,7 @@ outputs/
 *.pcapng
 .env
 configs/aracne_lab/.env
+configs/**/.env
 
 # Python cache files
 __pycache__/
