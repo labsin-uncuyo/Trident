@@ -72,9 +72,6 @@ RUN ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Copy SSH public key for GHOSTS driver access
-COPY secrets/authorized_keys /tmp/ghosts_authorized_keys
-
 EXPOSE 22
 
 # --------------------------------------------------------------------
