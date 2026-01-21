@@ -4,7 +4,12 @@ PYTHON ?= python3
 export COMPOSE_PROJECT_NAME := lab
 RUN_ID_FILE := ./outputs/.current_run
 
-.PHONY: build up down verify slips_verify clean ssh_keys aracne_attack ghosts_psql defend not_defend
+.PHONY: build up down verify slips_verify clean ssh_keys aracne_attack ghosts_psql defend not_defend attacker_god
+
+ifneq (,$(filter attacker_god,$(MAKECMDGOALS)))
+ATTACKER_GOAL := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+$(eval $(ATTACKER_GOAL):;@:)
+endif
 
 build:
 	@echo "Building all compose services (including defender/benign/attacker)..."
@@ -122,6 +127,19 @@ defend:
 not_defend:
 	@echo "[not_defend] Stopping defender components (containers stay present)"
 	$(COMPOSE) --profile defender stop slips_defender switch || true
+
+attacker_god:
+	@GOAL=$${GOAL:-$(ATTACKER_GOAL)}; \
+	if [ -z "$$GOAL" ]; then \
+		echo "✗ Error: Goal required. Usage: make attacker_god goal=..."; \
+		exit 1; \
+	fi; \
+	if ! docker ps --filter "name=lab_compromised" --format '{{.Names}}' | grep -q lab_compromised; then \
+		echo "✗ Error: lab_compromised is not running. Run 'make up' first."; \
+		exit 1; \
+	fi; \
+	echo "[coder56] Goal: $$GOAL"; \
+	$(PYTHON) scripts/attacker_opencode_interactive.py "$$GOAL"
 
 clean:
 	$(COMPOSE) down --rmi all --volumes --remove-orphans
@@ -418,4 +436,3 @@ ghosts_psql_llm_v2: ## Run GHOSTS with v2 LLM query generation (experimental, hu
 		echo "  - LLM-generated queries (v2): $$NUM_QUERIES"; \
 		echo "  - Log file size: $$(du -h ./outputs/$$RUN_ID_VALUE/ghosts/clientupdates.log 2>/dev/null | cut -f1 || echo '0')"; \
 	fi
-
