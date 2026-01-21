@@ -87,25 +87,9 @@ if [ -f /root/.ssh_auto_responder/id_rsa_auto_responder.pub ]; then
     fi
 fi
 
-# Fix permissions for labuser to write logs
-chown -R labuser:labuser "/outputs/${RUN_ID}/ghosts_logs"
-chown -R labuser:labuser "/outputs/backups/john_scott"
-chmod -R 755 "/outputs/${RUN_ID}/ghosts_logs"
-chmod -R 755 "/outputs/backups/john_scott"
-
 # Ensure the compromised host routes traffic through the router
 ip route replace 172.31.0.0/24 via 172.30.0.1 || true
 ip route replace 172.32.0.0/24 via 172.30.0.1 || true
-
-# Configure DNS to use our router (172.30.0.1) which runs BIND9
-# This ensures DNS traffic goes through the router and is captured in PCAPs
-rm -f /etc/resolv.conf
-cat > /etc/resolv.conf <<EOF
-nameserver 172.30.0.1
-search lab.local
-options timeout:2 attempts:3
-EOF
-echo "✓ DNS configured to use router DNS server (172.30.0.1)"
 
 # Start SSH server in background
 /usr/sbin/sshd
