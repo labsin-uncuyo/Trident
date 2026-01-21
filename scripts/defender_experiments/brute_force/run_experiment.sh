@@ -228,10 +228,18 @@ log "=== Phase 5: Monitoring Experiment Progress ==="
 # Variables to track experiment state
 high_confidence_alert_time=""
 first_plan_time=""
+first_plan_count=0
 first_successful_exec_time=""
 opencode_complete_time=""
 flask_blocked_time=""
 experiment_end_reason=""
+
+# Per-IP tracking
+declare -A ip_plan_time
+declare -A ip_exec_start_time
+declare -A ip_exec_end_time
+declare -A ip_exec_duration
+declare -A ip_plan_content
 
 log "Monitoring experiment progress (max ${MAX_EXPERIMENT_TIME}s)..."
 log "Will terminate when:"
@@ -268,50 +276,124 @@ while true; do
             fi
         fi
 
-        # Check for first plan generation
+        # Check for plan generation
         if [[ -z "$first_plan_time" ]]; then
             first_plan=$(grep '"level":"PLAN"' "$defender_timeline" | head -1 || true)
 
             if [[ -n "$first_plan" ]]; then
                 first_plan_time=$(echo "$first_plan" | grep -o '"ts":"[^"]*"' | cut -d'"' -f4)
-                log "Plan generated at: $first_plan_time"
+
+                # Extract number of plans
+                first_plan_count=$(echo "$first_plan" | jq -r '.data.num_plans // 1' 2>/dev/null || echo "1")
+
+                # Extract per-IP plan information
+                # Parse the plans array to get executor_host_ip for each plan
+                num_plans=$first_plan_count
+                for ((i=0; i<num_plans; i++)); do
+                    # Extract executor IP for this plan
+                    plan_json=$(echo "$first_plan" | jq -c ".data.plans[$i]" 2>/dev/null || echo "{}")
+                    if [[ "$plan_json" != "{}" ]] && [[ "$plan_json" != "null" ]]; then
+                        plan_ip=$(echo "$plan_json" | jq -r '.executor_host_ip // empty' 2>/dev/null)
+                        plan_plan=$(echo "$plan_json" | jq -r '.plan // empty' 2>/dev/null)
+
+                        if [[ -n "$plan_ip" ]]; then
+                            ip_plan_time["$plan_ip"]="$first_plan_time"
+                            ip_plan_content["$plan_ip"]="$plan_plan"
+                            log "Plan generated for IP $plan_ip at: $first_plan_time"
+                        fi
+                    fi
+                done
+
+                log "Plan generated at: $first_plan_time (total plans: $num_plans)"
             fi
         fi
 
-        # Check for first successful OpenCode execution
-        if [[ -z "$first_successful_exec_time" ]]; then
-            successful_exec=$(grep '"level":"EXEC"' "$defender_timeline" | \
-                grep -i 'success' | head -1 || true)
+        # Check for OpenCode execution (per-IP)
+        # Look for EXEC entries with executor_ip data
+        exec_entries=$(grep '"level":"EXEC".*"executor_ip"' "$defender_timeline" 2>/dev/null || true)
 
-            if [[ -n "$successful_exec" ]]; then
-                first_successful_exec_time=$(echo "$successful_exec" | grep -o '"ts":"[^"]*"' | cut -d'"' -f4)
-                log "OpenCode execution succeeded at: $first_successful_exec_time"
-            fi
+        if [[ -n "$exec_entries" ]]; then
+            # Track per-IP execution start times
+            while IFS= read -r exec_entry; do
+                exec_ip=$(echo "$exec_entry" | jq -r '.data.executor_ip // empty' 2>/dev/null)
+                exec_ts=$(echo "$exec_entry" | jq -r '.ts // empty' 2>/dev/null)
 
-            # Also check the opencodetime log from inside the container
-            # This works even when auto_responder logs an error but opencode actually ran
-            if [[ -z "$first_successful_exec_time" ]]; then
-                opencodetime_from_container=$(docker exec lab_compromised cat /tmp/opencode_exec_times.log 2>/dev/null | grep '^OPENCODE_START=' | cut -d= -f2 || true)
-                if [[ -n "$opencodetime_from_container" ]]; then
-                    first_successful_exec_time="$opencodetime_from_container"
-                    log "OpenCode execution start time from container: $first_successful_exec_time"
-                fi
-            fi
+                if [[ -n "$exec_ip" ]] && [[ -n "$exec_ts" ]]; then
+                    # Only record first execution start per IP
+                    if [[ -z "${ip_exec_start_time[$exec_ip]:-}" ]]; then
+                        ip_exec_start_time["$exec_ip"]="$exec_ts"
+                        log "OpenCode execution started for IP $exec_ip at: $exec_ts"
 
-            # Check for OpenCode completion (OPENCODE_END in log file)
-            if [[ -z "$opencode_complete_time" ]]; then
-                opencodetime_end=$(docker exec lab_compromised cat /tmp/opencode_exec_times.log 2>/dev/null | grep '^OPENCODE_END=' | cut -d= -f2 | cut -d' ' -f1 || true)
-                if [[ -n "$opencodetime_end" ]]; then
-                    opencode_complete_time="$opencodetime_end"
-                    log "OpenCode execution completed at: $opencode_complete_time"
-
-                    # Check if Flask is already blocked
-                    if [[ "$flask_status" == "blocked" ]]; then
-                        log "✓ Flask already blocked, both conditions met"
-                        experiment_end_reason="both_complete"
-                        break
+                        # Set overall first execution time if not set
+                        if [[ -z "$first_successful_exec_time" ]]; then
+                            first_successful_exec_time="$exec_ts"
+                        fi
                     fi
                 fi
+            done <<< "$exec_entries"
+        fi
+
+        # Check for overall first execution time from container logs (fallback)
+        if [[ -z "$first_successful_exec_time" ]]; then
+            opencodetime_from_container=$(docker exec lab_compromised cat /tmp/opencode_exec_times.log 2>/dev/null | grep '^OPENCODE_START=' | cut -d= -f2 | head -1 || true)
+            if [[ -n "$opencodetime_from_container" ]]; then
+                first_successful_exec_time="$opencodetime_from_container"
+                log "OpenCode execution start time from container: $first_successful_exec_time"
+            fi
+        fi
+
+        # Check for OpenCode completion per-IP (DONE or EXEC with status=success)
+        done_entries=$(grep '"level":"DONE".*"status":"success"' "$defender_timeline" 2>/dev/null || true)
+        if [[ -n "$done_entries" ]]; then
+            while IFS= read -r done_entry; do
+                # Extract IP from the exec field (format: base_exec_id_IP)
+                exec_id=$(echo "$done_entry" | jq -r '.exec // empty' 2>/dev/null)
+                done_ts=$(echo "$done_entry" | jq -r '.ts // empty' 2>/dev/null)
+
+                if [[ -n "$exec_id" ]] && [[ -n "$done_ts" ]]; then
+                    # Extract IP from exec_id (format: hash_172_31_0_10 or hash_172_30_0_10)
+                    ip_part=$(echo "$exec_id" | grep -oE '[0-9]+_[0-9]+_[0-9]+_[0-9]+$' | head -1 || true)
+                    if [[ -n "$ip_part" ]]; then
+                        # Convert underscores back to dots
+                        ip=$(echo "$ip_part" | tr '_' '.')
+                        ip_exec_end_time["$ip"]="$done_ts"
+                        log "OpenCode execution completed for IP $ip at: $done_ts"
+                    fi
+                fi
+            done <<< "$done_entries"
+        fi
+
+        # Also check opencodetime logs from containers for completion
+        for container in lab_server lab_compromised; do
+            if docker exec "$container" test -f /tmp/opencode_exec_times.log 2>/dev/null; then
+                opencodetime_end=$(docker exec "$container" cat /tmp/opencode_exec_times.log 2>/dev/null | grep '^OPENCODE_END=' | cut -d= -f2 | cut -d' ' -f1 | head -1 || true)
+                if [[ -n "$opencodetime_end" ]]; then
+                    # Determine which IP this container represents
+                    if [[ "$container" == "lab_server" ]]; then
+                        ip="172.31.0.10"
+                    else
+                        ip="172.30.0.10"
+                    fi
+
+                    if [[ -z "${ip_exec_end_time[$ip]:-}" ]]; then
+                        ip_exec_end_time["$ip"]="$opencodetime_end"
+                        log "OpenCode execution completed for IP $ip from container log: $opencodetime_end"
+                    fi
+
+                    # Set overall completion time if not set
+                    if [[ -z "$opencode_complete_time" ]]; then
+                        opencode_complete_time="$opencodetime_end"
+                    fi
+                fi
+            fi
+        done
+
+        # Check if Flask is already blocked and OpenCode complete
+        if [[ -n "$opencode_complete_time" ]]; then
+            if [[ "$flask_status" == "blocked" ]]; then
+                log "✓ Flask already blocked, both conditions met"
+                experiment_end_reason="both_complete"
+                break
             fi
         fi
     fi
@@ -471,16 +553,21 @@ if [[ -z "$opencode_complete_time" ]] && [[ -f "$EXPERIMENT_OUTPUTS/logs/opencod
     fi
 fi
 
-# Calculate OpenCode execution duration
-opencode_duration_seconds=""
-if [[ -n "$first_successful_exec_time" ]] && [[ -n "$opencode_complete_time" ]]; then
-    start_epoch=$(to_epoch "$first_successful_exec_time")
-    end_epoch=$(to_epoch "$opencode_complete_time")
-    if [[ $start_epoch -gt 0 ]] && [[ $end_epoch -gt 0 ]]; then
-        opencode_duration_seconds=$((end_epoch - start_epoch))
-        log "OpenCode execution duration: ${opencode_duration_seconds}s"
+# Calculate OpenCode execution duration per-IP
+for ip in "${!ip_exec_start_time[@]}"; do
+    start_time="${ip_exec_start_time[$ip]}"
+    end_time="${ip_exec_end_time[$ip]:-}"
+
+    if [[ -n "$start_time" ]] && [[ -n "$end_time" ]]; then
+        start_epoch=$(to_epoch "$start_time")
+        end_epoch=$(to_epoch "$end_time")
+        if [[ $start_epoch -gt 0 ]] && [[ $end_epoch -gt 0 ]]; then
+            duration=$((end_epoch - start_epoch))
+            ip_exec_duration["$ip"]=$duration
+            log "OpenCode execution duration for IP $ip: ${duration}s"
+        fi
     fi
-fi
+done
 
 exec_epoch=$(to_epoch "$first_successful_exec_time")
 blocked_epoch=$(to_epoch "$flask_blocked_time")
@@ -597,6 +684,46 @@ first_attempt_json=$(json_string "$flask_first_attempt_time")
 last_attempt_json=$(json_string "$flask_last_attempt_time")
 successful_attempt_json=$(json_string "$flask_successful_attempt_time")
 
+# Build per-IP metrics JSON
+per_ip_metrics="{"
+first_ip=true
+for ip in "${!ip_plan_time[@]}"; do
+    if [[ "$first_ip" == "true" ]]; then
+        first_ip=false
+    else
+        per_ip_metrics+=","
+    fi
+
+    plan_time="${ip_plan_time[$ip]:-null}"
+    exec_start="${ip_exec_start_time[$ip]:-null}"
+    exec_end="${ip_exec_end_time[$ip]:-null}"
+    duration="${ip_exec_duration[$ip]:-null}"
+
+    # Calculate time deltas
+    plan_epoch=$(to_epoch "$plan_time")
+    exec_epoch=$(to_epoch "$exec_start")
+
+    time_to_plan="null"
+    if [[ $plan_epoch -gt 0 ]]; then
+        time_to_plan=$((plan_epoch - ATTACK_START_TIME))
+    fi
+
+    time_to_exec="null"
+    if [[ $exec_epoch -gt 0 ]]; then
+        time_to_exec=$((exec_epoch - ATTACK_START_TIME))
+    fi
+
+    per_ip_metrics+="\"$ip\":{"
+    per_ip_metrics+="\"plan_time\":$(json_string "$plan_time"),"
+    per_ip_metrics+="\"time_to_plan_seconds\":${time_to_plan},"
+    per_ip_metrics+="\"exec_start_time\":$(json_string "$exec_start"),"
+    per_ip_metrics+="\"time_to_exec_seconds\":${time_to_exec},"
+    per_ip_metrics+="\"exec_end_time\":$(json_string "$exec_end"),"
+    per_ip_metrics+="\"exec_duration_seconds\":${duration}"
+    per_ip_metrics+="}"
+done
+per_ip_metrics+="}"
+
 # Generate JSON with error checking
 if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
 {
@@ -606,6 +733,7 @@ if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
     "experiment_end_time": "$(date -Iseconds)",
     "total_duration_seconds": $TOTAL_DURATION,
     "end_reason": "$experiment_end_reason",
+    "num_plans_generated": ${first_plan_count:-1},
     "metrics": {
         "time_to_high_confidence_alert_seconds": ${time_to_high_conf},
         "high_confidence_alert_time": ${high_conf_alert_time_json},
@@ -614,7 +742,6 @@ if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
         "plan_generation_time": ${first_plan_time_json},
         "time_to_opencode_execution_seconds": ${time_to_exec},
         "opencode_execution_time": ${first_exec_time_json},
-        "opencode_execution_duration_seconds": ${opencode_duration_seconds:-null},
         "opencode_execution_end_time": ${opencode_complete_time_json:-null},
         "time_to_port_blocked_seconds": ${time_to_blocked},
         "port_blocked_time": ${flask_blocked_time_json},
@@ -623,7 +750,8 @@ if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
         "flask_first_attempt_time": ${first_attempt_json},
         "flask_last_attempt_time": ${last_attempt_json},
         "flask_successful_attempt_time": ${successful_attempt_json},
-        "password_found": ${password_found}
+        "password_found": ${password_found},
+        "per_ip_metrics": ${per_ip_metrics}
     }
 }
 EOF
@@ -639,14 +767,43 @@ log "Experiment ID: $EXPERIMENT_ID"
 log "Attack Type: Flask Brute Force"
 log "End Reason: $experiment_end_reason"
 log "Total Duration: ${TOTAL_DURATION}s"
+log "Plans Generated: ${first_plan_count:-1}"
 log ""
 log "Timing Metrics:"
 log "  - Time to high confidence alert: ${time_to_high_conf:-N/A}s"
 log "  - Time to plan generation: ${time_to_plan:-N/A}s"
 log "  - Time to OpenCode execution: ${time_to_exec:-N/A}s"
-log "  - OpenCode execution duration: ${opencode_duration_seconds:-N/A}s"
 log "  - Time to port blocked: ${time_to_blocked:-N/A}s"
 log ""
+
+# Print per-IP metrics
+if [[ ${#ip_plan_time[@]} -gt 0 ]]; then
+    log "Per-IP Execution Details:"
+    for ip in "${!ip_plan_time[@]}"; do
+        log ""
+        log "  IP: $ip"
+        log "    - Plan generated at: ${ip_plan_time[$ip]:-N/A}"
+
+        plan_epoch=$(to_epoch "${ip_plan_time[$ip]:-}")
+        if [[ $plan_epoch -gt 0 ]]; then
+            time_delta=$((plan_epoch - ATTACK_START_TIME))
+            log "    - Time to plan: ${time_delta}s"
+        fi
+
+        log "    - Execution started: ${ip_exec_start_time[$ip]:-N/A}"
+
+        exec_epoch=$(to_epoch "${ip_exec_start_time[$ip]:-}")
+        if [[ $exec_epoch -gt 0 ]]; then
+            time_delta=$((exec_epoch - ATTACK_START_TIME))
+            log "    - Time to execution: ${time_delta}s"
+        fi
+
+        log "    - Execution ended: ${ip_exec_end_time[$ip]:-N/A}"
+        log "    - Execution duration: ${ip_exec_duration[$ip]:-N/A}s"
+    done
+    log ""
+fi
+
 log "Flask Login Data (from server logs):"
 log "  - Total login attempts: $flask_login_attempts"
 log "  - Successful attempts: $flask_successful_attempts"

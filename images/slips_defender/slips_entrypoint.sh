@@ -38,6 +38,26 @@ if ! /opt/lab/setup_ssh_keys.sh; then
     echo "⚠️ SSH key setup encountered issues; continuing startup. Check logs above."
 fi
 
+# Clear stale SSH known_hosts to avoid "host key changed" errors
+rm -f /root/.ssh/known_hosts
+echo "✅ Cleared stale SSH known_hosts"
+
+# Apply HTTP analyzer password guessing detection patches
+echo "🔧 Applying HTTP analyzer patches..."
+if [ -f "/opt/lab/patches/http_analyzer/http_analyzer.py" ]; then
+    cp /opt/lab/patches/http_analyzer/http_analyzer.py /StratosphereLinuxIPS/modules/http_analyzer/http_analyzer.py
+    echo "✅ Applied http_analyzer.py patch"
+else
+    echo "⚠️ http_analyzer.py patch not found, skipping"
+fi
+
+if [ -f "/opt/lab/patches/http_analyzer/set_evidence.py" ]; then
+    cp /opt/lab/patches/http_analyzer/set_evidence.py /StratosphereLinuxIPS/modules/http_analyzer/set_evidence.py
+    echo "✅ Applied set_evidence.py patch"
+else
+    echo "⚠️ set_evidence.py patch not found, skipping"
+fi
+
 python3 -m uvicorn defender_api:app --host 0.0.0.0 --port "${DEFENDER_PORT}" --log-level info &
 RECEIVER_PID=$!
 

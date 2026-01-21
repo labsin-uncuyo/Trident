@@ -7,7 +7,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import httpx
@@ -37,9 +37,13 @@ class PlanRequest(BaseModel):
     max_tokens: Optional[int] = Field(None, gt=10, le=8192)
 
 
-class PlanResponse(BaseModel):
+class SinglePlan(BaseModel):
     executor_host_ip: str
     plan: str
+
+
+class PlanResponse(BaseModel):
+    plans: List[SinglePlan]  # Multiple plans, one per IP
     model: str
     request_id: str
     created: str
@@ -78,16 +82,10 @@ async def call_llm_for_plan(alert_text: str, executor_ip_hint: str) -> tuple[str
 You are operating in a cybersecurity lab environment with Linux systems. Your SSH agent can execute commands on any host in the network.
 
 # Your Task
-Given a security alert, generate a high-level incident response plan that:
+Given a security alert and a specific target host, generate a high-level incident response plan for THAT HOST that:
 1. Analyzes the threat and determines its severity
-2. Identifies which host to execute remediation on based on the alert context
-3. Provides strategic, high-level containment and investigation actions
-
-# Choosing the Executor Host
-Decide where to execute based on the alert:
-- If the threat targets a system (e.g., scanning, attacks against a server), execute on the TARGET system to defend it
-- If the threat originates from a compromised host (e.g., data exfiltration, malicious outbound traffic), execute on the SOURCE host to investigate and clean it
-- Consider network topology and where remediation will be most effective
+2. Provides strategic, high-level containment and investigation actions
+3. Investigates what assets, services, or data were targeted and are at risk
 
 # CRITICAL - RESPONSE FORMAT
 You must respond with valid JSON only. No markdown, no code blocks, no explanation outside the JSON.
@@ -108,6 +106,7 @@ Format:
 - Focus on strategic objectives and priorities
 - An execution agent will translate your plan into actual commands
 - Think like a SOC lead planning the response, not a technician executing it
+- Always consider what systems, services, or data are under attack and their criticality
 
 # Important Notes
 - You are a DEFENDER. Protect systems, contain threats, preserve evidence.
@@ -119,7 +118,10 @@ Format:
 
 {alert_text}
 
-Generate an incident response plan in JSON format. Choose the appropriate executor IP based on the alert context. Provide high-level strategic guidance without specific commands."""
+# IMPORTANT - Execution Target
+You MUST generate this plan for execution on host: {executor_ip_hint}
+
+Generate an incident response plan in JSON format for the specified executor IP. Provide high-level strategic guidance without specific commands."""
 
     if not LLM_API_KEY:
         raise HTTPException(
@@ -163,7 +165,9 @@ Generate an incident response plan in JSON format. Choose the appropriate execut
                 plan_content = plan_content.strip()
 
                 plan_json = json.loads(plan_content)
-                executor_ip = plan_json.get("executor_ip", executor_ip_hint)
+
+                # Always use the hint if provided, to ensure per-IP planning
+                executor_ip = executor_ip_hint
 
                 # Build formatted plan from JSON
                 plan = f"""## Threat Analysis
@@ -203,33 +207,44 @@ Generate an incident response plan in JSON format. Choose the appropriate execut
 
 @app.post("/plan", response_model=PlanResponse)
 async def plan(req: PlanRequest) -> Any:
-    """Generate remediation plan for security alert using LLM"""
+    """Generate remediation plans for security alert using LLM - one plan per relevant IP"""
     if not req.alert or not req.alert.strip():
         raise HTTPException(status_code=400, detail="alert must be non-empty")
 
     alert_text = req.alert.strip()
 
-    # Extract IPs from alert text for hinting the executor
+    # Extract IPs from alert text
     ip_matches = re.findall(r'(\d+\.\d+\.\d+\.\d+)', alert_text)
 
-    # Determine hint for executor IP based on alert IPs
-    executor_ip_hint = "172.31.0.10"  # Default to server
+    # Determine which IPs need plans
+    # We want to generate plans for all relevant IPs in the alert
+    relevant_ips = []
 
     if len(ip_matches) >= 2:
         source_ip, target_ip = ip_matches[0], ip_matches[1]
-        # If target is on compromised network, execute there
-        if target_ip.startswith("172.30.0.") or target_ip.startswith("10.0.2."):
-            executor_ip_hint = target_ip
-        # If source is from compromised network, target the server
-        elif source_ip.startswith("172.30.0."):
-            executor_ip_hint = target_ip if target_ip.startswith("172.31.0.") else "172.31.0.10"
 
-    # Call LLM to generate the actual plan
-    executor_ip, llm_plan = await call_llm_for_plan(alert_text, executor_ip_hint)
+        # Always include target IP - we defend it
+        relevant_ips.append(target_ip)
+
+        # Include source IP if it's on our networks (compromised or server)
+        # This allows us to investigate/contain compromised hosts
+        if source_ip.startswith("172.30.0.") or source_ip.startswith("172.31.0."):
+            if source_ip not in relevant_ips:
+                relevant_ips.append(source_ip)
+
+    # Default to server if no IPs found
+    if not relevant_ips:
+        relevant_ips.append("172.31.0.10")
+
+    # Generate a plan for each relevant IP
+    plans = []
+    for target_ip in relevant_ips:
+        # Call LLM to generate plan for this specific IP
+        executor_ip, llm_plan = await call_llm_for_plan(alert_text, target_ip)
+        plans.append(SinglePlan(executor_host_ip=executor_ip, plan=llm_plan))
 
     return PlanResponse(
-        executor_host_ip=executor_ip,
-        plan=llm_plan,
+        plans=plans,
         model=PLANNER_MODEL,
         request_id=str(uuid.uuid4()),
         created=time.strftime("%Y-%m-%dT%H:%M:%S.%fZ", time.gmtime())

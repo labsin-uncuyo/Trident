@@ -31,6 +31,16 @@ ensure_ssh_key() {
     if [ -f "${SSH_KEY_PATH}.pub" ]; then
         chmod 644 "${SSH_KEY_PATH}.pub"
     fi
+
+    # Copy keys to shared volume for compromised container to use on startup
+    if [ -d "/root/.ssh_auto_responder" ]; then
+        log "📦 Copying SSH keys to shared volume for persistence"
+        cp "${SSH_KEY_PATH}" /root/.ssh_auto_responder/
+        cp "${SSH_KEY_PATH}.pub" /root/.ssh_auto_responder/
+        chmod 600 /root/.ssh_auto_responder/id_rsa_auto_responder
+        chmod 644 /root/.ssh_auto_responder/id_rsa_auto_responder.pub
+        log "✅ SSH keys copied to shared volume"
+    fi
 }
 
 wait_for_ssh() {

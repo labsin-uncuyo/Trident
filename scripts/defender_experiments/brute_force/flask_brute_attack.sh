@@ -682,12 +682,13 @@ word123word
 wordword1234
 EOF
 
-    # Insert the correct password at a random position
-    CORRECT_POS=$((1 + RANDOM % 1000))
+    # Insert the correct password at a random position between 30 and 50
+    CORRECT_POS=$((30 + RANDOM % 21))
     sed -i "${CORRECT_POS}i $CORRECT_PASSWORD" "$WORDLIST_FILE"
 
-    # Shuffle the wordlist randomly
-    shuf "$WORDLIST_FILE" -o "$WORDLIST_FILE"
+    # Keep only first 50 passwords for testing
+    head -n 50 "$WORDLIST_FILE" > "${WORDLIST_FILE}.tmp"
+    mv "${WORDLIST_FILE}.tmp" "$WORDLIST_FILE"
 
     echo "Flask wordlist created with $(wc -l < "$WORDLIST_FILE") passwords"
     echo "Correct password '$CORRECT_PASSWORD' is at position: $(grep -n "^$CORRECT_PASSWORD$" "$WORDLIST_FILE" | cut -d: -f1)"
@@ -927,6 +928,9 @@ attack_phase_3() {
         fi
 
         rm -f "$output_file" 2>/dev/null
+
+        # Add small delay between attempts to help Slips detect the pattern
+        sleep 0.1
 
         # Check if Flask port becomes blocked after failed attempt
         if [[ -z "$FLASK_PORT_BLOCKED_TIME" ]]; then
