@@ -91,6 +91,7 @@ services:
     environment:
       - LAB_PASSWORD=${LAB_PASSWORD}
       - RUN_ID=${RUN_ID}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL}
