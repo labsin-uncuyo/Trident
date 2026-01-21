@@ -9,6 +9,8 @@ printf 'labuser:%s\n' "${LAB_PASSWORD}" | chpasswd
 mkdir -p /etc/sudoers.d
 echo "labuser ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/labuser
 chmod 440 /etc/sudoers.d/labuser
+echo 'Defaults env_keep += "OPENCODE_API_KEY"' >/etc/sudoers.d/opencode_env
+chmod 440 /etc/sudoers.d/opencode_env
 
 # Create OpenCode auth.json with API key from environment
 mkdir -p /root/.local/share/opencode
@@ -21,9 +23,42 @@ cat >/root/.local/share/opencode/auth.json <<EOF
 }
 EOF
 
+# Ensure OpenCode is on PATH for all users/shells (copy binary out of /root)
+if [ -x /root/.opencode/bin/opencode ]; then
+    rm -f /usr/local/bin/opencode /usr/bin/opencode
+    install -m 755 /root/.opencode/bin/opencode /usr/local/bin/opencode
+    ln -sf /usr/local/bin/opencode /usr/bin/opencode
+fi
+cat >/etc/profile.d/opencode.sh <<'EOF'
+export PATH="/usr/local/bin:/usr/bin:${PATH}"
+EOF
+chmod 644 /etc/profile.d/opencode.sh
+
+# Ensure OPENCODE_API_KEY is available in SSH login shells
+if [ -n "${OPENCODE_API_KEY:-}" ]; then
+    cat >/etc/profile.d/opencode_env.sh <<EOF
+export OPENCODE_API_KEY='${OPENCODE_API_KEY}'
+EOF
+    chmod 644 /etc/profile.d/opencode_env.sh
+fi
+
+# Mirror OpenCode auth/config for labuser SSH sessions
+install -d -m 700 -o labuser -g labuser /home/labuser/.config/opencode /home/labuser/.local/share/opencode
+install -d -m 700 -o labuser -g labuser /home/labuser/.local/state
+cat >/home/labuser/.local/share/opencode/auth.json <<EOF
+{
+    "e-infra-chat": {
+        "type": "api",
+        "key": "${OPENCODE_API_KEY:-}"
+    }
+}
+EOF
+chown labuser:labuser /home/labuser/.local/share/opencode/auth.json
+
 # Copy OpenCode configuration (already has {env:OPENCODE_API_KEY} placeholder)
 if [ -f /root/.config/opencode/opencode.json.template ]; then
     cp /root/.config/opencode/opencode.json.template /root/.config/opencode/opencode.json
+    install -m 600 -o labuser -g labuser /root/.config/opencode/opencode.json.template /home/labuser/.config/opencode/opencode.json
 fi
 
 # Setup SSH authorized keys for GHOSTS driver
