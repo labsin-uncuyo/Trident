@@ -1,2 +1,0 @@
-# Python requirements for LLM-driven GHOSTS timeline generation
-# No external dependencies required - uses subprocess to call OpenCode CLI

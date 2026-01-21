@@ -91,16 +91,12 @@ services:
     environment:
       - LAB_PASSWORD=${LAB_PASSWORD}
       - RUN_ID=${RUN_ID}
-      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL}
     volumes:
       - ./outputs:/outputs
       - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro
-    #  - ./GHOSTS:/opt/GHOSTS:ro
-    #  - ./GHOSTS/agents/john_scott/config:/opt/ghosts_config:ro
-    #  - ./GHOSTS/agents/john_scott/scripts:/home/labuser/ghosts_scripts:ro
     ports:
       - "2223:22"
     networks:
@@ -120,43 +116,7 @@ services:
       timeout: 3s
       retries: 20
 
-  ghosts_driver:
-    build:
-      context: .
-      dockerfile: images/ghosts_driver/Dockerfile
-    image: lab/ghosts_driver:latest
-    container_name: lab_ghosts_driver
-    profiles:
-      - benign
-    environment:
-      - RUN_ID=${RUN_ID}
-      - GHOSTS_REPEATS=${GHOSTS_REPEATS:-1}
-      - GHOSTS_DELAY=${GHOSTS_DELAY:-5}
-      - GHOSTS_MODE=${GHOSTS_MODE:-dummy}
-      - GHOSTS_NUM_QUERIES=${GHOSTS_NUM_QUERIES:-5}
-      - GHOSTS_SCENARIO=${GHOSTS_SCENARIO:-developer_routine}
-      - GHOSTS_ROLE=${GHOSTS_ROLE:-senior_developer_role}
-      - LAB_PASSWORD=${LAB_PASSWORD}
-      - SSH_HOST=${SSH_HOST:-172.30.0.10}
-      - SSH_PORT=${SSH_PORT:-22}
-      - SSH_USER=${SSH_USER:-labuser}
-      - SSH_PASSWORD=${SSH_PASSWORD:-${LAB_PASSWORD}}
-      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL:-qwen3-coder}
-    volumes:
-      - ./outputs:/outputs
-    networks:
-      lab_net_a:
-        ipv4_address: 172.30.0.20
-      ghosts-network:
-        aliases:
-          - ghosts_driver
-    depends_on:
-      compromised:
-        condition: service_healthy
-    restart: unless-stopped
+ 
 
   server:
     build: ./images/server
@@ -241,6 +201,4 @@ networks:
       config:
         - subnet: 172.31.0.0/24
           gateway: 172.31.0.254
-  ghosts-network:
-    name: ghosts-network
-    external: true
+
