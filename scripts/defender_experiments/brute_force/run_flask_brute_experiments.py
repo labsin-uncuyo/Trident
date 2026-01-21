@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Configuration
-NUM_EXPERIMENTS = 10  # Adjust as needed
+NUM_EXPERIMENTS = 1  # Adjust as needed
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
 EXPERIMENT_SCRIPT = SCRIPT_DIR / "run_experiment.sh"
@@ -37,12 +37,13 @@ def run_experiment(experiment_num):
     log(f"=" * 60)
 
     try:
-        # Run the experiment script
+        # Run the experiment script from PROJECT_ROOT directory
         result = subprocess.run(
             [str(EXPERIMENT_SCRIPT), experiment_id],
             capture_output=True,
             text=True,
-            timeout=1800  # 30 minute timeout
+            timeout=1800,  # 30 minute timeout
+            cwd=str(PROJECT_ROOT)  # Run from project root
         )
 
         # Log the result
