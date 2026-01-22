@@ -22,7 +22,7 @@ make verify
 
 2. **Connect to compromised container:**
 ```bash
-ssh labuser@127.0.0.1 -p 2223
+ssh labuser@172.30.0.1
 # Password from your .env file
 sudo su
 ```
@@ -259,7 +259,7 @@ When you perform attacks, you should see:
 tail -f /outputs/${RUN_ID}/auto_responder_detailed.log
 
 # In another terminal (attack)
-ssh labuser@127.0.0.1 -p 2223
+ssh labuser@172.30.0.1
 sudo su
 nmap -sS -p 22,80,443 172.31.0.10
 ```
@@ -270,7 +270,7 @@ nmap -sS -p 22,80,443 172.31.0.10
 tail -f /outputs/${RUN_ID}/auto_responder_timeline.jsonl
 
 # In another terminal (attack)
-ssh labuser@127.0.0.1 -p 2223
+ssh labuser@172.30.0.1
 sudo su
 hydra -l root -P /usr/share/wordlists/rockyou.txt ssh://172.31.0.10 -V
 ```
@@ -281,7 +281,7 @@ hydra -l root -P /usr/share/wordlists/rockyou.txt ssh://172.31.0.10 -V
 tail -f /outputs/${RUN_ID}/executions.jsonl
 
 # In another terminal (attack)
-ssh labuser@127.0.0.1 -p 2223
+ssh labuser@172.30.0.1
 sudo su
 for i in {1..20}; do curl -s "http://172.31.0.10/" & done
 wait

