@@ -4,7 +4,7 @@ PYTHON ?= python3
 export COMPOSE_PROJECT_NAME := lab
 RUN_ID_FILE := ./outputs/.current_run
 
-.PHONY: build up down verify slips_verify clean ssh_keys aracne_attack ghosts_psql defend not_defend
+.PHONY: build up down verify clean ssh_keys aracne_attack ghosts_psql defend not_defend
 
 build:
 	@echo "Building all compose services (including defender/benign/attacker)..."
@@ -47,38 +47,6 @@ verify:
 	@echo "[verify] Lab containers status (lab_*)"
 	docker ps --filter "name=lab_" --format "table {{.Names}}\t{{.Status}}"
 
-slips_verify:
-	@RUN_ID_VALUE=$$( [ -f $(RUN_ID_FILE) ] && cat $(RUN_ID_FILE) || echo logs_$$(date +%Y%m%d_%H%M%S) ); \
-	echo $$RUN_ID_VALUE > $(RUN_ID_FILE); \
-	export RUN_ID=$$RUN_ID_VALUE; \
-	echo "[slips_verify] Using RUN_ID=$$RUN_ID_VALUE"; \
-	echo "[slips_verify] Resetting lab"; \
-	$(MAKE) down; \
-	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips; \
-	echo "[slips_verify] Bringing lab up"; \
-	opts="--profile core --profile defender"; \
-	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d; \
-	echo "[slips_verify] Waiting for full lab readiness..."; \
-	./scripts/wait_for_lab_ready.sh; \
-	echo "[slips_verify] Running Nmap service scan from compromised -> server"; \
-	docker exec lab_compromised nmap -sV -Pn -T4 172.31.0.10 || true; \
-	echo "[slips_verify] Running Nmap full port scan from compromised -> server"; \
-	docker exec lab_compromised nmap -sS -T4 -p- 172.31.0.10 || true; \
-	echo "[slips_verify] Running SSH brute-force attempts (200) from compromised -> server"; \
-	for i in $$(seq 1 200); do \
-		docker exec lab_compromised ssh -n -T \
-			-o BatchMode=yes \
-			-o PreferredAuthentications=password \
-			-o PubkeyAuthentication=no \
-			-o UserKnownHostsFile=/dev/null \
-			-o StrictHostKeyChecking=no \
-			-o ConnectTimeout=1 \
-			fakeuser$$i@172.31.0.10 -p 22 >/dev/null 2>&1 || true; \
-	done; \
-	echo "[slips_verify] Forcing SLIPS processing of captured traffic"; \
-	$(PYTHON) scripts/slips_verify.py --run-id $$RUN_ID_VALUE; \
-	echo "[slips_verify] Done. Outputs in ./outputs/$$RUN_ID_VALUE"
-
 ssh_keys:
 	@echo "Setting up SSH keys for auto_responder..."
 	./scripts/setup_ssh_keys_host.sh
@@ -115,7 +83,7 @@ defend:
 	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips ./outputs/$$RUN_ID_VALUE/aracne ./outputs/$$RUN_ID_VALUE/ghosts; \
 	opts="--profile core --profile defender"; \
 	echo "[defend] Starting defender components"; \
-	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d --no-recreate --no-build router server compromised switch slips_defender; \
+	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d --no-recreate --no-build router server compromised slips_defender; \
 	echo "[defend] Setting up SSH keys for auto_responder..."; \
 	./scripts/setup_ssh_keys_host.sh
 
@@ -125,4 +93,3 @@ not_defend:
 
 clean:
 	$(COMPOSE) down --rmi all --volumes --remove-orphans
-
