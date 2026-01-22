@@ -12,6 +12,11 @@ export LOGIN_PASSWORD
 export DB_USER
 export DB_PASSWORD
 
+if ! id -u "${LOGIN_USER}" >/dev/null 2>&1; then
+    useradd -m -s /bin/bash "${LOGIN_USER}"
+fi
+printf '%s:%s\n' "${LOGIN_USER}" "${LOGIN_PASSWORD}" | chpasswd
+
 pcap_dir="/outputs/${RUN_ID}/pcaps"
 mkdir -p "${pcap_dir}"
 
@@ -77,6 +82,7 @@ systemctl start ssh
 runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}';" | grep -q 1 \
     || runuser -u postgres -- psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" >/dev/null
 runuser -u postgres -- psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" >/dev/null
+runuser -u postgres -- psql -c "GRANT pg_execute_server_program TO ${DB_USER};" >/dev/null
 
 if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='labdb';" | grep -q 1; then
     runuser -u postgres -- createdb labdb
@@ -88,6 +94,7 @@ systemctl start nginx
 
 # Ensure hosts on net_a are reachable through router (do this BEFORE database loading)
 ip route replace 172.30.0.0/24 via 172.31.0.1 || true
+ip route replace default via 172.31.0.1 dev eth0 || true
 
 # Add route for simulated exfiltration IP (for data exfiltration simulation)
 # Traffic to 137.184.126.86 will be routed through the router for DNAT
@@ -121,5 +128,8 @@ tcpdump -U -s 0 -i eth0 -w "${pcap_dir}/server.pcap" >>"${capture_log}" 2>&1 &
 TCPDUMP_PID=$!
 
 trap 'kill "${TCPDUMP_PID}" >/dev/null 2>&1 || true' EXIT
+
+# Re-assert default route in case container networking reset it.
+ip route replace default via 172.31.0.1 dev eth0 || true
 
 tail -n0 -F /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}" "${login_log}"

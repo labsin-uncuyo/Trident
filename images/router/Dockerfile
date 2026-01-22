@@ -4,7 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ca-certificates iproute2 iptables logrotate netcat-openbsd procps tcpdump iputils-ping \
+       ca-certificates dnsmasq iproute2 iptables logrotate netcat-openbsd procps tcpdump iputils-ping \
     && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /entrypoint.sh

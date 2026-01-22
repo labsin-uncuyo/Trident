@@ -22,26 +22,6 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # switch remains available for future mirroring experiments, but SLIPS now
-  # consumes PCAPs directly from the shared volume so this component is optional.
-  switch:
-    build: ./images/switch
-    image: lab/switch:latest
-    container_name: lab_switch
-    profiles:
-      - defender
-    privileged: true
-    environment:
-      - RUN_ID=${RUN_ID}
-    volumes:
-      - ./outputs:/outputs
-    networks:
-      lab_net_a:
-        ipv4_address: 172.30.0.2
-    depends_on:
-      - router
-    restart: unless-stopped
-
   slips_defender:
     build: ./images/slips_defender
     image: lab/slips_defender:latest
@@ -91,17 +71,18 @@ services:
     environment:
       - LAB_PASSWORD=${LAB_PASSWORD}
       - RUN_ID=${RUN_ID}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL}
     volumes:
       - ./outputs:/outputs
       - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro
-    ports:
-      - "2223:22"
     networks:
       lab_net_a:
         ipv4_address: 172.30.0.10
+    dns:
+      - 172.30.0.1
     depends_on:
       server:
         condition: service_healthy
@@ -136,12 +117,11 @@ services:
       - opencode_data:/root/.opencode
       - postgres_data:/var/lib/postgresql
       - ./.env:/etc/default/lab-env:ro
-    ports:
-      - "8080:80"
-      - "5432:5432"
     networks:
       lab_net_b:
         ipv4_address: 172.31.0.10
+    dns:
+      - 172.31.0.1
     depends_on:
       router:
         condition: service_healthy
@@ -168,12 +148,20 @@ services:
     environment:
       - RUN_ID=${RUN_ID}
       - GOAL=${GOAL:-Create the file /home/labuser/aracne_was_here.txt containing 'aracne ok' and then read it back to confirm.}
+      - SSH_HOST=172.30.0.10
+      - SSH_PORT=22
     volumes:
       - ./outputs/${RUN_ID}/aracne:/logs
       - ./configs/aracne_lab/config:/agent/config:ro
       - ./configs/aracne_lab/.env:/agent/.env:ro
       - ./configs/aracne_lab/start_lab.sh:/agent/start_lab.sh:ro
-    network_mode: host
+    networks:
+      lab_net_b:
+        ipv4_address: 172.31.0.50
+    dns:
+      - 172.31.0.1
+    cap_add:
+      - NET_ADMIN
     depends_on:
       compromised:
         condition: service_healthy
@@ -201,4 +189,3 @@ networks:
       config:
         - subnet: 172.31.0.0/24
           gateway: 172.31.0.254
-

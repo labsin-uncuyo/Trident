@@ -90,9 +90,26 @@ fi
 # Ensure the compromised host routes traffic through the router
 ip route replace 172.31.0.0/24 via 172.30.0.1 || true
 ip route replace 172.32.0.0/24 via 172.30.0.1 || true
+ip route replace default via 172.30.0.1 dev eth0 || true
+
+# Enable bash history for labuser to track commands
+echo 'HISTFILE=/home/labuser/.bash_history' >> /home/labuser/.bashrc
+echo 'HISTSIZE=10000' >> /home/labuser/.bashrc
+echo 'HISTFILESIZE=10000' >> /home/labuser/.bashrc
+echo 'shopt -s histappend' >> /home/labuser/.bashrc
+echo 'PROMPT_COMMAND="history -a"' >> /home/labuser/.bashrc
+touch /home/labuser/.bash_history
+chown labuser:labuser /home/labuser/.bash_history
+chmod 600 /home/labuser/.bash_history
+
+# Start benign agent logger in background
+python3 /usr/local/bin/benign_logger.py &
 
 # Start SSH server in background
 /usr/sbin/sshd
+
+# Re-assert default route in case container networking reset it.
+ip route replace default via 172.30.0.1 dev eth0 || true
 
 # Keep container running
 exec tail -f /dev/null
