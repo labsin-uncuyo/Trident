@@ -16,15 +16,15 @@ case "$command" in
     block_ip)
         ip=${2:-}
         [ -n "$ip" ] || { echo "IP required" >&2; exit 1; }
-        if ! iptables -C FORWARD -s "$ip" -j DROP 2>/dev/null; then
-            iptables -I FORWARD -s "$ip" -j DROP
+        if ! iptables-legacy -C FORWARD -s "$ip" -j DROP 2>/dev/null; then
+            iptables-legacy -I FORWARD -s "$ip" -j DROP
         fi
         ;;
     unblock_ip)
         ip=${2:-}
         [ -n "$ip" ] || { echo "IP required" >&2; exit 1; }
-        while iptables -C FORWARD -s "$ip" -j DROP 2>/dev/null; do
-            iptables -D FORWARD -s "$ip" -j DROP
+        while iptables-legacy -C FORWARD -s "$ip" -j DROP 2>/dev/null; do
+            iptables-legacy -D FORWARD -s "$ip" -j DROP
         done
         ;;
     rotate_pcaps)

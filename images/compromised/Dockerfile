@@ -63,6 +63,10 @@ RUN mkdir -p /root/.config/opencode \
 # Copy OpenCode configuration template
 COPY opencode.json /root/.config/opencode/opencode.json.template
 
+# Copy benign agent logger
+COPY benign_logger.py /usr/local/bin/benign_logger.py
+RUN chmod +x /usr/local/bin/benign_logger.py
+
 # Create symlink for opencode in system PATH
 RUN ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode
 
