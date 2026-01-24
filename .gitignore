@@ -48,4 +48,4 @@ test_opencode_*.exp
 *.sql.backup
 
 # Patches directory (build artifacts)
-images/slips_defender/patches/
+# images/slips_defender/patches/
