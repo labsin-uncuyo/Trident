@@ -2,12 +2,56 @@
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
+
+
+# Global variables for cleanup
+_cleanup_container = None
+_cleanup_agent = None
+_opencode_pid = None
+
+
+def cleanup_opencode_process():
+    """Kill any running opencode process for this agent inside the container."""
+    if not _cleanup_container:
+        return
+    
+    try:
+        # First try to kill by specific PID if we have it (most precise method)
+        if _opencode_pid:
+            subprocess.run(
+                ["docker", "exec", _cleanup_container, "kill", "-9", str(_opencode_pid)],
+                capture_output=True,
+                timeout=5,
+            )
+        # Fallback: use more specific pattern including format to avoid killing other agents
+        elif _cleanup_agent:
+            # Pattern: "opencode run --agent db_admin --format json"
+            # This is more specific than just the agent name to avoid collisions
+            subprocess.run(
+                ["docker", "exec", _cleanup_container, "pkill", "-9", "-f", f"opencode run --agent {_cleanup_agent} --format json"],
+                capture_output=True,
+                timeout=5,
+            )
+    except Exception:
+        pass
+
+
+def signal_handler(signum, frame):
+    """Handle termination signals by cleaning up opencode processes."""
+    cleanup_opencode_process()
+    sys.exit(1)
+
+
+# Register signal handlers
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 
 def parse_args() -> argparse.Namespace:
@@ -136,26 +180,18 @@ def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: s
 
 
 def main() -> int:
+    global _cleanup_container, _cleanup_agent, _opencode_pid
+    
     args = parse_args()
+    _cleanup_container = args.container
+    _cleanup_agent = "db_admin"
+    
     goal_text = " ".join(args.goal).strip()
     if not goal_text:
         print("Error: goal is required.", file=sys.stderr)
         return 2
 
-    cmd = [
-        "docker",
-        "exec",
-        "--user",
-        args.user,
-        args.container,
-        "opencode",
-        "run",
-        "--agent",
-        "db_admin",
-        "--",
-        goal_text,
-    ]
-    display_cmd = f"docker exec -it {args.container} opencode --agent db_admin"
+    display_cmd = f"docker exec -i lab_compromised opencode run --agent db_admin --format json"
     print(f"[db_admin] Starting: {display_cmd}")
     execution_id = uuid4().hex
     try:
@@ -171,19 +207,63 @@ def main() -> int:
             "container": args.container,
             "exec": execution_id[:8],
         })
-        start_time = time.time()
-        result = subprocess.run(
-            cmd,
-            input="",  # Provide empty stdin to prevent hanging
-            capture_output=True,
-            text=True,
-            timeout=args.timeout,
-        )
-        duration = time.time() - start_time
-
-        # Raw output capture
         stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
         stderr_path = os.path.join(output_dir, "opencode_stderr.log")
+        start_time = time.time()
+        
+        cmd = [
+            "docker",
+            "exec",
+            "-i",
+            "--user",
+            args.user,
+            args.container,
+            "opencode",
+            "run",
+            "--agent",
+            "db_admin",
+            "--format",
+            "json",
+        ]
+        
+        # Start the process
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        
+        # Try to capture the PID of the opencode process inside the container
+        # This is best-effort; if it fails we fall back to pkill
+        try:
+            pid_result = subprocess.run(
+                ["docker", "exec", args.container, "pgrep", "-f", f"opencode run --agent db_admin --format json"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if pid_result.returncode == 0 and pid_result.stdout.strip():
+                _opencode_pid = pid_result.stdout.strip().split()[0]  # Get first PID
+        except Exception:
+            pass
+        
+        # Wait for completion with timeout
+        try:
+            stdout, stderr = proc.communicate(input=goal_text + "\n", timeout=args.timeout)
+            result = subprocess.CompletedProcess(
+                args=cmd,
+                returncode=proc.returncode,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            raise subprocess.TimeoutExpired(cmd, args.timeout, output=stdout, stderr=stderr)
+        duration = time.time() - start_time
+        
         with open(stdout_path, "w", encoding="utf-8") as handle:
             handle.write(result.stdout or "")
         with open(stderr_path, "w", encoding="utf-8") as handle:
@@ -213,6 +293,9 @@ def main() -> int:
         print("[db_admin] Completed.")
         return 0
     except subprocess.TimeoutExpired as exc:
+        # Kill the opencode process inside the container to prevent zombie processes
+        cleanup_opencode_process()
+        
         run_id = resolve_run_id()
         output_dir = os.path.join("/home/shared/Trident/outputs", run_id, "benign_agent")
         os.makedirs(output_dir, exist_ok=True)
@@ -220,15 +303,11 @@ def main() -> int:
         stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
         stderr_path = os.path.join(output_dir, "opencode_stderr.log")
         
-        # Handle both str and bytes output
-        stdout_text = exc.stdout.decode("utf-8") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr_text = exc.stderr.decode("utf-8") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        
         with open(stdout_path, "w", encoding="utf-8") as handle:
-            handle.write(stdout_text)
+            handle.write(exc.stdout or "")
         with open(stderr_path, "w", encoding="utf-8") as handle:
-            handle.write(stderr_text)
-        append_opencode_events(timeline_path, execution_id, stdout_text)
+            handle.write(exc.stderr or "")
+        append_opencode_events(timeline_path, execution_id, exc.stdout or "")
         write_timeline_entry(timeline_path, "ERROR", "db_admin execution timed out", data={
             "timeout_seconds": args.timeout,
             "stdout_path": stdout_path,

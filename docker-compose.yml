@@ -66,6 +66,7 @@ services:
     build: ./images/compromised
     image: lab/compromised:latest
     container_name: lab_compromised
+    init: true
     profiles:
       - core
     environment:
