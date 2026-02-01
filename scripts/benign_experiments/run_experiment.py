@@ -28,8 +28,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--goal",
-        default="go work",
-        help="Goal text for the agent (default: 'go work').",
+        default='Start your workday. Connect to the database server via the jump host and begin your daily tasks. **WEB RESEARCH (use curl frequently):** Research these URLs throughout your session: curl https://www.postgresql.org/docs/current/, curl https://wiki.postgresql.org/wiki/Main_Page, curl https://www.postgresqltutorial.com/, curl https://planet.postgresql.org/. **TIMING:** sleep 60-130 for coffee breaks. **DATABASE TASKS:** Check tables, INSERT new employees, UPDATE salaries, DELETE obsolete records or other query. Alternate between database operations and web research. Create a final report with the all information of database and web. Do not finish your work until you have done everything you can with the database.',
+        help="Goal text for the agent.",
     )
     parser.add_argument(
         "--container",
@@ -203,10 +203,9 @@ def run_single_experiment(
     
     start_time = time.time()
     try:
-        # If timeout is None, use 24 hours as effective "no limit"
-        # Add 60s buffer for subprocess timeout
-        timeout_value = 86400 if timeout is None else timeout
-        subprocess_timeout = timeout_value + 60
+        # Only set subprocess timeout if explicitly specified
+        # Add 60s buffer for subprocess timeout when set
+        subprocess_timeout = None if timeout is None else (timeout + 60)
         result = subprocess.run(
             cmd,
             env=env,

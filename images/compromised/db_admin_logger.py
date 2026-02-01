@@ -72,8 +72,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--timeout",
         type=int,
-        default=int(os.environ.get("OPENCODE_TIMEOUT", "600")),
-        help="Seconds to wait for OpenCode run (default: 600 or OPENCODE_TIMEOUT).",
+        default=int(os.environ.get("OPENCODE_TIMEOUT", "86400")),
+        help="Seconds to wait for OpenCode run (default: 86400 or OPENCODE_TIMEOUT).",
     )
     return parser.parse_args()
 
@@ -100,6 +100,59 @@ def write_timeline_entry(path: str, level: str, message: str, data: Optional[dic
         entry["data"] = data
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+        handle.flush()  # Ensure real-time writing
+
+
+def _calculate_metrics(stdout_text: str) -> dict:
+    """Calculate metrics from stdout without writing to timeline (used for summary)."""
+    tool_calls = []
+    llm_calls = 0
+    final_output = None
+    errors = []
+    text_outputs = []
+    bash_commands = []
+
+    for line in stdout_text.splitlines():
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+        
+        try:
+            event = json.loads(line_stripped)
+            event_type = event.get("type", "")
+            if event_type == "step_start":
+                llm_calls += 1
+            elif event_type == "tool_use":
+                part = event.get("part", {})
+                tool_calls.append(part.get("tool", "unknown"))
+            elif event_type == "text":
+                part = event.get("part", {})
+                text_content = part.get("text", "")
+                if text_content:
+                    text_outputs.append(text_content)
+            elif event_type.lower() == "error":
+                errors.append(str(event))
+        except (json.JSONDecodeError, ValueError):
+            if "|  Bash " in line:
+                bash_commands.append(line_stripped)
+                tool_calls.append("bash")
+            elif final_output is None and line_stripped:
+                final_output = line_stripped[:500]
+
+    if llm_calls == 0 and bash_commands:
+        llm_calls = max(1, len(bash_commands) // 2)
+
+    if not final_output and text_outputs:
+        final_output = " ".join(text_outputs)[-500:]
+    elif not final_output and stdout_text:
+        final_output = stdout_text[:500]
+
+    return {
+        "final_output": final_output,
+        "llm_calls": llm_calls,
+        "tool_calls": tool_calls,
+        "errors": errors,
+    }
 
 
 def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: str) -> dict:
@@ -233,6 +286,7 @@ def main() -> int:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            bufsize=1,  # Line buffered for real-time output
         )
         
         # Try to capture the PID of the opencode process inside the container
@@ -249,9 +303,64 @@ def main() -> int:
         except Exception:
             pass
         
-        # Wait for completion with timeout
+        # Send goal to stdin and close it
+        proc.stdin.write(goal_text + "\n")
+        proc.stdin.flush()
+        proc.stdin.close()
+        
+        # Read stdout line by line in real-time and write to files immediately
+        stdout_lines = []
+        deadline = time.time() + args.timeout
+        
         try:
-            stdout, stderr = proc.communicate(input=goal_text + "\n", timeout=args.timeout)
+            with open(stdout_path, "w", encoding="utf-8") as stdout_handle:
+                while True:
+                    if time.time() > deadline:
+                        proc.kill()
+                        raise subprocess.TimeoutExpired(cmd, args.timeout, output="\n".join(stdout_lines), stderr="")
+                    
+                    line = proc.stdout.readline()
+                    if not line:
+                        # Check if process has ended
+                        if proc.poll() is not None:
+                            break
+                        continue
+                    
+                    stdout_lines.append(line.rstrip('\n'))
+                    # Write to file immediately with flush for real-time logging
+                    stdout_handle.write(line)
+                    stdout_handle.flush()
+                    
+                    # Also process and write timeline entry in real-time
+                    line_stripped = line.strip()
+                    if line_stripped:
+                        try:
+                            event = json.loads(line_stripped)
+                            event_type = event.get("type", "")
+                            timeline_entry = {
+                                "ts": datetime.now(timezone.utc).isoformat(),
+                                "level": "OPENCODE",
+                                "msg": event_type,
+                                "exec": execution_id[:8],
+                                "data": event,
+                            }
+                        except (json.JSONDecodeError, ValueError):
+                            timeline_entry = {
+                                "ts": datetime.now(timezone.utc).isoformat(),
+                                "level": "OUTPUT",
+                                "msg": "text_line",
+                                "exec": execution_id[:8],
+                                "data": {"text": line_stripped[:200]},
+                            }
+                        
+                        with open(timeline_path, "a", encoding="utf-8") as tl_handle:
+                            tl_handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
+            
+            # Wait for process to complete and get stderr
+            proc.wait()
+            stderr = proc.stderr.read() if proc.stderr else ""
+            stdout = "\n".join(stdout_lines)
+            
             result = subprocess.CompletedProcess(
                 args=cmd,
                 returncode=proc.returncode,
@@ -260,17 +369,16 @@ def main() -> int:
             )
         except subprocess.TimeoutExpired:
             proc.kill()
-            stdout, stderr = proc.communicate()
-            raise subprocess.TimeoutExpired(cmd, args.timeout, output=stdout, stderr=stderr)
+            stderr = proc.stderr.read() if proc.stderr else ""
+            raise subprocess.TimeoutExpired(cmd, args.timeout, output="\n".join(stdout_lines), stderr=stderr)
         duration = time.time() - start_time
         
-        with open(stdout_path, "w", encoding="utf-8") as handle:
-            handle.write(result.stdout or "")
+        # Write stderr (stdout was already written in real-time)
         with open(stderr_path, "w", encoding="utf-8") as handle:
             handle.write(result.stderr or "")
 
-        # Event processing and timeline logging
-        metrics = append_opencode_events(timeline_path, execution_id, result.stdout or "")
+        # Calculate metrics from the already-processed stdout (no need to re-process timeline)
+        metrics = _calculate_metrics(result.stdout or "")
         write_timeline_entry(timeline_path, "EXEC", "db_admin execution completed", data={
             "exit_code": result.returncode,
             "duration_seconds": round(duration, 2),
