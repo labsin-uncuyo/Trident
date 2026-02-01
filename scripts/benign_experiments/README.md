@@ -38,7 +38,7 @@ python scripts/benign_experiments/run_experiment.py --timeout 300
 ```bash
 python scripts/benign_experiments/run_experiment.py \
     --runs 100 \
-    --goal "go work" \
+    --goal "Start your workday. Connect to the database server via the jump host..." \
     --container lab_compromised \
     --user labuser \
     --timeout 600 \
