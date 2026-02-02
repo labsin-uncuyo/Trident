@@ -46,18 +46,21 @@ chmod 600 /root/.ssh/authorized_keys
 # Copy the auto_responder public key to root's authorized_keys
 if [ -f /root/.ssh_auto_responder/id_rsa_auto_responder.pub ]; then
     pub_key=$(cat /root/.ssh_auto_responder/id_rsa_auto_responder.pub)
-    # Add key if not already present
+    # Add key to root's authorized_keys if not already present
     if ! grep -qxF "${pub_key}" /root/.ssh/authorized_keys 2>/dev/null; then
         echo "${pub_key}" >> /root/.ssh/authorized_keys
         echo "✓ Auto-responder SSH key installed for root"
     fi
-    # Also add to admin user's authorized_keys for compatibility
-    mkdir -p /home/admin/.ssh
-    chmod 700 /home/admin/.ssh
-    if ! grep -qxF "${pub_key}" /home/admin/.ssh/authorized_keys 2>/dev/null; then
-        echo "${pub_key}" >> /home/admin/.ssh/authorized_keys
-        chown -R admin:admin /home/admin/.ssh
-        echo "✓ Auto-responder SSH key installed for admin"
+    # Also add to admin user's authorized_keys for compatibility (if admin user exists)
+    if id -u "${LOGIN_USER}" >/dev/null 2>&1; then
+        admin_home=$(getent passwd "${LOGIN_USER}" | cut -d: -f6)
+        mkdir -p "${admin_home}/.ssh"
+        chmod 700 "${admin_home}/.ssh"
+        if ! grep -qxF "${pub_key}" "${admin_home}/.ssh/authorized_keys" 2>/dev/null; then
+            echo "${pub_key}" >> "${admin_home}/.ssh/authorized_keys"
+            chown -R "${LOGIN_USER}:${LOGIN_USER}" "${admin_home}/.ssh"
+            echo "✓ Auto-responder SSH key installed for ${LOGIN_USER}"
+        fi
     fi
 fi
 

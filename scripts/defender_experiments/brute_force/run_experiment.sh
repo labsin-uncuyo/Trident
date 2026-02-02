@@ -21,7 +21,7 @@ PCAP_ROTATE_SECS="${PCAP_ROTATE_SECS:-30}"
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../../../ && pwd)"
 OUTPUTS_DIR="$PROJECT_ROOT/outputs"
 EXPERIMENT_OUTPUTS="$OUTPUTS_DIR/$EXPERIMENT_ID"
 RUN_ID_FILE="$PROJECT_ROOT/outputs/.current_run"
@@ -128,7 +128,7 @@ log "Waiting for Flask app to be ready..."
 max_wait=60  # 1 minute max
 elapsed=0
 while [ $elapsed -lt $max_wait ]; do
-    if docker exec lab_compromised curl -sf -o /dev/null http://172.31.0.10:443/login 2>/dev/null; then
+    if docker exec lab_compromised curl -sf -o /dev/null http://172.31.0.10:80/login 2>/dev/null; then
         log_success "Flask app is ready!"
         break
     fi

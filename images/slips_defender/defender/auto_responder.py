@@ -64,6 +64,11 @@ class AutoResponder:
         self.setup_logging()
         self.load_processed_alerts()
         self._ssh_verified = False  # Track if SSH was verified once
+
+        # Track running OpenCode executions per IP
+        # Format: {ip: {"child": pexpect_spawn, "execution_id": str, "start_time": datetime, "alert_hash": str}}
+        self.running_executions: Dict[str, Dict] = {}
+
         self.log("INIT", "AutoResponder started", extra_data={
             "config": {
                 "alert_file": str(ALERT_FILE),
@@ -243,21 +248,44 @@ class AutoResponder:
 
         if not source_ip or not dest_ip:
             import re
-            ip_match = re.findall(r'(\d+\.\d+\.\d+\.\d+)', raw_alert)
-            if len(ip_match) >= 2:
-                source_ip, dest_ip = ip_match[0], ip_match[1]
-            elif len(ip_match) == 1:
-                source_ip = ip_match[0]
+            # Better IP extraction: look for "Src IP" and "to IP" patterns
+            # Pattern 1: "Src IP X.X.X.X ... to IP Y.Y.Y.Y"
+            src_match = re.search(r'Src IP\s+(\d+\.\d+\.\d+\.\d+)', raw_alert)
+            to_ip_match = re.search(r'to IP\s+(\d+\.\d+\.\d+\.\d+)', raw_alert)
+            # Pattern 2: "Src IP X.X.X.X ... to Y.Y.Y.Y:port"
+            to_match = re.search(r'to\s+(\d+\.\d+\.\d+\.\d+):\d+', raw_alert)
+
+            if src_match:
+                source_ip = src_match.group(1)
+            elif not source_ip:
+                # Fallback: find all IPs, use first as source
+                ip_match = re.findall(r'(\d+\.\d+\.\d+\.\d+)', raw_alert)
+                if len(ip_match) >= 1:
+                    source_ip = ip_match[0]
+
+            if to_ip_match:
+                dest_ip = to_ip_match.group(1)
+            elif to_match:
+                dest_ip = to_match.group(1)
+            elif not dest_ip:
+                # Fallback: find all IPs, use second as dest
+                ip_match = re.findall(r'(\d+\.\d+\.\d+\.\d+)', raw_alert)
+                if len(ip_match) >= 2:
+                    # Use the LAST unique IP as destination
+                    dest_ip = ip_match[-1] if ip_match[-1] != source_ip else ip_match[1]
 
         # Extract attack type from raw alert
         attack_type = "unknown"
-        if "horizontal port scan" in raw_alert.lower():
+        raw_lower = raw_alert.lower()
+        if "horizontal port scan" in raw_lower:
             attack_type = "horizontal_port_scan"
-        elif "vertical port scan" in raw_alert.lower():
+        elif "vertical port scan" in raw_lower:
             attack_type = "vertical_port_scan"
-        elif "brute force" in raw_alert.lower():
+        elif "password guessing" in raw_lower:
+            attack_type = "password_guessing"
+        elif "brute force" in raw_lower:
             attack_type = "brute_force"
-        elif "denial of service" in raw_alert.lower() or "ddos" in raw_alert.lower():
+        elif "denial of service" in raw_lower or "ddos" in raw_lower:
             attack_type = "dos"
         elif alert.get("attackid"):
             attack_type = alert.get("attackid", "unknown")
@@ -560,6 +588,49 @@ class AutoResponder:
 
         target_ip, target_name = target_info
 
+        # CHECK: Is there already a running OpenCode execution for this IP?
+        current_time = datetime.now(timezone.utc)
+        with self.lock:
+            if target_ip in self.running_executions:
+                running_info = self.running_executions[target_ip]
+                child = running_info.get("child")
+                running_execution_id = running_info.get("execution_id")
+                start_time = running_info.get("start_time")
+
+                # Check if the execution is still valid (within timeout)
+                if (current_time - start_time).total_seconds() < MULTI_ALERT_SESSION_TIMEOUT:
+                    if child and child.isalive():
+                        # Send new alert as a message to the running OpenCode instance
+                        new_alert_message = f"""\n
+A new alert was generated, new plan: {plan}
+
+This does not mean the first plan was completed, you need to take both into account, prioritize and continue.
+"""
+                        try:
+                            self.log("INFO", f"Sending new alert to running OpenCode instance on {target_name}", alert_hash, running_execution_id, extra_data={
+                                "target_ip": target_ip,
+                                "running_execution_id": running_execution_id,
+                                "new_alert_hash": alert_hash
+                            })
+
+                            # Send the message to OpenCode (simulated user typing + Enter)
+                            child.sendline(new_alert_message)
+
+                            # Update the alert hash tracking
+                            self.running_executions[target_ip]["alert_hash"] = alert_hash
+
+                            self.log("INFO", f"Successfully sent new alert message to OpenCode on {target_name}", alert_hash, running_execution_id)
+                            return True
+                        except Exception as e:
+                            self.log("ERROR", f"Failed to send new alert to running OpenCode: {e}", alert_hash, running_execution_id, extra_data={
+                                "error": str(e)
+                            })
+                            # If we can't send the message, continue with new execution
+                    else:
+                        # Process died, clean it up
+                        self.log("WARN", f"Previous OpenCode execution on {target_name} died, starting new one", alert_hash, execution_id)
+                        del self.running_executions[target_ip]
+
         # Ensure SSH key exists
         if not self.ensure_ssh_key():
             self.log("ERROR", f"SSH key setup failed", alert_hash, execution_id)
@@ -624,93 +695,207 @@ echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
                     ssh_command
                 ]
 
-                result = subprocess.run(
-                    ssh_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=OPENCODE_TIMEOUT,
-                    check=True
-                )
-
-                # Parse and log OpenCode JSON events to timeline
-                # Each event gets its own timeline entry for full traceability
+                # Use pexpect for SSH to handle OpenCode's interactive permission prompts
                 tool_calls = []
                 llm_calls = 0
                 final_output = None
                 errors = []
                 text_outputs = []
 
-                structured_log_file = Path("/outputs") / RUN_ID / "auto_responder_timeline.jsonl"
+                # Per-IP timeline files
+                ip_timeline_dir = Path("/outputs") / RUN_ID / "timeline_per_ip"
+                ip_timeline_dir.mkdir(parents=True, exist_ok=True)
+                ip_timeline_file = ip_timeline_dir / f"{executor_ip.replace('.', '_')}_timeline.jsonl"
+                structured_log_file = ip_timeline_file
 
-                for line in result.stdout.split('\n'):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        event = json.loads(line)
+                # Create a raw output log file for debugging
+                raw_output_log = Path("/outputs") / RUN_ID / f"opencode_raw_{executor_ip.replace('.', '_')}.txt"
+                raw_stderr_log = Path("/outputs") / RUN_ID / f"opencode_stderr_{executor_ip.replace('.', '_')}.txt"
 
-                        # Extract metrics based on actual OpenCode event types
-                        event_type = event.get("type", "")
+                # Build SSH command list for pexpect
+                # Use the list format and pass to shell for proper handling of multi-line commands
+                ssh_cmd_list = [
+                    "ssh",
+                    "-i", SSH_KEY_PATH,
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", f"UserKnownHostsFile={SSH_KNOWN_HOSTS}",
+                    "-p", str(SSH_PORT),
+                    f"{SSH_USER}@{target_ip}",
+                    ssh_command
+                ]
 
-                        if event_type == "step_start":
-                            # Each reasoning step involves LLM processing
-                            llm_calls += 1
-                        elif event_type == "tool_use":
-                            # Extract tool name from tool_use events
-                            part = event.get("part", {})
-                            tool_name = part.get("tool", "unknown")
-                            tool_calls.append(tool_name)
-                        elif event_type == "text":
-                            # Collect text output
-                            part = event.get("part", {})
-                            text_content = part.get("text", "")
-                            if text_content:
-                                text_outputs.append(text_content)
-                        elif event_type == "Error":
-                            errors.append(str(event))
+                # Convert to single command string for pexpect with proper escaping
+                ssh_cmd_str = ' '.join([
+                    f"ssh -i {SSH_KEY_PATH}",
+                    f"-o StrictHostKeyChecking=no",
+                    f"-o UserKnownHostsFile={SSH_KNOWN_HOSTS}",
+                    f"-p {SSH_PORT}",
+                    f"{SSH_USER}@{target_ip}",
+                    # Use single quotes to wrap the multi-line command, no escaping needed inside
+                    f"'{ssh_command}'"
+                ])
 
-                        # Log each OpenCode event to timeline with OPENCODE level
-                        timestamp = datetime.now(timezone.utc).isoformat()
-                        timeline_entry = {
-                            "ts": timestamp,
-                            "level": "OPENCODE",
-                            "msg": event_type,
-                            "exec": execution_id[:8],
-                            "data": event
+                try:
+                    child = pexpect.spawn(ssh_cmd_str, encoding='utf-8', timeout=OPENCODE_TIMEOUT)
+                    child.logfile_read = open(raw_output_log, "a")
+
+                    # Track this running execution
+                    with self.lock:
+                        self.running_executions[target_ip] = {
+                            "child": child,
+                            "execution_id": execution_id,
+                            "start_time": datetime.now(timezone.utc),
+                            "alert_hash": alert_hash,
+                            "target_name": target_name
                         }
-                        with open(structured_log_file, "a") as f:
-                            f.write(json.dumps(timeline_entry, separators=(',', ':')) + "\n")
 
-                    except (json.JSONDecodeError, ValueError):
-                        # Non-JSON output - save as final output if we haven't captured one yet
-                        if final_output is None and line:
-                            final_output = line[:500]
+                    self.log("INFO", f"Started tracking OpenCode execution for {target_name}", alert_hash, execution_id, extra_data={
+                        "target_ip": target_ip,
+                        "session_timeout": MULTI_ALERT_SESSION_TIMEOUT
+                    })
+
+                    # Stream output line by line
+                    while True:
+                        try:
+                            # Check for OpenCode permission prompt
+                            index = child.expect([
+                                pexpect.EOF,
+                                pexpect.TIMEOUT,
+                                r'Permission required: external_directory',
+                                r'\│.*Allow once',
+                                r'\│.*Always allow',
+                                r'\│.*Reject',
+                                r'\└'
+                            ], timeout=30)
+
+                            if index == 0:  # EOF
+                                break
+                            elif index == 1:  # TIMEOUT
+                                # Continue waiting for more output
+                                continue
+                            elif index >= 2 and index <= 5:  # Permission prompt detected!
+                                # Automatically allow the permission
+                                child.sendline('y')  # Select "Allow once"
+                                self.log("INFO", f"Auto-allowed OpenCode permission prompt for {target_name}", alert_hash, execution_id)
+
+                            # Read any available output
+                            try:
+                                line = child.read_nonblocking(size=1000, timeout=0.1)
+                                if line:
+                                    with open(raw_output_log, "a") as f:
+                                        f.write(line)
+                                        f.flush()
+
+                                    # Parse and log OpenCode events
+                                    for line_split in line.split('\n'):
+                                        line_stripped = line_split.strip()
+                                        if not line_stripped:
+                                            continue
+                                        try:
+                                            event = json.loads(line_stripped)
+                                            event_type = event.get("type", "")
+
+                                            if event_type == "step_start":
+                                                llm_calls += 1
+                                            elif event_type == "tool_use":
+                                                part = event.get("part", {})
+                                                tool_name = part.get("tool", "unknown")
+                                                tool_calls.append(tool_name)
+                                            elif event_type == "text":
+                                                part = event.get("part", {})
+                                                text_content = part.get("text", "")
+                                                if text_content:
+                                                    text_outputs.append(text_content)
+                                            elif event_type == "Error":
+                                                errors.append(str(event))
+
+                                            # Log each OpenCode event to timeline
+                                            timestamp = datetime.now(timezone.utc).isoformat()
+                                            timeline_entry = {
+                                                "ts": timestamp,
+                                                "level": "OPENCODE",
+                                                "msg": event_type,
+                                                "exec": execution_id[:8],
+                                                "target_ip": executor_ip,
+                                                "data": event
+                                            }
+                                            with open(structured_log_file, "a") as f:
+                                                f.write(json.dumps(timeline_entry, separators=(',', ':')) + "\n")
+                                                f.flush()
+
+                                        except (json.JSONDecodeError, ValueError):
+                                            if final_output is None and line_stripped:
+                                                final_output = line_stripped[:500]
+                            except pexpect.exceptions.TIMEOUT:
+                                continue
+
+                        except pexpect.exceptions.TIMEOUT:
+                            continue
+                        except pexpect.exceptions.EOF:
+                            break
+
+                    # Wait for process to complete
+                    child.expect(pexpect.EOF, timeout=5)
+                    stdout_output = child.before
+                    stderr_output = child.stderr.read() if hasattr(child, 'stderr') else ""
+
+                    with open(raw_output_log, "a") as f:
+                        if stdout_output:
+                            f.write(stdout_output)
+                        f.flush()
+
+                    if child.exitstatus != 0:
+                        raise subprocess.CalledProcessError(child.exitstatus or 1, ssh_cmd_str, stdout_output, stderr_output)
+
+                except pexpect.exceptions.TIMEOUT:
+                    # Process timed out, but we've captured output via logfile
+                    if child.isalive():
+                        child.terminate(force=True)
+
+                    # Clean up tracking
+                    with self.lock:
+                        if target_ip in self.running_executions:
+                            del self.running_executions[target_ip]
+
+                    # Log timeout with partial results
+                    self.log("TIMEOUT", f"OpenCode timeout after {OPENCODE_TIMEOUT}s on {target_name}", alert_hash, execution_id, extra_data={
+                        "status": "timeout",
+                        "target": target_name,
+                        "timeout": OPENCODE_TIMEOUT,
+                        "llm_calls": llm_calls,
+                        "tool_calls": tool_calls,
+                        "partial_output": final_output[:500] if final_output else None
+                    })
+                    return False
 
                 # Use collected text outputs as final output
                 if not final_output and text_outputs:
                     final_output = " ".join(text_outputs)[-500:]
 
+                # Clean up tracking after successful completion
+                with self.lock:
+                    if target_ip in self.running_executions:
+                        del self.running_executions[target_ip]
+
                 # Final EXEC entry with summary
                 self.log("EXEC", f"✓ Success on {target_name}", alert_hash, execution_id, extra_data={
                     "status": "success",
                     "target": target_name,
+                    "target_ip": executor_ip,
                     "output": final_output[:500] if final_output else None,
                     "llm_calls": llm_calls,
                     "tool_calls": tool_calls,
                     "unique_tools": len(set(tool_calls)),
-                    "errors": errors if errors else None,
-                    "stderr": result.stderr[:500] if result.stderr else None
+                    "errors": errors if errors else None
                 })
                 return True
 
-            except subprocess.TimeoutExpired:
-                self.log("ERROR", f"Timeout on {target_name} ({OPENCODE_TIMEOUT}s)", alert_hash, execution_id, extra_data={
-                    "status": "timeout",
-                    "target": target_name,
-                    "timeout": OPENCODE_TIMEOUT
-                })
-
             except subprocess.CalledProcessError as e:
+                # Clean up tracking on error
+                with self.lock:
+                    if target_ip in self.running_executions:
+                        del self.running_executions[target_ip]
+
                 # Determine if SSH worked but OpenCode failed (exit code from remote)
                 ssh_failed = "connection refused" in (e.stderr or "").lower() or \
                              "no route to host" in (e.stderr or "").lower() or \
@@ -750,6 +935,11 @@ echo "OPENCODE_START=$(date -Iseconds)" >> /tmp/opencode_exec_times.log
                 })
 
             except Exception as e:
+                # Clean up tracking on exception
+                with self.lock:
+                    if target_ip in self.running_executions:
+                        del self.running_executions[target_ip]
+
                 self.log("ERROR", f"Unexpected error on {target_name}: {e}", alert_hash, execution_id, extra_data={
                     "status": "exception",
                     "target": target_name,

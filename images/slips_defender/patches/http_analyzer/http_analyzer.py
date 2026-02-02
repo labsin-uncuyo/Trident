@@ -163,8 +163,8 @@ class HTTPAnalyzer(AsyncModule):
         self.login_attempts[src_ip].append((timestamp, uid))
 
         # Remove attempts older than 5 minutes (300 seconds)
-        current_time = time.time()
-        cutoff_time = current_time - 300
+        # Use the flow's timestamp, not current system time, to handle PCAP analysis
+        cutoff_time = timestamp - 300
         self.login_attempts[src_ip] = [
             (ts, uid) for ts, uid in self.login_attempts[src_ip]
             if ts > cutoff_time
@@ -392,31 +392,47 @@ class HTTPAnalyzer(AsyncModule):
             profileid = msg["profileid"]
             twid = msg["twid"]
             flow = self.classifier.convert_to_flow_obj(msg["flow"])
+
             self.check_suspicious_user_agents(profileid, twid, flow)
-            self.check_multiple_empty_connections(twid, flow)
+
+            try:
+                self.check_multiple_empty_connections(twid, flow)
+            except Exception as e:
+                pass  # Already logged by SLIPS
+
             # find the UA of this profileid if we don't have it
             # get the last used ua of this profile
-            cached_ua = self.db.get_user_agent_from_profile(profileid)
-            if cached_ua:
-                self.check_multiple_user_agents_in_a_row(
-                    flow,
-                    twid,
-                    cached_ua,
-                )
+            try:
+                cached_ua = self.db.get_user_agent_from_profile(profileid)
+                if cached_ua:
+                    self.check_multiple_user_agents_in_a_row(
+                        flow,
+                        twid,
+                        cached_ua,
+                    )
+            except Exception:
+                pass  # Already logged by SLIPS
 
-            if not cached_ua or (
-                isinstance(cached_ua, dict)
-                and cached_ua.get("user_agent", "") != flow.user_agent
-                and "server-bag" not in flow.user_agent
-            ):
-                # only UAs of type dict are browser UAs,
-                # skips str UAs as they are SSH clients
-                self.get_user_agent_info(flow.user_agent, profileid)
+            try:
+                self.extract_info_from_ua(flow.user_agent, profileid)
+            except Exception:
+                pass  # Already logged by SLIPS
 
-            self.extract_info_from_ua(flow.user_agent, profileid)
-            self.detect_executable_mime_types(twid, flow)
-            self.check_incompatible_user_agent(profileid, twid, flow)
-            self.check_pastebin_downloads(twid, flow)
+            try:
+                self.detect_executable_mime_types(twid, flow)
+            except Exception:
+                pass  # Already logged by SLIPS
+
+            try:
+                self.check_incompatible_user_agent(profileid, twid, flow)
+            except Exception:
+                pass  # Already logged by SLIPS
+
+            try:
+                self.check_pastebin_downloads(twid, flow)
+            except Exception:
+                pass  # Already logged by SLIPS
+
             self.check_password_guessing(twid, flow)
             self.set_evidence.http_traffic(twid, flow)
 

@@ -343,6 +343,10 @@ class SetEvidenceHelper:
         :param uids: List of flow UIDs involved in the password guessing
         :param attempts: Number of login attempts detected
         """
+        # DEBUG: Log entry
+        with open('/tmp/password_guessing_debug.log', 'a') as f:
+            f.write(f"[DEBUG set_evidence.password_guessing] CALLED! attempts={attempts}, uids={len(uids)}\n")
+
         confidence: float = 0.9
         twid_number: int = int(twid.replace("timewindow", ""))
 

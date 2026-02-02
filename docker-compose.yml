@@ -33,7 +33,7 @@ services:
       - DEFENDER_PORT=${DEFENDER_PORT:-8000}
       - PLANNER_PORT=${PLANNER_PORT:-1654}
       - PLANNER_URL=${PLANNER_URL:-http://127.0.0.1:8000/plan}
-      - OPENCODE_TIMEOUT=${OPENCODE_TIMEOUT:-450}
+      - OPENCODE_TIMEOUT=${OPENCODE_TIMEOUT:-1200}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
@@ -45,6 +45,8 @@ services:
       - ./outputs:/outputs
       - ./images/slips_defender:/opt/lab
       - ./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml
+      - ./images/slips_defender/local.zeek:/StratosphereLinuxIPS/config/local.zeek
+      - ./images/slips_defender/__load__.zeek:/StratosphereLinuxIPS/__load__.zeek
       - slips_redis_data:/var/lib/redis
       - slips_ti_data:/StratosphereLinuxIPS/modules/threat_intelligence/remote_data_files
       - auto_responder_ssh_keys:/root/.ssh
@@ -79,6 +81,7 @@ services:
     volumes:
       - ./outputs:/outputs
       - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro
+      - auto_responder_ssh_keys:/root/.ssh_auto_responder:ro
     networks:
       lab_net_a:
         ipv4_address: 172.30.0.10
@@ -118,6 +121,7 @@ services:
       - opencode_data:/root/.opencode
       - postgres_data:/var/lib/postgresql
       - ./.env:/etc/default/lab-env:ro
+      - auto_responder_ssh_keys:/root/.ssh_auto_responder:ro
     networks:
       lab_net_b:
         ipv4_address: 172.31.0.10

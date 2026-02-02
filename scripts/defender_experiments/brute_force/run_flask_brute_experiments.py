@@ -11,9 +11,10 @@ from pathlib import Path
 from datetime import datetime
 
 # Configuration
-NUM_EXPERIMENTS = 1  # Adjust as needed
+NUM_EXPERIMENTS = 3  # Adjust as needed
 SCRIPT_DIR = Path(__file__).parent
-PROJECT_ROOT = SCRIPT_DIR.parent.parent
+# Go up from scripts/defender_experiments/brute_force/ to project root
+PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent
 EXPERIMENT_SCRIPT = SCRIPT_DIR / "run_experiment.sh"
 OUTPUT_ROOT = PROJECT_ROOT / "flask_brute_experiment_output"
 LOG_FILE = Path("/tmp/flask_brute_runner.log")
@@ -39,11 +40,11 @@ def run_experiment(experiment_num):
     try:
         # Run the experiment script from PROJECT_ROOT directory
         result = subprocess.run(
-            [str(EXPERIMENT_SCRIPT), experiment_id],
+            [str(EXPERIMENT_SCRIPT.resolve()), experiment_id],
             capture_output=True,
             text=True,
             timeout=1800,  # 30 minute timeout
-            cwd=str(PROJECT_ROOT)  # Run from project root
+            cwd=str(PROJECT_ROOT.resolve())  # Run from project root
         )
 
         # Log the result
