@@ -8,7 +8,7 @@
 set +e
 
 OUTPUT_FILE="${1:-/tmp/flask_bruteforce/monitoring.json}"
-FLASK_URL="http://172.31.0.10:443/login"
+FLASK_URL="http://172.31.0.10:80/login"
 SAMPLE_INTERVAL=1  # Check every second
 START_SIGNAL_FILE="/tmp/flask_bruteforce_started"
 

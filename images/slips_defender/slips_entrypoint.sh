@@ -58,6 +58,16 @@ else
     echo "⚠️ set_evidence.py patch not found, skipping"
 fi
 
+# Ensure HTTP protocol is enabled in Zeek
+echo "🔧 Ensuring HTTP protocol analysis is enabled..."
+if ! grep -q "@load base/protocols/http/main" /StratosphereLinuxIPS/zeek-scripts/__load__.zeek; then
+    # Add HTTP loading at the beginning of the file, after the existing loads
+    sed -i '/^@load \.\/slips-conf\.zeek/a @load base/protocols/http/main' /StratosphereLinuxIPS/zeek-scripts/__load__.zeek
+    echo "✅ Enabled HTTP protocol analysis in Zeek"
+else
+    echo "✅ HTTP protocol analysis already enabled"
+fi
+
 python3 -m uvicorn defender_api:app --host 0.0.0.0 --port "${DEFENDER_PORT}" --log-level info &
 RECEIVER_PID=$!
 

@@ -113,7 +113,8 @@ file_log=/var/log/router-capture.log
 touch "${file_log}"
 
 # Rotate captures to keep SLIPS runs small and fast
-tcpdump -U -s 0 -i any \
+# Capture on eth1 (client/compromised side) with proper Ethernet headers for Zeek
+tcpdump -U -s 0 -i eth1 \
   -G "${PCAP_ROTATE_SECS}" \
   -w "${pcap_dir}/router_%Y-%m-%d_%H-%M-%S.pcap" \
   -Z root \

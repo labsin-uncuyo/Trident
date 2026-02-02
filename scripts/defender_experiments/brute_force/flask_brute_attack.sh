@@ -11,7 +11,7 @@ COMPROMISED_IP="172.30.0.10"
 WORDLIST_FILE="/tmp/flask_wordlist.txt"
 CORRECT_PASSWORD="admin"
 FLASK_USER="admin"
-FLASK_URL="http://${SERVER_IP}:443/login"
+FLASK_URL="http://${SERVER_IP}:80/login"
 LOG_FILE="/tmp/flask_attack_log.txt"
 
 # Enhanced monitoring variables
@@ -682,15 +682,15 @@ word123word
 wordword1234
 EOF
 
-    # Insert the correct password at a random position between 30 and 50
-    CORRECT_POS=$((30 + RANDOM % 21))
+    # STRESS TEST: Insert correct password in last 20% of attempts
+    # Wordlist has ~648 passwords, so last 20% is around position 520
+    TOTAL_PASSWORDS=$(wc -l < "$WORDLIST_FILE")
+    LAST_20_PERCENT=$((TOTAL_PASSWORDS - (TOTAL_PASSWORDS / 5)))
+    CORRECT_POS=$((LAST_20_PERCENT + RANDOM % (TOTAL_PASSWORDS - LAST_20_PERCENT)))
     sed -i "${CORRECT_POS}i $CORRECT_PASSWORD" "$WORDLIST_FILE"
 
-    # Keep only first 50 passwords for testing
-    head -n 50 "$WORDLIST_FILE" > "${WORDLIST_FILE}.tmp"
-    mv "${WORDLIST_FILE}.tmp" "$WORDLIST_FILE"
-
-    echo "Flask wordlist created with $(wc -l < "$WORDLIST_FILE") passwords"
+    # STRESS TEST: No limit - use all passwords to test SLIPS max throughput
+    echo "Flask wordlist created with $(wc -l < "$WORDLIST_FILE") passwords (STRESS TEST - unlimited)"
     echo "Correct password '$CORRECT_PASSWORD' is at position: $(grep -n "^$CORRECT_PASSWORD$" "$WORDLIST_FILE" | cut -d: -f1)"
 }
 
@@ -730,7 +730,7 @@ create_summary() {
     "attack_id": "$ATTACK_ID",
     "attacker_ip": "$COMPROMISED_IP",
     "target_ip": "$SERVER_IP",
-    "target_port": "443",
+    "target_port": "80",
     "attack_type": "flask_brute_force",
     "start_time": "$START_TIME",
     "end_time": "$(date -Iseconds)",
@@ -775,7 +775,7 @@ update_real_time_summary() {
     "attack_id": "$ATTACK_ID",
     "attacker_ip": "$COMPROMISED_IP",
     "target_ip": "$SERVER_IP",
-    "target_port": "443",
+    "target_port": "80",
     "attack_type": "flask_brute_force",
     "start_time": "$START_TIME",
     "end_time": "$(date -Iseconds)",
@@ -859,8 +859,8 @@ attack_phase_1() {
 attack_phase_2() {
     log_message "Phase 2: Fast port scanning - Finding open ports on $SERVER_IP to exploit"
     update_real_time_summary "phase2_port_scan" "false" "none"
-    # Fast scan of top 1000 ports to find the exploit - aggressive to trigger vertical scan detection
-    if nmap -sV -Pn --top-ports 1000 -T4 "$SERVER_IP" -oN /tmp/nmap_ports.txt; then
+    # Fast scan of top 50 ports to find the exploit - aggressive to trigger vertical scan detection
+    if nmap -sV -Pn --top-ports 50 -T4 "$SERVER_IP" -oN /tmp/nmap_ports.txt; then
         SCAN_PORT_SUCCESS="true"
         log_message "Phase 2 completed successfully"
         update_real_time_summary "phase2_completed" "false" "none"
@@ -969,11 +969,8 @@ main() {
 
     update_real_time_summary "attack_started" "false" "none"
     create_wordlist
-    # Phase 1: Network discovery
     attack_phase_1
-    sleep 5
     attack_phase_2
-    sleep 5
     attack_phase_3
 
     log_message "Attack completed at $(date)"
