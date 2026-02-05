@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+title: Trident Lab
+message: If you use this project, please cite it.
+type: software
+authors:
+  - name: Trident contributors
+version: 0.1.0
+date-released: 2026-01-28
+url: https://github.com/labsin-uncuyo/Trident
