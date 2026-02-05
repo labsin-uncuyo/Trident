@@ -1,65 +1,85 @@
 # Trident Lab
 
-Trident is a compact, fully routed Docker lab for testing cyber agents and IDS/IPS workflows in a reproducible network. The lab emulates a small enterprise segment with a router, a compromised host, and a server. All traffic crosses the router so you always get clean PCAPs for detection, response, and evaluation.
+## What it is
+Trident is a compact, fully routed Docker lab for evaluating network telemetry, IDS/IPS pipelines, and agent behavior in a reproducible environment. It models a small enterprise segment (client → router → server) and makes traffic capture a first‑class output.
 
-At a high level, Trident lets you:
-- Spin up a fixed‑IP lab where traffic is routed and captured by design.
-- Run optional agents (defender, attacker, benign) against the same environment.
-- Collect artifacts in one place (`outputs/<RUN_ID>/`) for repeatable experiments.
+## Why it exists / use cases
+- Validate detection rules against realistic routed traffic.
+- Compare agent behaviors with consistent network baselines.
+- Generate repeatable PCAP datasets for IDS evaluation.
+- Teach or demo network monitoring in a contained lab.
 
-## What agents are supported
-Trident supports three optional agent roles. These are the agents designed by this project so you can test the infrastructure with real workflows, but they are not the only agents you can run in the lab. The core infrastructure runs without any agent.
+## Key features
+- Deterministic IPs and routes so traffic always crosses the router.
+- Automated PCAP capture (router + server) into `outputs/<RUN_ID>/`.
+- Optional agents (defender/attacker/benign) that plug in after infra is up.
+- Single-command infra spin‑up and teardown.
 
-- **Defender**: SLIPS IDS + Auto‑Responder. Ingests router PCAPs and can execute OpenCode remediation.
-- **Attacker (ARACNE)**: Goal‑driven offensive workflows against the lab.
-- **Attacker (coder56)**: Lightweight attacker runner that uses OpenCode prompts for offensive tasks.
-- **Benign**: db_admin agent that runs safe maintenance‑style actions to generate normal activity.
-
-Details are in `./AGENTS.md`.
-
-## Requirements
+## Quickstart
+### Prerequisites
 - Docker 23+
-- docker-compose v2 (compose-spec 3.8 support)
-- Python 3.10
+- Docker Compose v2
 - GNU Make
 
-## Setup (infrastructure only)
+### Commands
 ```bash
 cp .env.example .env
-# Required for infrastructure:
-# - LAB_PASSWORD
-# - RUN_ID
-# - DEFENDER_PORT
+# Edit .env and set at least:
+# LAB_PASSWORD=...  (required)
 
-python3 -m pip install -r requirements.txt
-make build
 make up
 ```
+
+### Verify it worked
+1) **Containers are running**:
+```bash
+docker ps --filter "name=lab_" --format "table {{.Names}}\t{{.Status}}"
+```
+Expected containers: `lab_router`, `lab_server`, `lab_compromised`.
+
+2) **Connectivity across subnets** (from compromised → server):
+```bash
+docker exec lab_compromised ping -c 1 172.31.0.10
+docker exec lab_compromised curl -sf http://172.31.0.10:80 >/dev/null && echo "HTTP OK"
+```
+
+3) **PCAPs are being written**:
+```bash
+RUN_ID=$(cat outputs/.current_run)
+ls -1 outputs/$RUN_ID/pcaps | head
+```
+Expected: `router_YYYY-MM-DD_HH-MM-SS.pcap` files and `server.pcap`.
 
 Tear down:
 ```bash
 make down
 ```
 
-## Default credentials
-- **Compromised host (SSH)**: `labuser` / `LAB_PASSWORD` (default `adminadmin` in `.env.example`)
-- **Server (SSH)**: `root` / `admin123`
-- **Web login app**: `admin` / `admin` (`LOGIN_USER` / `LOGIN_PASSWORD`)
-- **PostgreSQL**: `labuser` / `labpass` (`DB_USER` / `DB_PASSWORD`)
+## Where outputs go
+`make up` creates a run-scoped output tree:
+```
+outputs/
+└── <RUN_ID>/
+    ├── pcaps/
+    ├── slips/
+    ├── aracne/
+    ├── coder56/
+    └── benign_agent/
+```
 
-## Infrastructure overview (big picture)
-- Two Docker networks with static subnets:
-  - `lab_net_a` (172.30.0.0/24) for the compromised side
-  - `lab_net_b` (172.31.0.0/24) for the server side
-- A privileged **router** connects both networks and captures traffic to `outputs/<RUN_ID>/pcaps/`.
-- **lab_compromised** (172.30.0.10) is the client/compromised host.
-- **lab_server** (172.31.0.10) runs nginx + PostgreSQL.
+## Safety model
+- **Lab‑only**: This repo is intended for isolated, local experimentation.
+- **Privileged containers**: `lab_router` and `lab_server` run privileged and use `NET_ADMIN`.
+- **Host‑network defender**: the defender container uses `network_mode: host` (port configurable via `DEFENDER_PORT`).
+- **No production targets**: do not point agents at real systems or networks.
+- **Credentials are defaults**: see `guide/credentials.md` and override via `.env`.
 
-Traffic path is always:
-`lab_compromised ↔ lab_router ↔ lab_server`
+## Docs
+Start here: `guide/index.md`
+- Architecture: `guide/architecture.md`
+- Agents: `guide/agents.md`
+- Topologies: `guide/topologies.md`
+- Credentials: `guide/credentials.md`
 
-This guarantees all north–south flows are observable in the router PCAPs. Router PCAPs are the only always‑on artifact. Agent logs are created only for the agents you run; new agents must define their own log outputs.
-
-## Where to read next
-- **Infrastructure details**: `./INFRASTRUCTURE.md`
-- **Agents and workflows**: `./AGENTS.md`
+## License
+See `LICENSE`.

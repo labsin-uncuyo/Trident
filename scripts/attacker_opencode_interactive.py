@@ -177,8 +177,8 @@ def main() -> int:
             "container": args.container,
             "exec": execution_id[:8],
         })
-        stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
-        stderr_path = os.path.join(output_dir, "opencode_stderr.log")
+        stdout_path = os.path.join(output_dir, f"opencode_stdout_{execution_id[:8]}.jsonl")
+        stderr_path = os.path.join(output_dir, f"opencode_stderr_{execution_id[:8]}.log")
         start_time = time.time()
 
         exit_code = 0
@@ -281,6 +281,13 @@ def main() -> int:
         print("[coder56_tui] Completed.")
         return 0
     except subprocess.TimeoutExpired as exc:
+        def _coerce_text(value):
+            if value is None:
+                return ""
+            if isinstance(value, bytes):
+                return value.decode(errors="replace")
+            return str(value)
+
         run_id = resolve_run_id()
         output_dir = os.path.join("outputs", run_id, "coder56")
         os.makedirs(output_dir, exist_ok=True)
@@ -288,9 +295,19 @@ def main() -> int:
         stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
         stderr_path = os.path.join(output_dir, "opencode_stderr.log")
         with open(stdout_path, "w", encoding="utf-8") as handle:
-            handle.write(exc.stdout or "")
+            handle.write(_coerce_text(exc.stdout))
         with open(stderr_path, "w", encoding="utf-8") as handle:
-            handle.write(exc.stderr or "")
+            handle.write(_coerce_text(exc.stderr))
+        # Ensure any orphaned opencode process inside the container is stopped.
+        try:
+            subprocess.run(
+                ["docker", "exec", "-i", args.container, "bash", "-c", "pkill -f 'opencode run --agent coder56' || true"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
         append_opencode_events(timeline_path, execution_id, exc.stdout or "")
         write_timeline_entry(timeline_path, "ERROR", "coder56 execution timed out", data={
             "timeout_seconds": args.timeout,
