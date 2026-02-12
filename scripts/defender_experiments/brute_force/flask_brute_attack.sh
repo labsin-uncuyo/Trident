@@ -27,9 +27,9 @@ SCAN_PORT_SUCCESS="false"
 CURRENT_PASSWORD_ATTEMPT="none"
 LAST_PASSWORD_TRIED="none"
 
-# Create a wordlist with 1000 passwords including the correct one
+# Create a wordlist with ~3000 passwords including the correct one (last)
 create_wordlist() {
-    echo "Creating Flask wordlist with 1000 passwords..."
+    echo "Creating Flask wordlist with ~3000 passwords..."
 
     # Generate 1000 common passwords
     cat > "$WORDLIST_FILE" << 'EOF'
@@ -682,16 +682,47 @@ word123word
 wordword1234
 EOF
 
-    # STRESS TEST: Insert correct password in last 20% of attempts
-    # Wordlist has ~648 passwords, so last 20% is around position 520
-    TOTAL_PASSWORDS=$(wc -l < "$WORDLIST_FILE")
-    LAST_20_PERCENT=$((TOTAL_PASSWORDS - (TOTAL_PASSWORDS / 5)))
-    CORRECT_POS=$((LAST_20_PERCENT + RANDOM % (TOTAL_PASSWORDS - LAST_20_PERCENT)))
-    sed -i "${CORRECT_POS}i $CORRECT_PASSWORD" "$WORDLIST_FILE"
+    # ── Programmatically pad to ~2999 wrong passwords ──
+    local TARGET_COUNT=2999
+    local current_count
+    current_count=$(wc -l < "$WORDLIST_FILE")
 
-    # STRESS TEST: No limit - use all passwords to test SLIPS max throughput
-    echo "Flask wordlist created with $(wc -l < "$WORDLIST_FILE") passwords (STRESS TEST - unlimited)"
-    echo "Correct password '$CORRECT_PASSWORD' is at position: $(grep -n "^$CORRECT_PASSWORD$" "$WORDLIST_FILE" | cut -d: -f1)"
+    # Round 1: base_suffix combos (e.g. secure_AA, access_AB, …)
+    local bases=("secure" "network" "system" "server" "backup" "oracle"
+                 "change" "service" "manage" "remote" "global" "office"
+                 "public" "private" "connect" "update" "cloud" "devops"
+                 "deploy" "infra" "portal" "domain" "proxy" "cipher"
+                 "shield" "falcon" "hunter" "bravo" "delta" "foxtrot"
+                 "sierra" "tango" "victor" "whiskey" "yankee" "zulu"
+                 "alpha" "omega" "gamma" "theta" "sigma" "kappa"
+                 "phoenix" "dragon" "matrix" "shadow" "storm" "forge")
+    local suffixes=("01" "02" "03" "04" "05" "06" "07" "08" "09" "10"
+                    "11" "12" "13" "14" "15" "16" "17" "18" "19" "20"
+                    "21" "22" "23" "24" "25" "26" "27" "28" "29" "30"
+                    "31" "32" "33" "34" "35" "36" "37" "38" "39" "40"
+                    "41" "42" "43" "44" "45" "46" "47" "48" "49" "50")
+
+    for base in "${bases[@]}"; do
+        for suf in "${suffixes[@]}"; do
+            if (( current_count >= TARGET_COUNT )); then break 2; fi
+            echo "${base}${suf}" >> "$WORDLIST_FILE"
+            ((current_count++))
+        done
+    done
+
+    # Round 2: extra numeric patterns if still short
+    local n=10000
+    while (( current_count < TARGET_COUNT )); do
+        echo "pass${n}" >> "$WORDLIST_FILE"
+        ((current_count++))
+        ((n++))
+    done
+
+    # Always put the correct password at the very end of the wordlist
+    echo "$CORRECT_PASSWORD" >> "$WORDLIST_FILE"
+
+    TOTAL_PASSWORDS=$(wc -l < "$WORDLIST_FILE")
+    echo "Flask wordlist created with $TOTAL_PASSWORDS passwords (correct password is LAST)"
 }
 
 # Fast ping function for Flask port monitoring
@@ -969,8 +1000,8 @@ main() {
 
     update_real_time_summary "attack_started" "false" "none"
     create_wordlist
-    attack_phase_1
-    attack_phase_2
+    attack_phase_1  # SKIPPED: Disable nmap network discovery phase
+    attack_phase_2  # SKIPPED: Disable nmap port scanning phase
     attack_phase_3
 
     log_message "Attack completed at $(date)"
