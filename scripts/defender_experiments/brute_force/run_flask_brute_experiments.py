@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Configuration
-NUM_EXPERIMENTS = 3  # Adjust as needed
+NUM_EXPERIMENTS = 100  # Adjust as needed
 SCRIPT_DIR = Path(__file__).parent
 # Go up from scripts/defender_experiments/brute_force/ to project root
 PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent
@@ -43,7 +43,7 @@ def run_experiment(experiment_num):
             [str(EXPERIMENT_SCRIPT.resolve()), experiment_id],
             capture_output=True,
             text=True,
-            timeout=1800,  # 30 minute timeout
+            timeout=4200,  # 70 minutes - allow time for experiment + OpenCode completion
             cwd=str(PROJECT_ROOT.resolve())  # Run from project root
         )
 
@@ -77,6 +77,66 @@ def run_experiment(experiment_num):
         log(f"✗ Experiment {experiment_num} failed with exception: {str(e)}")
         return False
 
+def cleanup_containers():
+    """Clean up containers and volumes between experiments"""
+    log("Cleaning up containers and volumes...")
+    try:
+        # Stop and remove containers using make
+        result = subprocess.run(
+            ["make", "down"],
+            cwd=str(PROJECT_ROOT.resolve()),
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode != 0:
+            log(f"⚠ make down returned: {result.stderr}")
+
+        # Force remove all lab containers
+        for container in ["lab_slips_defender", "lab_server", "lab_compromised", "lab_router"]:
+            subprocess.run(
+                ["docker", "rm", "-f", container],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+        # Try docker compose down with volumes (use 'docker compose' not 'docker-compose')
+        try:
+            result = subprocess.run(
+                ["docker", "compose", "down", "-v", "--remove-orphans"],
+                cwd=str(PROJECT_ROOT.resolve()),
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            if result.returncode != 0:
+                log(f"⚠ docker compose down returned: {result.stderr}")
+        except FileNotFoundError:
+            # docker compose not available, skip
+            pass
+
+        # Explicitly remove named volumes to ensure clean state
+        named_volumes = [
+            "lab_auto_responder_ssh_keys",
+            "lab_opencode_data",
+            "lab_postgres_data",
+            "lab_slips_redis_data",
+            "lab_slips_ti_data"
+        ]
+        for volume in named_volumes:
+            subprocess.run(
+                ["docker", "volume", "rm", "-f", volume],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+        log("✓ Containers and volumes cleaned")
+        time.sleep(5)  # Wait for cleanup to complete
+    except Exception as e:
+        log(f"⚠ Warning: Container cleanup failed: {str(e)}")
+
 def main():
     """Main execution"""
     start_time = time.time()
@@ -86,6 +146,9 @@ def main():
 
     # Clear log file
     LOG_FILE.write_text("")
+
+    # Clean up any existing containers before starting
+    cleanup_containers()
 
     log("=" * 60)
     log("FLASK BRUTE FORCE EXPERIMENT RUNNER STARTED")
@@ -98,10 +161,16 @@ def main():
     failed = 0
 
     for i in range(1, NUM_EXPERIMENTS + 1):
+        # Clean up before each experiment
+        cleanup_containers()
+
         if run_experiment(i):
             successful += 1
         else:
             failed += 1
+
+        # Clean up after each experiment
+        cleanup_containers()
 
         # Wait 30 seconds between experiments (except after the last one)
         if i < NUM_EXPERIMENTS:
@@ -118,6 +187,9 @@ def main():
     log(f"Duration: {duration:.0f}s ({duration/60:.1f} minutes)")
     log(f"Results: {OUTPUT_ROOT}")
     log("=" * 60)
+
+    # Final cleanup
+    cleanup_containers()
 
 if __name__ == "__main__":
     try:

@@ -16,7 +16,7 @@ set -e
 
 # Configuration
 EXPERIMENT_ID="${1:-flask_brute_$(date +%Y%m%d_%H%M%S)}"
-MAX_EXPERIMENT_TIME=1530  # 25.5 minutes (increased by 70%)
+MAX_EXPERIMENT_TIME=3600  # 60 minutes - allow time for OpenCode to complete
 PCAP_ROTATE_SECS="${PCAP_ROTATE_SECS:-30}"
 
 # Paths
@@ -87,12 +87,22 @@ log "Running 'make up'..."
 make up
 
 # Wait for containers to be fully started
-log "Waiting for containers to stabilize (20s)..."
-sleep 20
+log "Waiting for containers to stabilize (30s)..."
+sleep 30
+
+# Ensure all core containers are actually running (not just Created)
+for c in lab_server lab_compromised lab_router; do
+    c_status=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo "missing")
+    if [[ "$c_status" != "running" ]]; then
+        log_warning "$c is in state '$c_status', attempting to start it..."
+        docker start "$c" 2>/dev/null || true
+        sleep 5
+    fi
+done
 
 # Verify core services are healthy using docker health checks
 log "Checking core services health..."
-max_wait=60
+max_wait=240
 elapsed=0
 while [ $elapsed -lt $max_wait ]; do
     # Check if all core containers are healthy
@@ -111,7 +121,15 @@ done
 
 if [ $elapsed -ge $max_wait ]; then
     log_error "Core services failed to become healthy within ${max_wait}s"
-    docker ps --format "table {{.Names}}\t{{.Status}}"
+    log "Container statuses:"
+    docker ps -a --format "table {{.Names}}\t{{.Status}}" | tee -a "$EXPERIMENT_OUTPUTS/logs/experiment.log"
+    # Try to show logs for non-healthy containers
+    for c in lab_server lab_compromised lab_router; do
+        if ! docker ps --format "{{.Names}}:{{.Status}}" | grep -q "${c}.*healthy"; then
+            log_error "$c is not healthy. Last 20 lines of logs:"
+            docker logs "$c" --tail 20 2>&1 | tee -a "$EXPERIMENT_OUTPUTS/logs/experiment.log"
+        fi
+    done
     exit 1
 fi
 
@@ -125,24 +143,47 @@ log_success "Network connectivity verified!"
 
 # Wait for Flask app to be ready
 log "Waiting for Flask app to be ready..."
-max_wait=60  # 1 minute max
+max_wait=300  # 5 minutes max - allow time for database initialization on fresh volumes
 elapsed=0
 while [ $elapsed -lt $max_wait ]; do
     if docker exec lab_compromised curl -sf -o /dev/null http://172.31.0.10:80/login 2>/dev/null; then
         log_success "Flask app is ready!"
         break
     fi
-    sleep 3
-    elapsed=$((elapsed + 3))
-    if [ $((elapsed % 15)) -eq 0 ]; then
+    sleep 5
+    elapsed=$((elapsed + 5))
+    if [ $((elapsed % 30)) -eq 0 ] && [ $elapsed -gt 0 ]; then
         log "Still waiting for Flask app... (${elapsed}s elapsed)"
     fi
 done
 
 if [ $elapsed -ge $max_wait ]; then
     log_error "Flask app failed to start within ${max_wait}s"
+    docker ps --format "table {{.Names}}\t{{.Status}}"
+    docker logs lab_server --tail 50
     exit 1
 fi
+
+# Wait for OpenCode server API to be available on both containers
+log "Waiting for OpenCode server API to be ready..."
+for container_ip in "172.31.0.10" "172.30.0.10"; do
+    oc_wait=0
+    oc_max=120
+    while [ $oc_wait -lt $oc_max ]; do
+        if curl -sf "http://${container_ip}:4096/global/health" 2>/dev/null | grep -q '"healthy":true'; then
+            log_success "OpenCode server ready on ${container_ip}"
+            break
+        fi
+        sleep 5
+        oc_wait=$((oc_wait + 5))
+        if [ $((oc_wait % 30)) -eq 0 ] && [ $oc_wait -gt 0 ]; then
+            log "Still waiting for OpenCode on ${container_ip}... (${oc_wait}s)"
+        fi
+    done
+    if [ $oc_wait -ge $oc_max ]; then
+        log_warning "OpenCode server not ready on ${container_ip} after ${oc_max}s (may start later)"
+    fi
+done
 
 # Phase 2: Start defender (skip if SKIP_DEFENDER is set)
 if [[ "$SKIP_DEFENDER" == "true" ]]; then
@@ -199,25 +240,27 @@ log "=== Phase 3: Starting Flask Brute Force Attack ==="
 ATTACK_START_TIME=$(date +%s)
 log "Attack start time: $(date -Iseconds)"
 
-# Copy Flask attack script to compromised container
-docker cp "$SCRIPT_DIR/flask_brute_attack.sh" lab_compromised:/tmp/flask_brute_attack.sh
-docker exec lab_compromised chmod +x /tmp/flask_brute_attack.sh
+# Copy Flask attack script to compromised container with BENIGN name
+# Inside container: test_script_1.sh (looks like a test script)
+docker cp "$SCRIPT_DIR/flask_brute_attack.sh" lab_compromised:/tmp/test_script_1.sh
+docker exec lab_compromised chmod +x /tmp/test_script_1.sh
 
 # Create monitoring directory in compromised container
 docker exec lab_compromised mkdir -p /tmp/flask_bruteforce
 
-# Copy monitoring script to compromised container
-docker cp "$SCRIPT_DIR/flask_bruteforce_monitor.sh" lab_compromised:/tmp/flask_bruteforce_monitor.sh
-docker exec lab_compromised chmod +x /tmp/flask_bruteforce_monitor.sh
+# Copy monitoring script to compromised container with BENIGN name
+# Inside container: system_monitor.sh (looks like a system monitoring tool)
+docker cp "$SCRIPT_DIR/flask_bruteforce_monitor.sh" lab_compromised:/tmp/system_monitor.sh
+docker exec lab_compromised chmod +x /tmp/system_monitor.sh
 
 # Start monitoring in background using nohup inside the container
 # This starts at the SAME TIME as the attack
-docker exec lab_compromised bash -c "nohup /tmp/flask_bruteforce_monitor.sh /tmp/flask_bruteforce/monitoring.json > /tmp/flask_bruteforce_monitor_stdout.log 2>&1 &"
+docker exec lab_compromised bash -c "nohup /tmp/system_monitor.sh /tmp/flask_bruteforce/monitoring.json > /tmp/flask_bruteforce_monitor_stdout.log 2>&1 &"
 log "Flask brute force monitoring started (synchronized with attack)"
 
 # Execute brute force attack in background
 log "Executing Flask brute force attack..."
-docker exec lab_compromised /tmp/flask_brute_attack.sh "$EXPERIMENT_ID" > "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" 2>&1 &
+docker exec lab_compromised /tmp/test_script_1.sh "$EXPERIMENT_ID" > "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" 2>&1 &
 ATTACK_PID=$!
 
 log "Flask brute force attack started (container PID: $ATTACK_PID)"
@@ -233,6 +276,9 @@ first_successful_exec_time=""
 opencode_complete_time=""
 flask_blocked_time=""
 experiment_end_reason=""
+attack_finished_time=""
+last_alert_time=""
+no_new_alerts_duration=0
 
 # Per-IP tracking
 declare -A ip_plan_time
@@ -262,7 +308,16 @@ while true; do
     flask_status=$(docker exec lab_compromised cat /tmp/flask_bruteforce/monitoring.json 2>/dev/null | grep -o '"final_status":"[^"]*"' | cut -d'"' -f4 | tail -1)
 
     # Parse defender timeline for key events
+    # The auto_responder writes per-machine timelines under defender/<machine>/
+    # ALERT and PLAN entries are written to BOTH server/ and compromised/ timelines
+    # We also include any other subdirectories in case of fallback
+    defender_timeline_server="$EXPERIMENT_OUTPUTS/defender/server/auto_responder_timeline.jsonl"
+    defender_timeline_compromised="$EXPERIMENT_OUTPUTS/defender/compromised/auto_responder_timeline.jsonl"
+    # Also keep the legacy combined path for Phase 6 copy
     defender_timeline="$EXPERIMENT_OUTPUTS/auto_responder_timeline.jsonl"
+
+    # Combine ALL timeline files from defender/ subdirectories (includes server, compromised, and any hash-named dirs)
+    find "$EXPERIMENT_OUTPUTS/defender/" -name "auto_responder_timeline.jsonl" -exec cat {} + 2>/dev/null | sort -u > "$defender_timeline" 2>/dev/null || true
 
     if [[ -f "$defender_timeline" ]]; then
         # Check for high confidence alert
@@ -379,14 +434,59 @@ while true; do
                         ip_exec_end_time["$ip"]="$opencodetime_end"
                         log "OpenCode execution completed for IP $ip from container log: $opencodetime_end"
                     fi
+                fi
+            fi
+        done
 
-                    # Set overall completion time if not set
-                    if [[ -z "$opencode_complete_time" ]]; then
-                        opencode_complete_time="$opencodetime_end"
+        # Check OpenCode Server API session status via curl (primary completion detection)
+        # GET /session/status returns {} when all sessions are idle/completed
+        for container_ip in "172.31.0.10" "172.30.0.10"; do
+            if [[ "$container_ip" == "172.31.0.10" ]]; then
+                ip="172.31.0.10"
+            else
+                ip="172.30.0.10"
+            fi
+
+            # Only check if we know execution started but don't have end time yet
+            if [[ -n "${ip_exec_start_time[$ip]:-}" ]] && [[ -z "${ip_exec_end_time[$ip]:-}" ]]; then
+                api_status=$(curl -sf "http://${container_ip}:4096/session/status" 2>/dev/null || echo "")
+                if [[ -n "$api_status" ]]; then
+                    # If status is empty {} or session is not listed as busy, it's done
+                    is_busy=$(echo "$api_status" | jq -r "to_entries[] | select(.value.type == \"busy\") | .key" 2>/dev/null || echo "")
+                    if [[ -z "$is_busy" ]]; then
+                        finish_iso=$(date -u +"%Y-%m-%dT%H:%M:%S%:z")
+                        ip_exec_end_time["$ip"]="$finish_iso"
+                        log "OpenCode API status shows idle for $ip at: $finish_iso"
                     fi
                 fi
             fi
         done
+
+        # Determine overall opencode_complete_time: only set when ALL IPs with
+        # active executions have completed (not just the first one)
+        if [[ -z "$opencode_complete_time" ]]; then
+            all_done=true
+            any_started=false
+            for ip in "${!ip_exec_start_time[@]}"; do
+                any_started=true
+                if [[ -z "${ip_exec_end_time[$ip]:-}" ]]; then
+                    all_done=false
+                    break
+                fi
+            done
+            if [[ "$any_started" == "true" ]] && [[ "$all_done" == "true" ]]; then
+                # Use the latest end time as the overall completion time
+                latest_end=""
+                for ip in "${!ip_exec_end_time[@]}"; do
+                    end_val="${ip_exec_end_time[$ip]}"
+                    if [[ -z "$latest_end" ]] || [[ "$end_val" > "$latest_end" ]]; then
+                        latest_end="$end_val"
+                    fi
+                done
+                opencode_complete_time="$latest_end"
+                log "✓ All OpenCode executions completed at: $opencode_complete_time"
+            fi
+        fi
 
         # Check if Flask is already blocked and OpenCode complete
         if [[ -n "$opencode_complete_time" ]]; then
@@ -411,6 +511,52 @@ while true; do
             break
         else
             log "Waiting for OpenCode execution to complete..."
+        fi
+    fi
+
+    # Check if attack has finished and track time since last alert
+    if [[ -z "$attack_finished_time" ]]; then
+        # Check if attack process is still running
+        if ! kill -0 "$ATTACK_PID" 2>/dev/null; then
+            attack_finished_time=$(date -u +"%Y-%m-%dT%H:%M:%S%:z")
+            log "Attack finished at: $attack_finished_time"
+        fi
+    fi
+
+    # Track time since last new alert
+    if [[ -f "$defender_timeline" ]]; then
+        # Get the timestamp of the most recent ALERT or PLAN entry
+        latest_alert_ts=$(grep -E '"level":"(ALERT|PLAN)"' "$defender_timeline" 2>/dev/null | tail -1 | jq -r '.ts // empty' 2>/dev/null || echo "")
+
+        if [[ -n "$latest_alert_ts" ]]; then
+            # Convert to seconds since epoch
+            latest_alert_sec=$(date -d "$latest_alert_ts" +%s 2>/dev/null || echo 0)
+            current_sec=$(date +%s)
+
+            # Calculate how long since last alert
+            time_since_alert=$((current_sec - latest_alert_sec))
+
+            # Update tracking if we have a newer alert
+            if [[ $time_since_alert -lt 3600 ]]; then  # Sanity check: alerts within last hour
+                if [[ -z "$last_alert_time" ]] || [[ "$latest_alert_sec" -gt "$(date -d "$last_alert_time" +%s 2>/dev/null || echo 0)" ]]; then
+                    last_alert_time="$latest_alert_ts"
+                    no_new_alerts_duration=0
+                else
+                    no_new_alerts_duration=$time_since_alert
+                fi
+            fi
+        fi
+    fi
+
+    # Check termination condition: OpenCode finished + attack finished + no new alerts for 30s
+    if [[ -n "$opencode_complete_time" ]] && [[ -n "$attack_finished_time" ]]; then
+        if [[ $no_new_alerts_duration -ge 30 ]]; then
+            log "✓ OpenCode complete at: $opencode_complete_time"
+            log "✓ Attack finished at: $attack_finished_time"
+            log "✓ No new alerts for ${no_new_alerts_duration}s (threshold: 30s)"
+            log "Termination condition met: OpenCode finished, attack finished, and no new alerts for 30s"
+            experiment_end_reason="opencode_complete_attack_done_no_new_alerts"
+            break
         fi
     fi
 
@@ -448,15 +594,24 @@ while true; do
             log "  ✓ Flask port blocked"
         fi
 
-        # NEW: Check if attack succeeded but defender didn't respond (early termination)
-        if [[ $elapsed -ge 300 ]]; then  # After 5 minutes
+        # Check if attack succeeded but defender didn't respond (early termination)
+        # Only trigger if NO OpenCode execution has started at all
+        if [[ $elapsed -ge 600 ]]; then  # After 10 minutes
             # Check if password was found in the attack
             if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" ]]; then
                 if grep -q "SUCCESS: Password found" "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" 2>/dev/null; then
-                    log "⚠️  Attack succeeded (password found) but defender didn't respond after ${elapsed}s"
-                    log "⚠️  Ending experiment early - defender unresponsive"
-                    experiment_end_reason="attack_success_no_defender"
-                    break
+                    # Only terminate early if OpenCode never started executing
+                    if [[ -z "$first_successful_exec_time" ]]; then
+                        log "⚠️  Attack succeeded (password found) and no defender execution started after ${elapsed}s"
+                        log "⚠️  Ending experiment early - defender truly unresponsive"
+                        experiment_end_reason="attack_success_no_defender"
+                        break
+                    else
+                        # OpenCode is running - don't terminate, just log status
+                        if [[ $((elapsed % 300)) -eq 0 ]]; then
+                            log "⏳ Attack succeeded but OpenCode is still executing defense (${elapsed}s elapsed)"
+                        fi
+                    fi
                 fi
             fi
         fi
@@ -476,13 +631,62 @@ log "Total duration: ${TOTAL_DURATION}s"
 log "End reason: $experiment_end_reason"
 
 # Wait for all logs to be written
-sleep 10
+# The auto_responder may still be finishing its execution (saving session logs,
+# writing DONE entries). Wait until we see DONE or EXEC completion entries for
+# all IPs that had executions, or until a timeout.
+log "Waiting for auto_responder to finish saving session logs..."
+wait_for_logs_start=$(date +%s)
+wait_for_logs_timeout=120  # Wait up to 2 minutes for logs
+
+while true; do
+    wait_elapsed=$(( $(date +%s) - wait_for_logs_start ))
+    if [[ $wait_elapsed -ge $wait_for_logs_timeout ]]; then
+        log_warning "Timeout waiting for auto_responder logs (${wait_for_logs_timeout}s)"
+        break
+    fi
+
+    # Check if all IPs with executions have DONE or EXEC completion entries
+    all_logs_done=true
+    for ip in "${!ip_exec_start_time[@]}"; do
+        machine="server"
+        [[ "$ip" == "172.30.0.10" ]] && machine="compromised"
+        timeline_file="$EXPERIMENT_OUTPUTS/defender/$machine/auto_responder_timeline.jsonl"
+
+        # Check for DONE or EXEC with status=success
+        if ! grep -q '"level":"DONE"' "$timeline_file" 2>/dev/null; then
+            # Also check for opencode_api_messages.json as evidence of completion
+            if [[ ! -f "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_api_messages.json" ]]; then
+                all_logs_done=false
+                break
+            fi
+        fi
+    done
+
+    if [[ "$all_logs_done" == "true" ]]; then
+        log "✓ All auto_responder logs saved successfully"
+        break
+    fi
+
+    sleep 5
+done
+
+# Rebuild combined timeline from ALL defender subdirectories (authoritative source)
+find "$EXPERIMENT_OUTPUTS/defender/" -name "auto_responder_timeline.jsonl" -exec cat {} + \
+    2>/dev/null | sort -u > "$EXPERIMENT_OUTPUTS/auto_responder_timeline.jsonl" 2>/dev/null || true
 
 # Copy defender timeline and detailed logs
 if [[ -f "$EXPERIMENT_OUTPUTS/auto_responder_timeline.jsonl" ]]; then
     cp "$EXPERIMENT_OUTPUTS/auto_responder_timeline.jsonl" "$EXPERIMENT_OUTPUTS/logs/"
-    log "Defender timeline copied"
+    log "Defender combined timeline copied"
 fi
+# Also copy per-machine timelines
+for machine in server compromised; do
+    if [[ -f "$EXPERIMENT_OUTPUTS/defender/$machine/auto_responder_timeline.jsonl" ]]; then
+        cp "$EXPERIMENT_OUTPUTS/defender/$machine/auto_responder_timeline.jsonl" \
+           "$EXPERIMENT_OUTPUTS/logs/auto_responder_timeline_${machine}.jsonl" 2>/dev/null || true
+        log "Defender timeline copied for $machine"
+    fi
+done
 if [[ -f "$EXPERIMENT_OUTPUTS/auto_responder_detailed.log" ]]; then
     cp "$EXPERIMENT_OUTPUTS/auto_responder_detailed.log" "$EXPERIMENT_OUTPUTS/logs/"
     log "Defender detailed log copied"
@@ -504,6 +708,18 @@ docker cp lab_compromised:/tmp/flask_hydra_results.txt "$EXPERIMENT_OUTPUTS/logs
 
 # Copy OpenCode execution time log from compromised container
 docker cp lab_compromised:/tmp/opencode_exec_times.log "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
+
+# Copy OpenCode API messages (new format) alongside legacy JSONL
+for machine in server compromised; do
+    if [[ -f "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_api_messages.json" ]]; then
+        cp "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_api_messages.json" "$EXPERIMENT_OUTPUTS/logs/opencode_api_messages_${machine}.json" 2>/dev/null || true
+        log "OpenCode API messages copied for $machine"
+    fi
+    if [[ -f "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_stdout.jsonl" ]]; then
+        cp "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_stdout.jsonl" "$EXPERIMENT_OUTPUTS/logs/opencode_stdout_${machine}.jsonl" 2>/dev/null || true
+        log "OpenCode legacy JSONL copied for $machine"
+    fi
+done
 
 # Copy Flask login attempt logs from server
 docker cp lab_server:/tmp/flask_login_attempts.jsonl "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
@@ -619,7 +835,7 @@ fi
 # Then parse Flask login attempt logs from server
 if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" ]]; then
     flask_login_attempts=$(wc -l < "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
-    flask_successful_attempts=$(grep -c '"success":true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
+    flask_successful_attempts=$(grep -c '"success": *true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
 
     # Get first and last attempt timestamps
     flask_first_attempt_time=$(head -1 "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | grep -o '"timestamp": "[^"]*"' | cut -d'"' -f4 | head -1 || echo "null")
@@ -627,7 +843,7 @@ if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" ]]; then
 
     # Get successful attempt timestamp if any
     if [[ "$flask_successful_attempts" -gt 0 ]]; then
-        flask_successful_attempt_time=$(grep '"success":true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | head -1 | grep -o '"timestamp": "[^"]*"' | cut -d'"' -f4 | head -1 || echo "null")
+        flask_successful_attempt_time=$(grep '"success": *true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | head -1 | grep -o '"timestamp": "[^"]*"' | cut -d'"' -f4 | head -1 || echo "null")
         password_found="true"
     fi
 
@@ -724,6 +940,77 @@ for ip in "${!ip_plan_time[@]}"; do
 done
 per_ip_metrics+="}"
 
+# Extract OpenCode execution details from API messages (primary format)
+opencode_details=$(python3 -c "
+import json, sys, os
+result = {}
+for machine in ['server', 'compromised']:
+    api_file = os.path.join('$EXPERIMENT_OUTPUTS', 'defender', machine, 'opencode_api_messages.json')
+    if not os.path.exists(api_file):
+        continue
+    try:
+        with open(api_file) as f:
+            messages = json.load(f)
+    except Exception:
+        continue
+
+    llm_calls = 0
+    tool_calls = []
+    tool_details = []
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_reasoning_tokens = 0
+    total_cost = 0.0
+    completed_with_stop = False
+    session_id = ''
+
+    for msg in messages:
+        info = msg.get('info', {})
+        parts = msg.get('parts', [])
+        if not session_id:
+            session_id = info.get('sessionID', '')
+        if info.get('role') == 'assistant':
+            tokens = info.get('tokens', {})
+            total_input_tokens += tokens.get('input', 0)
+            total_output_tokens += tokens.get('output', 0)
+            total_reasoning_tokens += tokens.get('reasoning', 0)
+            total_cost += info.get('cost', 0) or 0
+            if info.get('finish') == 'stop':
+                completed_with_stop = True
+        for part in parts:
+            pt = part.get('type', '')
+            if pt == 'step-start':
+                llm_calls += 1
+            elif pt == 'tool':
+                tool_name = part.get('tool', 'unknown')
+                tool_calls.append(tool_name)
+                state = part.get('state', {})
+                meta = state.get('metadata', {})
+                tool_details.append({
+                    'tool': tool_name,
+                    'status': state.get('status', ''),
+                    'exit_code': meta.get('exit'),
+                    'command': state.get('input', {}).get('command', '')[:200] if tool_name == 'bash' else None,
+                    'output_preview': str(state.get('output', ''))[:200],
+                })
+
+    result[machine] = {
+        'session_id': session_id,
+        'llm_calls': llm_calls,
+        'tool_calls': tool_calls,
+        'tool_details': tool_details,
+        'completed_with_stop': completed_with_stop,
+        'total_input_tokens': total_input_tokens,
+        'total_output_tokens': total_output_tokens,
+        'total_reasoning_tokens': total_reasoning_tokens,
+        'total_cost': total_cost,
+    }
+print(json.dumps(result))
+" 2>/dev/null || echo '{}')
+
+# Validate it's valid JSON, fallback to empty
+echo "$opencode_details" | jq . >/dev/null 2>&1 || opencode_details='{}'
+
 # Generate JSON with error checking
 if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
 {
@@ -751,7 +1038,8 @@ if ! cat > "$EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json" << EOF
         "flask_last_attempt_time": ${last_attempt_json},
         "flask_successful_attempt_time": ${successful_attempt_json},
         "password_found": ${password_found},
-        "per_ip_metrics": ${per_ip_metrics}
+        "per_ip_metrics": ${per_ip_metrics},
+        "opencode_execution_details": ${opencode_details}
     }
 }
 EOF
@@ -811,6 +1099,34 @@ log "  - First attempt: ${flask_first_attempt_time:-N/A}"
 log "  - Last attempt: ${flask_last_attempt_time:-N/A}"
 log "  - First successful: ${flask_successful_attempt_time:-N/A}"
 log "  - Password found: $password_found"
+log ""
+
+# Print OpenCode execution details (parsed from API messages)
+log "OpenCode Execution Details:"
+for machine in server compromised; do
+    api_file="$EXPERIMENT_OUTPUTS/defender/$machine/opencode_api_messages.json"
+    if [[ -f "$api_file" ]]; then
+        m_data=$(echo "$opencode_details" | jq -r ".${machine} // empty" 2>/dev/null)
+        if [[ -n "$m_data" ]] && [[ "$m_data" != "null" ]]; then
+            m_llm=$(echo "$m_data" | jq -r '.llm_calls // 0')
+            m_tools=$(echo "$m_data" | jq -r '.tool_calls | length')
+            m_tool_list=$(echo "$m_data" | jq -r '.tool_calls | group_by(.) | map("\(.[0])(\(length))") | join(", ")' 2>/dev/null || echo "none")
+            m_stop=$(echo "$m_data" | jq -r '.completed_with_stop')
+            m_in_tok=$(echo "$m_data" | jq -r '.total_input_tokens')
+            m_out_tok=$(echo "$m_data" | jq -r '.total_output_tokens')
+            m_sid=$(echo "$m_data" | jq -r '.session_id // "unknown"' | head -c 20)
+            log "  $machine (session: ${m_sid}...):"
+            log "    - LLM calls: $m_llm"
+            log "    - Tool calls: $m_tools ($m_tool_list)"
+            log "    - Completed (stop): $m_stop"
+            log "    - Tokens: input=$m_in_tok output=$m_out_tok"
+        else
+            log "  $machine: API messages file exists but no parsed data"
+        fi
+    else
+        log "  $machine: no execution data"
+    fi
+done
 log ""
 log "Results saved in: $EXPERIMENT_OUTPUTS"
 log "Summary saved in: $EXPERIMENT_OUTPUTS/flask_brute_experiment_summary.json"
