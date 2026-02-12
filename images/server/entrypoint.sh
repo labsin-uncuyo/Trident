@@ -130,9 +130,17 @@ touch /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_
 tcpdump -U -s 0 -i eth0 -w "${pcap_dir}/server.pcap" >>"${capture_log}" 2>&1 &
 TCPDUMP_PID=$!
 
-trap 'kill "${TCPDUMP_PID}" >/dev/null 2>&1 || true' EXIT
+trap 'kill "${TCPDUMP_PID}" >/dev/null 2>&1 || true; kill "${OPENCODE_PID}" >/dev/null 2>&1 || true' EXIT
 
 # Re-assert default route in case container networking reset it.
 ip route replace default via 172.31.0.1 dev eth0 || true
 
-tail -n0 -F /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}" "${login_log}"
+# Start OpenCode HTTP server for remote API access (used by auto_responder)
+opencode_log="/var/log/opencode-serve.log"
+touch "${opencode_log}"
+echo "Starting OpenCode HTTP server on 0.0.0.0:4096..."
+cd /tmp && opencode serve --hostname 0.0.0.0 --port 4096 >>"${opencode_log}" 2>&1 &
+OPENCODE_PID=$!
+echo "✅ OpenCode serve started (PID ${OPENCODE_PID})"
+
+tail -n0 -F /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}" "${login_log}" "${opencode_log}"

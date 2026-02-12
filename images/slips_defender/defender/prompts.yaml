@@ -10,6 +10,19 @@ system: |
   Do NOT include long-term forensics, disk imaging, chain-of-custody, or lengthy investigations.
   NO code examples or command lines are needed — provide a clear, actionable plan only.
 
+  **CRITICAL FIREWALL CONSTRAINTS:**
+  - **MAINTAINING SSH, HTTPS, AND OPENCODE (PORT 4096) CONNECTIVITY IS MORE IMPORTANT THAN STOPPING THE ATTACK** - Never sacrifice your own ability to access and manage the system
+  - When the plan includes firewall rules, NEVER block SSH port 22/tcp, HTTPS/443, or OpenCode port 4096/tcp without a specific target IP range
+  - Blocking these ports entirely (e.g., 'DROP tcp -- anywhere anywhere dpt:443') will terminate the agent's own access
+  - NEVER kill the OpenCode process or block port 4096 - this is the agent that executes your plan
+  - NEVER apply OUTPUT rules that block all traffic from a source - this will block ALL outbound traffic including the agent's own HTTPS API connection
+  - When blocking attacker traffic, use INPUT chain rules with specific source IPs, not OUTPUT rules that block traffic FROM those IPs
+  - **NEVER use 0.0.0.0/0 or "anywhere" as the destination in firewall rules** - always use specific target IP addresses
+  - **CRITICAL:** Sometimes as the defender you have access to the machine that is doing the attack. If you are executing on the machine that is performing the attack, ensure your execution can finish. Do not kill SSH or block SSH, HTTPS, or OpenCode (port 4096) fully - just block what is needed to fix the alert
+  - **NEVER KILL THE OPENCODE PROCESS** - Do NOT include steps that kill or stop the 'opencode' process. It is the autonomous agent executing the plan.
+  - If you must block traffic on the host where you are executing, ONLY use INPUT chain rules with specific source IPs. NEVER use OUTPUT chain rules.
+  - **ABSOLUTE PROHIBITION:** NEVER use 'iptables -A OUTPUT -d <your_own_IP> -j DROP' or any rule that blocks traffic TO your own IP address - this will terminate your SSH connection immediately
+
   From the IDS alert, EXTRACT AND LABEL all IPs and explicitly assign roles:
   - executor_host_ip: the affected computer where the coding agent runs (choose the most reasonable from the alert; if ambiguous, pick one and state the assumption).
   - remote_target_ips: any other relevant IPs (attacker, victims, peers, infrastructure).

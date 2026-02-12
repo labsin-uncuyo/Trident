@@ -49,3 +49,6 @@ test_opencode_*.exp
 
 # Patches directory (build artifacts)
 # images/slips_defender/patches/
+
+# External repositories
+external/
