@@ -543,6 +543,84 @@ class AutoResponder:
         except Exception:
             return False
 
+    def stream_session_events(self, target_ip: str, session_id: str, machine_name: str,
+                             execution_id: str = None, alert_hash: str = None,
+                             timeout: int = 600) -> List[Dict]:
+        """Stream all OpenCode session events via SSE and save to file.
+
+        Uses the /event endpoint which streams all events in real-time including:
+        - Thoughts and reasoning
+        - Tool calls (input/output)
+        - LLM responses
+        - Errors and diagnostics
+
+        Note: The /event endpoint may have limited support, so this method
+        is best-effort. The primary logging happens via save_session_logs()
+        which uses the /session/:id/message endpoint.
+
+        Returns list of all events captured.
+        """
+        base_url = self.get_opencode_base_url(target_ip)
+        machine_output_dir = self.get_machine_output_dir(machine_name)
+        sse_log_path = machine_output_dir / "opencode_sse_events.jsonl"
+
+        events = []
+        start_time = time.time()
+
+        self.log("SSE", f"Attempting SSE event stream for session {session_id[:8]} (best-effort)",
+                 machine_name, alert_hash, execution_id)
+
+        try:
+            # Set a shorter timeout for SSE since it's best-effort
+            sse_timeout = min(timeout, 120)  # Max 2 minutes for SSE
+            with requests.get(f"{base_url}/event", stream=True, timeout=sse_timeout) as resp:
+                resp.raise_for_status()
+
+                for line in resp.iter_lines(decode_unicode=True):
+                    # Check timeout
+                    if time.time() - start_time > sse_timeout:
+                        self.log("SSE", f"SSE stream timeout after {sse_timeout}s (expected, relying on API messages)",
+                                 machine_name, alert_hash, execution_id)
+                        break
+
+                    if not line:
+                        continue
+
+                    # SSE format: "data: <json>"
+                    if line.startswith("data: "):
+                        try:
+                            json_str = line[6:]  # Remove "data: " prefix
+                            event = json.loads(json_str)
+
+                            # Filter events for this session
+                            # Session ID can be at top level or nested in info
+                            event_session_id = (event.get("sessionID") or
+                                                event.get("session_id") or
+                                                event.get("info", {}).get("sessionID"))
+
+                            if event_session_id == session_id:
+                                events.append(event)
+
+                                # Write immediately to log file
+                                with open(sse_log_path, "a", encoding="utf-8") as f:
+                                    f.write(json.dumps(event, separators=(",", ":")) + "\n")
+
+                        except (json.JSONDecodeError, ValueError):
+                            # Skip malformed JSON
+                            continue
+
+        except requests.exceptions.Timeout:
+            self.log("SSE", f"SSE stream timed out (expected - primary logs via API messages)",
+                     machine_name, alert_hash, execution_id)
+        except Exception as e:
+            self.log("SSE", f"SSE stream not available: {e} (primary logs via API messages)",
+                     machine_name, alert_hash, execution_id)
+
+        if events:
+            self.log("SSE", f"✓ Captured {len(events)} events via SSE (supplemental)",
+                     machine_name, alert_hash, execution_id)
+        return events
+
     # ──────────────────────────────────────────────────────────────────
     # Log conversion: API messages → legacy JSONL format
     # ──────────────────────────────────────────────────────────────────
@@ -713,6 +791,7 @@ class AutoResponder:
             "errors": errors,
             "total_tokens": total_tokens,
             "total_cost": total_cost,
+            "api_messages": len(messages),
         }
 
     # ──────────────────────────────────────────────────────────────────
@@ -819,14 +898,59 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                 self.log("ERROR", f"Failed to send message to session {session_id[:8]}", target_name, alert_hash, execution_id)
                 return False
 
+            # Stream SSE events in background thread (supplemental - API messages are primary)
+            import concurrent.futures
+            sse_future = None
+            try:
+                pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                sse_future = pool.submit(
+                    self.stream_session_events,
+                    target_ip, session_id, target_name,
+                    execution_id, alert_hash, OPENCODE_TIMEOUT
+                )
+            except Exception as e:
+                self.log("WARN", f"Failed to start SSE streaming (non-critical): {e}", target_name, alert_hash, execution_id)
+
+            # Wait for session to complete
+            self.log("API", f"Waiting for session {session_id[:8]} to complete...", target_name, alert_hash, execution_id)
+            completed = self.wait_for_session_complete(target_ip, session_id, timeout=OPENCODE_TIMEOUT)
+
+            if completed:
+                self.log("API", f"✓ Session {session_id[:8]} completed successfully", target_name, alert_hash, execution_id)
+            else:
+                self.log("WARN", f"Session {session_id[:8]} did not complete within timeout", target_name, alert_hash, execution_id)
+
+            # Wait for SSE streaming to finish (supplemental)
+            if sse_future:
+                try:
+                    sse_events = sse_future.result(timeout=10)
+                    if sse_events:
+                        self.log("SSE", f"✓ SSE captured {len(sse_events)} supplemental events",
+                                 target_name, alert_hash, execution_id)
+                except Exception as e:
+                    self.log("SSE", f"SSE stream finished with: {e}", target_name, alert_hash, execution_id)
+
+            # Save complete session logs via API (PRIMARY SOURCE OF TRUTH)
+            metrics = self.save_session_logs(target_ip, session_id, target_name, execution_id, alert_hash)
+
+            llm_calls = metrics.get('llm_calls', 0)
+            tool_calls = len(metrics.get('tool_calls', []))
+            api_msgs = metrics.get('api_messages', 0)
+
+            self.log("API", f"✓ Session logs saved via API (LLM calls: {llm_calls}, Tools: {tool_calls}, Messages: {api_msgs})",
+                     target_name, alert_hash, execution_id)
+
             duration = time.time() - start_time
-            self.log("API", f"✓ Plan dispatched to session {session_id[:8]} in {duration:.1f}s — not waiting for completion",
+            self.log("DONE", f"✓ Execution complete for session {session_id[:8]} in {duration:.1f}s",
                      target_name, alert_hash, execution_id, extra_data={
                          "session_id": session_id,
                          "mode": "opencode_server_api",
                          "reused_session": reused,
                          "executor_ip": target_ip,
-                         "dispatch_seconds": round(duration, 2),
+                         "duration_seconds": round(duration, 2),
+                         "completed": completed,
+                         "llm_calls": llm_calls,
+                         "tool_calls": tool_calls,
                      })
             return True
 
