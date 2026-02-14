@@ -50,17 +50,77 @@ log_error() {
     echo -e "${RED}[$(date '+%Y-%m-%d %H:%M:%S')] ERROR:${NC} $1" | tee -a "$EXPERIMENT_OUTPUTS/logs/experiment.log"
 }
 
-# Trap for cleanup
-cleanup() {
-    log "Cleaning up..."
+# Flag to track if we've handled a signal
+SIGNAL_HANDLED=false
 
-    cd "$PROJECT_ROOT"
-    make down 2>/dev/null || true
+# Trap for cleanup on interrupt
+# We do NOT trap EXIT to allow Phase 6/7 to complete on normal exit
+cleanup_on_signal() {
+    if [[ "$SIGNAL_HANDLED" == "true" ]]; then
+        return
+    fi
+    SIGNAL_HANDLED=true
 
-    log "Cleanup complete"
+    log ""
+    log_warning "Experiment interrupted by signal!"
+
+    # Set end time
+    EXPERIMENT_END_TIME=$(date +%s)
+    if [[ -n "$ATTACK_START_TIME" ]]; then
+        TOTAL_DURATION=$((EXPERIMENT_END_TIME - ATTACK_START_TIME))
+    fi
+    : "${experiment_end_reason:=interrupted}"
+
+    log "End reason: $experiment_end_reason"
+    log "Will attempt to collect available data and generate summary..."
+
+    # Collect partial results and then continue to Phase 7 (summary generation)
+    # Phase 6: Collect available results (may be partial)
+    if [[ -d "$EXPERIMENT_OUTPUTS" ]]; then
+        log "Collecting available results..."
+
+        # Combine timeline files
+        find "$EXPERIMENT_OUTPUTS/defender/" -name "auto_responder_timeline.jsonl" -exec cat {} + \
+            2>/dev/null | sort -u > "$EXPERIMENT_OUTPUTS/auto_responder_timeline.jsonl" 2>/dev/null || true
+
+        # Copy to logs directory
+        if [[ -f "$EXPERIMENT_OUTPUTS/auto_responder_timeline.jsonl" ]]; then
+            cp "$EXPERIMENT_OUTPUTS/auto_responder_timeline.jsonl" "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
+        fi
+
+        for machine in server compromised; do
+            if [[ -f "$EXPERIMENT_OUTPUTS/defender/$machine/auto_responder_timeline.jsonl" ]]; then
+                cp "$EXPERIMENT_OUTPUTS/defender/$machine/auto_responder_timeline.jsonl" \
+                   "$EXPERIMENT_OUTPUTS/logs/auto_responder_timeline_${machine}.jsonl" 2>/dev/null || true
+            fi
+            if [[ -f "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_api_messages.json" ]]; then
+                cp "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_api_messages.json" \
+                   "$EXPERIMENT_OUTPUTS/logs/opencode_api_messages_${machine}.json" 2>/dev/null || true
+            fi
+            if [[ -f "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_sse_events.jsonl" ]]; then
+                cp "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_sse_events.jsonl" \
+                   "$EXPERIMENT_OUTPUTS/logs/opencode_sse_events_${machine}.jsonl" 2>/dev/null || true
+            fi
+        done
+
+        # Try to copy logs from containers while they're still running
+        docker cp lab_compromised:/tmp/flask_bruteforce/monitoring.json "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
+        docker cp lab_compromised:/tmp/flask_attack_summary.json "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
+        docker cp lab_compromised:/tmp/opencode_exec_times.log "$EXPERIMENT_OUTPUTS/logs/" 2>/dev/null || true
+
+        log "Attempting to generate summary with available data..."
+        # Fall through to Phase 7 (summary generation) below
+    else
+        log_warning "Output directory not found, skipping summary generation"
+        # Clean up and exit
+        cd "$PROJECT_ROOT"
+        make down 2>/dev/null || true
+        exit 1
+    fi
 }
 
-trap cleanup EXIT INT TERM
+# Only trap signals, NOT EXIT - this allows normal completion to run Phase 6/7
+trap cleanup_on_signal INT TERM HUP
 
 # Create output directory
 mkdir -p "$EXPERIMENT_OUTPUTS"/{pcaps,slips_output,logs}
@@ -620,8 +680,15 @@ while true; do
     sleep 5
 done
 
-# Phase 6: Collect results
-log "=== Phase 6: Collecting Results ==="
+# Check if we were interrupted by a signal
+# If so, skip Phase 6 (already done by signal handler) and go to Phase 7
+if [[ "$SIGNAL_HANDLED" == "true" ]]; then
+    log "=== Signal was handled, skipping to Phase 7 ==="
+    # Phase 6 was partially done by the signal handler
+    # Fall through to Phase 7 below
+else
+    # Phase 6: Collect results (normal completion path)
+    log "=== Phase 6: Collecting Results ==="
 
 EXPERIMENT_END_TIME=$(date +%s)
 TOTAL_DURATION=$((EXPERIMENT_END_TIME - ATTACK_START_TIME))
@@ -719,6 +786,10 @@ for machine in server compromised; do
         cp "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_stdout.jsonl" "$EXPERIMENT_OUTPUTS/logs/opencode_stdout_${machine}.jsonl" 2>/dev/null || true
         log "OpenCode legacy JSONL copied for $machine"
     fi
+    if [[ -f "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_sse_events.jsonl" ]]; then
+        cp "$EXPERIMENT_OUTPUTS/defender/$machine/opencode_sse_events.jsonl" "$EXPERIMENT_OUTPUTS/logs/opencode_sse_events_${machine}.jsonl" 2>/dev/null || true
+        log "OpenCode SSE events copied for $machine"
+    fi
 done
 
 # Copy Flask login attempt logs from server
@@ -730,7 +801,10 @@ log "Flask brute force results copied"
 # Collect PCAPs
 log "PCAPs saved in: $EXPERIMENT_OUTPUTS/pcaps"
 
+fi  # End of else block (normal Phase 6 completion)
+
 # Phase 7: Generate summary
+# This runs in all cases: normal completion, interrupt, timeout
 log "=== Phase 7: Generating Summary ==="
 
 # Calculate timestamps in seconds since epoch
@@ -1138,5 +1212,11 @@ log "Deleting PCAPs to save disk space..."
 rm -rf "$EXPERIMENT_OUTPUTS/pcaps" 2>/dev/null || true
 rm -rf "/home/diego/Trident/outputs/$EXPERIMENT_ID/pcaps" 2>/dev/null || true
 log "PCAPs deleted"
+
+# Clean up containers AFTER summary is generated
+log "Experiment complete, cleaning up containers..."
+cd "$PROJECT_ROOT"
+make down 2>/dev/null || true
+log "Containers cleaned up"
 
 exit 0
