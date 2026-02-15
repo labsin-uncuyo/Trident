@@ -32,6 +32,7 @@ OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "600"))  # 10 minutes
 POLL_INTERVAL = float(os.getenv("AUTO_RESPONDER_INTERVAL", "5"))
 MAX_EXECUTION_RETRIES = int(os.getenv("MAX_EXECUTION_RETRIES", "3"))
 DUPLICATE_DETECTION_WINDOW = int(os.getenv("DUPLICATE_DETECTION_WINDOW", "300"))  # 5 minutes
+RETRY_DELAYS = [1, 5, 10]  # Seconds to wait between retries (1s, 5s, 10s)
 
 # OpenCode Server API configuration
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
@@ -67,6 +68,7 @@ class AutoResponder:
                 "compromised_ip": COMPROMISED_IP,
                 "opencode_server_port": OPENCODE_SERVER_PORT,
                 "duplicate_window": DUPLICATE_DETECTION_WINDOW,
+                "retry_delays": RETRY_DELAYS,
                 "mode": "opencode_server_api"
             }
         })
@@ -74,6 +76,7 @@ class AutoResponder:
         print(f"[auto_responder] ✓ OpenCode Server API mode ENABLED")
         print(f"[auto_responder]   - Server: http://{SERVER_IP}:{OPENCODE_SERVER_PORT}")
         print(f"[auto_responder]   - Compromised: http://{COMPROMISED_IP}:{OPENCODE_SERVER_PORT}")
+        print(f"[auto_responder]   - Retry delays: {RETRY_DELAYS}s (for model errors)")
 
     def get_opencode_base_url(self, target_ip: str) -> str:
         """Get the OpenCode server API base URL for a target IP."""
@@ -798,23 +801,54 @@ class AutoResponder:
     # Execution via OpenCode Server API
     # ──────────────────────────────────────────────────────────────────
 
+
+    def check_for_model_error(self, messages: List[Dict]) -> Optional[str]:
+        """Check if OpenCode session failed due to model availability error.
+
+        Returns error message if found, None otherwise.
+        """
+        if not messages:
+            return None
+
+        for msg in messages:
+            info = msg.get("info", {})
+            error = info.get("error")
+            if error:
+                error_msg = error.get("data", {}).get("message", "")
+                # Check for model availability errors
+                if any(pattern in error_msg.lower() for pattern in [
+                    "model not found",
+                    "vllm engine is sleeping",
+                    "not found or vllm",
+                    "badrequesterror"
+                ]):
+                    return error_msg
+        return None
+
     def execute_plan_via_server_api(self, plan: str, target_name: str, target_ip: str,
                                     alert: Dict, alert_hash: str = None,
                                     execution_id: str = None) -> bool:
-        """Execute remediation plan using OpenCode Server HTTP API."""
+        """Execute remediation plan using OpenCode Server HTTP API with retry logic."""
         if not execution_id:
             execution_id = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:16]
 
-        self.log("API", f"Checking OpenCode server health on {target_name} ({target_ip})", target_name, alert_hash, execution_id)
-        if not self.check_opencode_health(target_ip):
-            self.log("API", f"Waiting for OpenCode server on {target_name}...", target_name, alert_hash, execution_id)
-            if not self.wait_for_opencode_server(target_ip, timeout=60):
-                self.log("ERROR", f"OpenCode server not available on {target_name} ({target_ip})", target_name, alert_hash, execution_id)
-                return False
+        # Retry loop for model availability errors
+        for attempt, delay in enumerate([0] + RETRY_DELAYS):
+            if attempt > 0:
+                self.log("RETRY", f"Retry attempt {attempt}/{len(RETRY_DELAYS)} after {delay}s delay",
+                         target_name, alert_hash, execution_id)
+                time.sleep(delay)
 
-        self.log("API", f"✓ OpenCode server healthy on {target_name}", target_name, alert_hash, execution_id)
+            self.log("API", f"Checking OpenCode server health on {target_name} ({target_ip})", target_name, alert_hash, execution_id)
+            if not self.check_opencode_health(target_ip):
+                self.log("API", f"Waiting for OpenCode server on {target_name}...", target_name, alert_hash, execution_id)
+                if not self.wait_for_opencode_server(target_ip, timeout=60):
+                    self.log("ERROR", f"OpenCode server not available on {target_name} ({target_ip})", target_name, alert_hash, execution_id)
+                    continue  # Retry instead of returning False
 
-        context = f"""Execute this security remediation plan immediately:
+            self.log("API", f"✓ OpenCode server healthy on {target_name}", target_name, alert_hash, execution_id)
+
+            context = f"""Execute this security remediation plan immediately:
 
 PLAN: {plan}
 
@@ -841,129 +875,167 @@ CONTEXT:
 
 Execute all containment and remediation steps immediately. Be decisive and thorough."""
 
-        machine_output_dir = self.get_machine_output_dir(target_name)
-        stdout_path = machine_output_dir / "opencode_stdout.jsonl"  # legacy JSONL
-        api_path = machine_output_dir / "opencode_api_messages.json"  # full API messages
-        stderr_path = machine_output_dir / "opencode_stderr.log"
+            machine_output_dir = self.get_machine_output_dir(target_name)
+            stdout_path = machine_output_dir / "opencode_stdout.jsonl"  # legacy JSONL
+            api_path = machine_output_dir / "opencode_api_messages.json"  # full API messages
+            stderr_path = machine_output_dir / "opencode_stderr.log"
 
-        start_time = time.time()
+            start_time = time.time()
 
-        try:
-            # ── Reuse an existing session for this target if one is active ──
-            session_id = None
-            reused = False
-            with self.lock:
-                existing_id = self.active_sessions.get(target_ip)
-            if existing_id:
-                # Check whether the previous session is still listed (busy)
-                status = self.get_session_status(target_ip, existing_id)
-                if status is not None:
-                    # Session is busy — abort the current task so we can send the new plan immediately.
-                    # Abort stops the running LLM execution but keeps the session and its
-                    # message history alive, so the next prompt continues with full context.
-                    self.log("API", f"Aborting running task in session {existing_id[:8]} on {target_name} to send new plan",
-                             target_name, alert_hash, execution_id)
-                    aborted = self.abort_session(target_ip, existing_id)
-                    if aborted:
-                        self.log("API", f"Successfully aborted session {existing_id[:8]}",
+            try:
+                # ── Reuse an existing session for this target if one is active ──
+                session_id = None
+                reused = False
+                with self.lock:
+                    existing_id = self.active_sessions.get(target_ip)
+                if existing_id:
+                    # Check whether the previous session is still listed (busy)
+                    status = self.get_session_status(target_ip, existing_id)
+                    if status is not None:
+                        # Session is busy — abort the current task so we can send the new plan immediately.
+                        # Abort stops the running LLM execution but keeps the session and its
+                        # message history alive, so the next prompt continues with full context.
+                        self.log("API", f"Aborting running task in session {existing_id[:8]} on {target_name} to send new plan",
                                  target_name, alert_hash, execution_id)
+                        aborted = self.abort_session(target_ip, existing_id)
+                        if aborted:
+                            self.log("API", f"Successfully aborted session {existing_id[:8]}",
+                                     target_name, alert_hash, execution_id)
+                        else:
+                            self.log("WARN", f"Abort returned false for session {existing_id[:8]}, will try to send anyway",
+                                     target_name, alert_hash, execution_id)
+                        # Brief pause to let the abort settle before sending the next prompt
+                        time.sleep(2)
+                    # Session exists (now idle after abort, or was already idle) — reuse it
+                    session_id = existing_id
+                    reused = True
+                    self.log("API", f"Reusing session {session_id[:8]} on {target_name}",
+                             target_name, alert_hash, execution_id, extra_data={"session_id": session_id})
+
+                if session_id is None:
+                    session_title = f"Defender response {alert_hash[:8] if alert_hash else 'unknown'}"
+                    session_id = self.create_session(target_ip, title=session_title)
+                    if not session_id:
+                        self.log("ERROR", f"Failed to create session on {target_name}", target_name, alert_hash, execution_id)
+                        continue  # Retry instead of returning False
+                    self.log("API", f"Created session {session_id[:8]} on {target_name}", target_name, alert_hash, execution_id, extra_data={
+                        "session_id": session_id
+                    })
+
+                # Track this session as the active one for the target
+                with self.lock:
+                    self.active_sessions[target_ip] = session_id
+
+                self.log("API", f"Sending plan to session {session_id[:8]} (async, fire-and-continue)", target_name, alert_hash, execution_id)
+                success = self.send_message_async(target_ip, session_id, context, agent="soc_god")
+                if not success:
+                    self.log("ERROR", f"Failed to send message to session {session_id[:8]}", target_name, alert_hash, execution_id)
+                    continue  # Retry
+
+                # Stream SSE events in background thread (supplemental - API messages are primary)
+                import concurrent.futures
+                sse_future = None
+                try:
+                    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                    sse_future = pool.submit(
+                        self.stream_session_events,
+                        target_ip, session_id, target_name,
+                        execution_id, alert_hash, OPENCODE_TIMEOUT
+                    )
+                except Exception as e:
+                    self.log("WARN", f"Failed to start SSE streaming (non-critical): {e}", target_name, alert_hash, execution_id)
+
+                # Wait for session to complete
+                self.log("API", f"Waiting for session {session_id[:8]} to complete...", target_name, alert_hash, execution_id)
+                completed = self.wait_for_session_complete(target_ip, session_id, timeout=OPENCODE_TIMEOUT)
+
+                if completed:
+                    self.log("API", f"✓ Session {session_id[:8]} completed successfully", target_name, alert_hash, execution_id)
+                else:
+                    self.log("WARN", f"Session {session_id[:8]} did not complete within timeout", target_name, alert_hash, execution_id)
+
+                # Wait for SSE streaming to finish (supplemental)
+                if sse_future:
+                    try:
+                        sse_events = sse_future.result(timeout=10)
+                        if sse_events:
+                            self.log("SSE", f"✓ SSE captured {len(sse_events)} supplemental events",
+                                     target_name, alert_hash, execution_id)
+                    except Exception as e:
+                        self.log("SSE", f"SSE stream finished with: {e}", target_name, alert_hash, execution_id)
+
+                # Save complete session logs via API (PRIMARY SOURCE OF TRUTH)
+                metrics = self.save_session_logs(target_ip, session_id, target_name, execution_id, alert_hash)
+
+                llm_calls = metrics.get('llm_calls', 0)
+                tool_calls = len(metrics.get('tool_calls', []))
+                api_msgs = metrics.get('api_messages', 0)
+
+                self.log("API", f"✓ Session logs saved via API (LLM calls: {llm_calls}, Tools: {tool_calls}, Messages: {api_msgs})",
+                         target_name, alert_hash, execution_id)
+
+                duration = time.time() - start_time
+
+                # Check for model availability errors
+                model_error = self.check_for_model_error(
+                    json.loads((machine_output_dir / "opencode_api_messages.json").read_text())
+                    if (machine_output_dir / "opencode_api_messages.json").exists() else []
+                )
+
+                if model_error:
+                    self.log("ERROR", f"Model availability error detected: {model_error[:100]}",
+                             target_name, alert_hash, execution_id, extra_data={
+                                 "error_type": "model_availability",
+                                 "attempt": attempt + 1,
+                                 "max_attempts": len(RETRY_DELAYS) + 1
+                             })
+
+                    # If we have retries left, continue to next iteration
+                    if attempt < len(RETRY_DELAYS):
+                        # Clean up the failed session
+                        try:
+                            self.abort_session(target_ip, session_id)
+                            with self.lock:
+                                if self.active_sessions.get(target_ip) == session_id:
+                                    del self.active_sessions[target_ip]
+                        except Exception:
+                            pass
+                        continue  # Retry
                     else:
-                        self.log("WARN", f"Abort returned false for session {existing_id[:8]}, will try to send anyway",
+                        self.log("ERROR", f"Max retries ({len(RETRY_DELAYS)}) exceeded for model availability error",
                                  target_name, alert_hash, execution_id)
-                    # Brief pause to let the abort settle before sending the next prompt
-                    time.sleep(2)
-                # Session exists (now idle after abort, or was already idle) — reuse it
-                session_id = existing_id
-                reused = True
-                self.log("API", f"Reusing session {session_id[:8]} on {target_name}",
-                         target_name, alert_hash, execution_id, extra_data={"session_id": session_id})
+                        return False
 
-            if session_id is None:
-                session_title = f"Defender response {alert_hash[:8] if alert_hash else 'unknown'}"
-                session_id = self.create_session(target_ip, title=session_title)
-                if not session_id:
-                    self.log("ERROR", f"Failed to create session on {target_name}", target_name, alert_hash, execution_id)
-                    return False
-                self.log("API", f"Created session {session_id[:8]} on {target_name}", target_name, alert_hash, execution_id, extra_data={
-                    "session_id": session_id
+                self.log("DONE", f"✓ Execution complete for session {session_id[:8]} in {duration:.1f}s",
+                         target_name, alert_hash, execution_id, extra_data={
+                             "session_id": session_id,
+                             "mode": "opencode_server_api",
+                             "reused_session": reused,
+                             "executor_ip": target_ip,
+                             "duration_seconds": round(duration, 2),
+                             "completed": completed,
+                             "llm_calls": llm_calls,
+                             "tool_calls": tool_calls,
+                         })
+                return True
+
+            except Exception as exc:
+                duration = time.time() - start_time
+                with open(stderr_path, "a", encoding="utf-8") as handle:
+                    handle.write(f"Exception: {str(exc)}\n")
+                self.log("ERROR", f"OpenCode execution exception on {target_name}: {exc}", target_name, alert_hash, execution_id, extra_data={
+                    "error": str(exc),
+                    "duration_seconds": round(duration, 2),
+                    "exec": execution_id[:8],
                 })
-
-            # Track this session as the active one for the target
-            with self.lock:
-                self.active_sessions[target_ip] = session_id
-
-            self.log("API", f"Sending plan to session {session_id[:8]} (async, fire-and-continue)", target_name, alert_hash, execution_id)
-            success = self.send_message_async(target_ip, session_id, context, agent="soc_god")
-            if not success:
-                self.log("ERROR", f"Failed to send message to session {session_id[:8]}", target_name, alert_hash, execution_id)
+                # Retry on exception
+                if attempt < len(RETRY_DELAYS):
+                    continue
                 return False
 
-            # Stream SSE events in background thread (supplemental - API messages are primary)
-            import concurrent.futures
-            sse_future = None
-            try:
-                pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                sse_future = pool.submit(
-                    self.stream_session_events,
-                    target_ip, session_id, target_name,
-                    execution_id, alert_hash, OPENCODE_TIMEOUT
-                )
-            except Exception as e:
-                self.log("WARN", f"Failed to start SSE streaming (non-critical): {e}", target_name, alert_hash, execution_id)
-
-            # Wait for session to complete
-            self.log("API", f"Waiting for session {session_id[:8]} to complete...", target_name, alert_hash, execution_id)
-            completed = self.wait_for_session_complete(target_ip, session_id, timeout=OPENCODE_TIMEOUT)
-
-            if completed:
-                self.log("API", f"✓ Session {session_id[:8]} completed successfully", target_name, alert_hash, execution_id)
-            else:
-                self.log("WARN", f"Session {session_id[:8]} did not complete within timeout", target_name, alert_hash, execution_id)
-
-            # Wait for SSE streaming to finish (supplemental)
-            if sse_future:
-                try:
-                    sse_events = sse_future.result(timeout=10)
-                    if sse_events:
-                        self.log("SSE", f"✓ SSE captured {len(sse_events)} supplemental events",
-                                 target_name, alert_hash, execution_id)
-                except Exception as e:
-                    self.log("SSE", f"SSE stream finished with: {e}", target_name, alert_hash, execution_id)
-
-            # Save complete session logs via API (PRIMARY SOURCE OF TRUTH)
-            metrics = self.save_session_logs(target_ip, session_id, target_name, execution_id, alert_hash)
-
-            llm_calls = metrics.get('llm_calls', 0)
-            tool_calls = len(metrics.get('tool_calls', []))
-            api_msgs = metrics.get('api_messages', 0)
-
-            self.log("API", f"✓ Session logs saved via API (LLM calls: {llm_calls}, Tools: {tool_calls}, Messages: {api_msgs})",
-                     target_name, alert_hash, execution_id)
-
-            duration = time.time() - start_time
-            self.log("DONE", f"✓ Execution complete for session {session_id[:8]} in {duration:.1f}s",
-                     target_name, alert_hash, execution_id, extra_data={
-                         "session_id": session_id,
-                         "mode": "opencode_server_api",
-                         "reused_session": reused,
-                         "executor_ip": target_ip,
-                         "duration_seconds": round(duration, 2),
-                         "completed": completed,
-                         "llm_calls": llm_calls,
-                         "tool_calls": tool_calls,
-                     })
-            return True
-
-        except Exception as exc:
-            duration = time.time() - start_time
-            with open(stderr_path, "a", encoding="utf-8") as handle:
-                handle.write(f"Exception: {str(exc)}\n")
-            self.log("ERROR", f"OpenCode execution exception on {target_name}: {exc}", target_name, alert_hash, execution_id, extra_data={
-                "error": str(exc),
-                "duration_seconds": round(duration, 2),
-                "exec": execution_id[:8],
-            })
-            return False
+        # All retries exhausted
+        self.log("ERROR", f"All retries exhausted for {target_name}", target_name, alert_hash, execution_id)
+        return False
 
     def execute_multiple_plans_async(self, plans_list: List[Dict], alert: Dict, alert_hash: str = None, base_execution_id: str = None) -> None:
         """Execute multiple plans in background threads (truly non-blocking)."""
