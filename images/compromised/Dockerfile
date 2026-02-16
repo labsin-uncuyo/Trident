@@ -23,6 +23,10 @@ RUN apt-get update \
        net-tools procps kmod systemd systemd-sysv \
     && rm -rf /var/lib/apt/lists/*
 
+# Improve reliability for runtime apt installs done by autonomous agents.
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+    >/etc/apt/apt.conf.d/99retries
+
 # --------------------------------------------------------------------
 # COMPROMISED-SPECIFIC PACKAGES
 # --------------------------------------------------------------------
@@ -81,3 +85,5 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD bash -lc "ss -ltn | grep -q ':22'"
 
 CMD ["/entrypoint.sh"]
+
+WORKDIR /home/labuser

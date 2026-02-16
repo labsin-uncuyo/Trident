@@ -43,8 +43,9 @@ EOF
 fi
 
 # Mirror OpenCode auth/config for labuser SSH sessions
-install -d -m 700 -o labuser -g labuser /home/labuser/.config/opencode /home/labuser/.local/share/opencode
+install -d -m 700 -o labuser -g labuser /home/labuser/.config/opencode /home/labuser/.local /home/labuser/.local/share /home/labuser/.local/share/opencode
 install -d -m 700 -o labuser -g labuser /home/labuser/.local/state
+chown -R labuser:labuser /home/labuser/.local
 cat >/home/labuser/.local/share/opencode/auth.json <<EOF
 {
     "e-infra-chat": {
@@ -61,7 +62,6 @@ if [ -f /root/.config/opencode/opencode.json.template ]; then
     install -m 600 -o labuser -g labuser /root/.config/opencode/opencode.json.template /home/labuser/.config/opencode/opencode.json
 fi
 
-# Setup SSH authorized keys for GHOSTS driver
 install -m 700 -o labuser -g labuser -d /home/labuser/.ssh
 
 # First, install the key from the secrets volume if it exists
@@ -102,8 +102,14 @@ touch /home/labuser/.bash_history
 chown labuser:labuser /home/labuser/.bash_history
 chmod 600 /home/labuser/.bash_history
 
-# Start benign agent logger in background
-python3 /usr/local/bin/benign_logger.py &
+# Reduce synthetic SSH friction for autonomous experiments.
+cat >/home/labuser/.ssh/config <<'EOF'
+Host *
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+EOF
+chown labuser:labuser /home/labuser/.ssh/config
+chmod 600 /home/labuser/.ssh/config
 
 # Start SSH server in background
 /usr/sbin/sshd
