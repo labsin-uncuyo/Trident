@@ -79,7 +79,9 @@ if ! grep -q "0.0.0.0/0.*md5" "${pg_hba}"; then
     echo "host all all 0.0.0.0/0 md5" >> "${pg_hba}"
 fi
 
-systemctl start postgresql
+systemctl restart postgresql
+# Ensure config changes (listen_addresses, ssl) are applied reliably.
+pg_ctlcluster "${pg_version}" main restart
 systemctl start ssh
 
 runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}';" | grep -q 1 \
@@ -117,6 +119,14 @@ if ! runuser -u postgres -- psql -d labdb -tAc "SELECT 1 FROM pg_roles WHERE rol
     runuser -u postgres -- psql -d labdb -f /opt/database/roles_users.sql >/dev/null 2>&1
     echo "Roles and users created successfully."
 fi
+
+# Ensure DB_USER can read labdb for dump/exfil simulations.
+runuser -u postgres -- psql -d labdb -c "GRANT CONNECT ON DATABASE labdb TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "GRANT USAGE ON SCHEMA public TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${DB_USER};" >/dev/null
 
 # Start the lab login app behind nginx.
 login_log=/var/log/flask-login.log
