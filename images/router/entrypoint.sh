@@ -93,6 +93,13 @@ if [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
     if ! iptables-legacy -t nat -C POSTROUTING -s "${host_b_ip}" -d "${server_ip}" -p tcp --dport 5432 -j SNAT --to-source "${lan_b_ip}" 2>/dev/null; then
         iptables-legacy -t nat -A POSTROUTING -s "${host_b_ip}" -d "${server_ip}" -p tcp --dport 5432 -j SNAT --to-source "${lan_b_ip}"
     fi
+    # Ensure local listener on router:443 is reachable from both lab networks.
+    if ! iptables-legacy -C INPUT -i "${lan_a_if}" -p tcp --dport 443 -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A INPUT -i "${lan_a_if}" -p tcp --dport 443 -j ACCEPT
+    fi
+    if ! iptables-legacy -C INPUT -i "${lan_b_if}" -p tcp --dport 443 -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A INPUT -i "${lan_b_if}" -p tcp --dport 443 -j ACCEPT
+    fi
 else
     echo "router: interfaces not ready; skipping forward/NAT rules" >&2
 fi
