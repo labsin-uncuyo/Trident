@@ -1,96 +1,254 @@
 #!/usr/bin/env python3
+"""
+DB Admin Benign Agent – OpenCode Server API version
+
+Connects to the OpenCode HTTP server already running on the compromised
+machine and starts a ``db_admin`` session via the REST API.
+
+Replaces the previous ``docker exec`` + ``opencode run`` approach with
+direct HTTP calls to the OpenCode server (port 4096 by default).
+"""
+
 import argparse
 import json
 import os
 import signal
-import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
-
-# Global variables for cleanup
-_cleanup_container = None
-_cleanup_agent = None
-_opencode_pid = None
+import requests
 
 
-def cleanup_opencode_process():
-    """Kill any running opencode process for this agent inside the container."""
-    if not _cleanup_container:
-        return
-    
-    try:
-        # First try to kill by specific PID if we have it (most precise method)
-        if _opencode_pid:
-            subprocess.run(
-                ["docker", "exec", _cleanup_container, "kill", "-9", str(_opencode_pid)],
-                capture_output=True,
-                timeout=5,
-            )
-        # Fallback: use more specific pattern including format to avoid killing other agents
-        elif _cleanup_agent:
-            # Pattern: "opencode run --agent db_admin --format json"
-            # This is more specific than just the agent name to avoid collisions
-            subprocess.run(
-                ["docker", "exec", _cleanup_container, "pkill", "-9", "-f", f"opencode run --agent {_cleanup_agent} --format json"],
-                capture_output=True,
-                timeout=5,
-            )
-    except Exception:
-        pass
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
+COMPROMISED_IP = os.getenv("COMPROMISED_IP", "172.30.0.10")
+DEFAULT_AGENT = "db_admin"
+STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
+
+# Active session reference for cleanup on SIGTERM/SIGINT
+_active_host: Optional[str] = None
+_active_session_id: Optional[str] = None
 
 
-def signal_handler(signum, frame):
-    """Handle termination signals by cleaning up opencode processes."""
-    cleanup_opencode_process()
+# ---------------------------------------------------------------------------
+# Signal handling
+# ---------------------------------------------------------------------------
+def _signal_handler(signum, frame):
+    """Abort the running session (if any) and exit."""
+    if _active_host and _active_session_id:
+        abort_session(_active_host, _active_session_id)
     sys.exit(1)
 
 
-# Register signal handlers
-signal.signal(signal.SIGTERM, signal_handler)
-signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Run OpenCode for db_admin benign agent and log outputs."
-    )
-    parser.add_argument("goal", nargs="+", help="Goal text to send to the agent.")
-    parser.add_argument(
-        "--container",
-        default=os.environ.get("BENIGN_CONTAINER", "lab_compromised"),
-        help="Target container name (default: lab_compromised).",
-    )
-    parser.add_argument(
-        "--user",
-        default=os.environ.get("BENIGN_USER", "labuser"),
-        help="User to run OpenCode as inside the container (default: labuser).",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=int(os.environ.get("OPENCODE_TIMEOUT", "86400")),
-        help="Seconds to wait for OpenCode run (default: 86400 or OPENCODE_TIMEOUT).",
-    )
-    return parser.parse_args()
+# ---------------------------------------------------------------------------
+# OpenCode Server API helpers
+# ---------------------------------------------------------------------------
+def get_opencode_base_url(host: str = COMPROMISED_IP,
+                          port: int = OPENCODE_SERVER_PORT) -> str:
+    """Build the OpenCode server base URL."""
+    return f"http://{host}:{port}"
 
 
+def check_opencode_health(host: str = COMPROMISED_IP) -> bool:
+    """Return True if the OpenCode server is alive."""
+    base_url = get_opencode_base_url(host)
+    try:
+        resp = requests.get(f"{base_url}/global/health", timeout=5)
+        if resp.status_code == 200:
+            return resp.json().get("healthy", False)
+    except Exception:
+        pass
+    return False
+
+
+def wait_for_opencode_server(host: str = COMPROMISED_IP,
+                             timeout: int = 120) -> bool:
+    """Block until the OpenCode server is healthy or *timeout* elapses."""
+    start = time.time()
+    while time.time() - start < timeout:
+        if check_opencode_health(host):
+            return True
+        time.sleep(2)
+    return False
+
+
+def create_session(host: str = COMPROMISED_IP,
+                   title: Optional[str] = None) -> Optional[str]:
+    """Create a new session. Returns the session ID or None."""
+    base_url = get_opencode_base_url(host)
+    try:
+        body: dict = {}
+        if title:
+            body["title"] = title
+        resp = requests.post(f"{base_url}/session", json=body, timeout=10)
+        resp.raise_for_status()
+        return resp.json().get("id")
+    except Exception as exc:
+        print(f"[db_admin] Failed to create session: {exc}", file=sys.stderr)
+        return None
+
+
+def send_message_async(host: str, session_id: str, message: str,
+                       agent: str = DEFAULT_AGENT) -> bool:
+    """Fire-and-forget: POST prompt and return immediately."""
+    base_url = get_opencode_base_url(host)
+    try:
+        body = {
+            "parts": [{"type": "text", "text": message}],
+            "agent": agent,
+        }
+        resp = requests.post(
+            f"{base_url}/session/{session_id}/prompt_async",
+            json=body,
+            timeout=30,
+        )
+        return resp.status_code in (200, 204)
+    except Exception as exc:
+        print(f"[db_admin] Failed to send async message: {exc}",
+              file=sys.stderr)
+        return False
+
+
+def send_message_sync(host: str, session_id: str, message: str,
+                      agent: str = DEFAULT_AGENT,
+                      timeout: int = 600) -> Optional[Dict]:
+    """Blocking: POST prompt and wait for the full response."""
+    base_url = get_opencode_base_url(host)
+    try:
+        body = {
+            "parts": [{"type": "text", "text": message}],
+            "agent": agent,
+        }
+        resp = requests.post(
+            f"{base_url}/session/{session_id}/message",
+            json=body,
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        print(f"[db_admin] Failed to send sync message: {exc}",
+              file=sys.stderr)
+        return None
+
+
+def get_session_status(host: str,
+                       session_id: Optional[str] = None) -> Optional[Dict]:
+    """Query execution status.  If *session_id* given, return only that."""
+    base_url = get_opencode_base_url(host)
+    try:
+        resp = requests.get(f"{base_url}/session/status", timeout=10)
+        resp.raise_for_status()
+        all_statuses = resp.json()
+        if session_id:
+            return all_statuses.get(session_id)
+        return all_statuses
+    except Exception as exc:
+        print(f"[db_admin] Failed to get session status: {exc}",
+              file=sys.stderr)
+        return None
+
+
+def wait_for_session_complete(host: str, session_id: str,
+                              timeout: int = 600) -> bool:
+    """Poll session status until it completes, fails, or times out."""
+    start = time.time()
+    while time.time() - start < timeout:
+        status = get_session_status(host, session_id)
+        elapsed = time.time() - start
+
+        # None → session no longer listed → completed
+        if status is None:
+            if elapsed > 5:
+                print(f"[db_admin] Session {session_id[:8]} completed "
+                      f"({elapsed:.0f}s)")
+                return True
+            time.sleep(STATUS_POLL_INTERVAL)
+            continue
+
+        status_str = str(status).lower()
+
+        if any(s in status_str
+               for s in ("completed", "idle", "ready", "done")):
+            return True
+        if "error" in status_str or "failed" in status_str:
+            print(f"[db_admin] Session {session_id[:8]} errored: "
+                  f"{status_str}", file=sys.stderr)
+            return True
+
+        # If status is not recognisably busy, double-check once
+        if not any(s in status_str
+                   for s in ("busy", "pending", "running",
+                             "active", "generating")):
+            time.sleep(STATUS_POLL_INTERVAL)
+            status2 = get_session_status(host, session_id)
+            if status2 is None or not any(
+                s in str(status2).lower()
+                for s in ("busy", "pending", "running",
+                          "active", "generating")
+            ):
+                return True
+
+        time.sleep(STATUS_POLL_INTERVAL)
+
+    print(f"[db_admin] Session {session_id[:8]} timed out after {timeout}s",
+          file=sys.stderr)
+    return False
+
+
+def get_session_messages(host: str, session_id: str) -> Optional[List]:
+    """Fetch all messages / results from a session (with retries)."""
+    base_url = get_opencode_base_url(host)
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                f"{base_url}/session/{session_id}/message", timeout=30)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            print(f"[db_admin] Attempt {attempt + 1}/3 get messages "
+                  f"failed: {exc}", file=sys.stderr)
+            time.sleep(2)
+    return None
+
+
+def abort_session(host: str, session_id: str) -> bool:
+    """Abort a running session."""
+    base_url = get_opencode_base_url(host)
+    try:
+        resp = requests.post(
+            f"{base_url}/session/{session_id}/abort", timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 def resolve_run_id() -> str:
     run_id = os.environ.get("RUN_ID", "").strip()
     if run_id:
         return run_id
     current_run = os.path.join("/home/shared/Trident/outputs", ".current_run")
     try:
-        with open(current_run, "r", encoding="utf-8") as handle:
-            return handle.read().strip()
+        with open(current_run, "r", encoding="utf-8") as fh:
+            return fh.read().strip()
     except FileNotFoundError:
         return "manual"
 
 
-def write_timeline_entry(path: str, level: str, message: str, data: Optional[dict] = None) -> None:
+def write_timeline_entry(path: str, level: str, message: str,
+                         data: Optional[dict] = None) -> None:
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "level": level.upper(),
@@ -98,343 +256,160 @@ def write_timeline_entry(path: str, level: str, message: str, data: Optional[dic
     }
     if data:
         entry["data"] = data
-    with open(path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
-        handle.flush()  # Ensure real-time writing
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
+        fh.flush()
 
 
-def _calculate_metrics(stdout_text: str) -> dict:
-    """Calculate metrics from stdout without writing to timeline (used for summary)."""
-    tool_calls = []
-    llm_calls = 0
-    final_output = None
-    errors = []
-    text_outputs = []
-    bash_commands = []
-
-    for line in stdout_text.splitlines():
-        line_stripped = line.strip()
-        if not line_stripped:
-            continue
-        
-        try:
-            event = json.loads(line_stripped)
-            event_type = event.get("type", "")
-            if event_type == "step_start":
-                llm_calls += 1
-            elif event_type == "tool_use":
-                part = event.get("part", {})
-                tool_calls.append(part.get("tool", "unknown"))
-            elif event_type == "text":
-                part = event.get("part", {})
-                text_content = part.get("text", "")
-                if text_content:
-                    text_outputs.append(text_content)
-            elif event_type.lower() == "error":
-                errors.append(str(event))
-        except (json.JSONDecodeError, ValueError):
-            if "|  Bash " in line:
-                bash_commands.append(line_stripped)
-                tool_calls.append("bash")
-            elif final_output is None and line_stripped:
-                final_output = line_stripped[:500]
-
-    if llm_calls == 0 and bash_commands:
-        llm_calls = max(1, len(bash_commands) // 2)
-
-    if not final_output and text_outputs:
-        final_output = " ".join(text_outputs)[-500:]
-    elif not final_output and stdout_text:
-        final_output = stdout_text[:500]
-
-    return {
-        "final_output": final_output,
-        "llm_calls": llm_calls,
-        "tool_calls": tool_calls,
-        "errors": errors,
-    }
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run db_admin benign agent via OpenCode Server API.",
+    )
+    parser.add_argument(
+        "goal", nargs="*", default=[""],
+        help="Goal text to send to the agent (default: empty string).",
+    )
+    parser.add_argument(
+        "--host", default=COMPROMISED_IP,
+        help=f"OpenCode server host (default: {COMPROMISED_IP}).",
+    )
+    parser.add_argument(
+        "--port", type=int, default=OPENCODE_SERVER_PORT,
+        help=f"OpenCode server port (default: {OPENCODE_SERVER_PORT}).",
+    )
+    parser.add_argument(
+        "--agent", default=DEFAULT_AGENT,
+        help=f"Agent name (default: {DEFAULT_AGENT}).",
+    )
+    parser.add_argument(
+        "--timeout", type=int,
+        default=int(os.environ.get("OPENCODE_TIMEOUT", "86400")),
+        help="Max seconds to wait for execution (default: 86400).",
+    )
+    # Kept for backward-compatibility with callers that still pass these.
+    parser.add_argument("--container", default=None,
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--user", default=None,
+                        help=argparse.SUPPRESS)
+    return parser.parse_args()
 
 
-def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: str) -> dict:
-    tool_calls = []
-    llm_calls = 0
-    final_output = None
-    errors = []
-    text_outputs = []
-    bash_commands = []
-
-    for line in stdout_text.splitlines():
-        line_stripped = line.strip()
-        if not line_stripped:
-            continue
-        
-        # Try to parse as JSON first (for --format json output)
-        try:
-            event = json.loads(line_stripped)
-            event_type = event.get("type", "")
-            if event_type == "step_start":
-                llm_calls += 1
-            elif event_type == "tool_use":
-                part = event.get("part", {})
-                tool_calls.append(part.get("tool", "unknown"))
-            elif event_type == "text":
-                part = event.get("part", {})
-                text_content = part.get("text", "")
-                if text_content:
-                    text_outputs.append(text_content)
-            elif event_type.lower() == "error":
-                errors.append(str(event))
-
-            timeline_entry = {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "level": "OPENCODE",
-                "msg": event_type,
-                "exec": execution_id[:8],
-                "data": event,
-            }
-            with open(timeline_path, "a", encoding="utf-8") as handle:
-                handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
-        except (json.JSONDecodeError, ValueError):
-            # Not JSON, handle as formatted output
-            # Detect tool usage patterns in formatted output
-            if "|  Bash " in line:
-                bash_commands.append(line_stripped)
-                tool_calls.append("bash")
-            elif final_output is None and line_stripped:
-                # Capture first significant non-JSON line as output
-                final_output = line_stripped[:500]
-            
-            # Still log non-JSON lines to timeline
-            timeline_entry = {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "level": "OUTPUT",
-                "msg": "text_line",
-                "exec": execution_id[:8],
-                "data": {"text": line_stripped[:200]},  # Limit line length
-            }
-            with open(timeline_path, "a", encoding="utf-8") as handle:
-                handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
-
-    # Estimate LLM calls from bash commands if not captured from JSON
-    if llm_calls == 0 and bash_commands:
-        llm_calls = max(1, len(bash_commands) // 2)  # Rough estimate
-
-    if not final_output and text_outputs:
-        final_output = " ".join(text_outputs)[-500:]
-    elif not final_output and stdout_text:
-        final_output = stdout_text[:500]
-
-    return {
-        "final_output": final_output,
-        "llm_calls": llm_calls,
-        "tool_calls": tool_calls,
-        "errors": errors,
-    }
-
-
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 def main() -> int:
-    global _cleanup_container, _cleanup_agent, _opencode_pid
-    
+    global _active_host, _active_session_id, OPENCODE_SERVER_PORT
+
     args = parse_args()
-    _cleanup_container = args.container
-    _cleanup_agent = "db_admin"
-    
     goal_text = " ".join(args.goal).strip()
-    if not goal_text:
-        print("Error: goal is required.", file=sys.stderr)
-        return 2
+    host = args.host
+    agent = args.agent
+    timeout = args.timeout
+    OPENCODE_SERVER_PORT = args.port
 
-    display_cmd = f"docker exec -i lab_compromised opencode run --agent db_admin --format json"
-    print(f"[db_admin] Starting: {display_cmd}")
     execution_id = uuid4().hex
-    try:
-        print("[db_admin] Agent ready, sending goal...")
+    run_id = resolve_run_id()
+    output_dir = os.path.join("/home/shared/Trident/outputs",
+                              run_id, "benign_agent")
+    os.makedirs(output_dir, exist_ok=True)
+    timeline_path = os.path.join(output_dir, "db_admin_timeline.jsonl")
 
-        run_id = resolve_run_id()
-        output_dir = os.path.join("/home/shared/Trident/outputs", run_id, "benign_agent")
-        os.makedirs(output_dir, exist_ok=True)
-        timeline_path = os.path.join(output_dir, "db_admin_timeline.jsonl")
+    print(f"[db_admin] OpenCode Server API mode")
+    print(f"[db_admin] Target: http://{host}:{OPENCODE_SERVER_PORT}")
+    print(f"[db_admin] Agent : {agent}")
+    print(f"[db_admin] Goal  : {goal_text!r}")
 
-        write_timeline_entry(timeline_path, "INIT", "db_admin execution started", data={
-            "goal": goal_text,
-            "container": args.container,
-            "exec": execution_id[:8],
-        })
-        stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
-        stderr_path = os.path.join(output_dir, "opencode_stderr.log")
-        start_time = time.time()
-        
-        cmd = [
-            "docker",
-            "exec",
-            "-i",
-            "--user",
-            args.user,
-            args.container,
-            "opencode",
-            "run",
-            "--agent",
-            "db_admin",
-            "--format",
-            "json",
-        ]
-        
-        # Start the process
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,  # Line buffered for real-time output
-        )
-        
-        # Try to capture the PID of the opencode process inside the container
-        # This is best-effort; if it fails we fall back to pkill
-        try:
-            pid_result = subprocess.run(
-                ["docker", "exec", args.container, "pgrep", "-f", f"opencode run --agent db_admin --format json"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-            )
-            if pid_result.returncode == 0 and pid_result.stdout.strip():
-                _opencode_pid = pid_result.stdout.strip().split()[0]  # Get first PID
-        except Exception:
-            pass
-        
-        # Send goal to stdin and close it
-        proc.stdin.write(goal_text + "\n")
-        proc.stdin.flush()
-        proc.stdin.close()
-        
-        # Read stdout line by line in real-time and write to files immediately
-        stdout_lines = []
-        deadline = time.time() + args.timeout
-        
-        try:
-            with open(stdout_path, "w", encoding="utf-8") as stdout_handle:
-                while True:
-                    if time.time() > deadline:
-                        proc.kill()
-                        raise subprocess.TimeoutExpired(cmd, args.timeout, output="\n".join(stdout_lines), stderr="")
-                    
-                    line = proc.stdout.readline()
-                    if not line:
-                        # Check if process has ended
-                        if proc.poll() is not None:
-                            break
-                        continue
-                    
-                    stdout_lines.append(line.rstrip('\n'))
-                    # Write to file immediately with flush for real-time logging
-                    stdout_handle.write(line)
-                    stdout_handle.flush()
-                    
-                    # Also process and write timeline entry in real-time
-                    line_stripped = line.strip()
-                    if line_stripped:
-                        try:
-                            event = json.loads(line_stripped)
-                            event_type = event.get("type", "")
-                            timeline_entry = {
-                                "ts": datetime.now(timezone.utc).isoformat(),
-                                "level": "OPENCODE",
-                                "msg": event_type,
-                                "exec": execution_id[:8],
-                                "data": event,
-                            }
-                        except (json.JSONDecodeError, ValueError):
-                            timeline_entry = {
-                                "ts": datetime.now(timezone.utc).isoformat(),
-                                "level": "OUTPUT",
-                                "msg": "text_line",
-                                "exec": execution_id[:8],
-                                "data": {"text": line_stripped[:200]},
-                            }
-                        
-                        with open(timeline_path, "a", encoding="utf-8") as tl_handle:
-                            tl_handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
-            
-            # Wait for process to complete and get stderr
-            proc.wait()
-            stderr = proc.stderr.read() if proc.stderr else ""
-            stdout = "\n".join(stdout_lines)
-            
-            result = subprocess.CompletedProcess(
-                args=cmd,
-                returncode=proc.returncode,
-                stdout=stdout,
-                stderr=stderr,
-            )
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            stderr = proc.stderr.read() if proc.stderr else ""
-            raise subprocess.TimeoutExpired(cmd, args.timeout, output="\n".join(stdout_lines), stderr=stderr)
-        duration = time.time() - start_time
-        
-        # Write stderr (stdout was already written in real-time)
-        with open(stderr_path, "w", encoding="utf-8") as handle:
-            handle.write(result.stderr or "")
+    write_timeline_entry(timeline_path, "INIT",
+                         "db_admin execution started", data={
+                             "goal": goal_text,
+                             "host": host,
+                             "agent": agent,
+                             "exec": execution_id[:8],
+                             "mode": "opencode_server_api",
+                         })
 
-        # Calculate metrics from the already-processed stdout (no need to re-process timeline)
-        metrics = _calculate_metrics(result.stdout or "")
-        write_timeline_entry(timeline_path, "EXEC", "db_admin execution completed", data={
-            "exit_code": result.returncode,
-            "duration_seconds": round(duration, 2),
-            "stdout_path": stdout_path,
-            "stderr_path": stderr_path,
-            "output": metrics.get("final_output"),
-            "llm_calls": metrics.get("llm_calls"),
-            "tool_calls": metrics.get("tool_calls"),
-            "unique_tools": len(set(metrics.get("tool_calls", []))),
-            "errors": metrics.get("errors") or None,
-            "exec": execution_id[:8],
-        })
+    # ── 1. Wait for OpenCode server ──────────────────────────────────
+    print("[db_admin] Waiting for OpenCode server...")
+    if not wait_for_opencode_server(host, timeout=120):
+        msg = (f"OpenCode server not available at "
+               f"{host}:{OPENCODE_SERVER_PORT}")
+        print(f"[db_admin] ERROR: {msg}", file=sys.stderr)
+        write_timeline_entry(timeline_path, "ERROR", msg,
+                             data={"exec": execution_id[:8]})
+        return 1
+    print("[db_admin] ✓ OpenCode server healthy")
 
-        if result.returncode != 0:
-            write_timeline_entry(timeline_path, "ERROR", "db_admin execution failed", data={
-                "exit_code": result.returncode,
-                "exec": execution_id[:8],
-            })
+    # ── 2. Create session ────────────────────────────────────────────
+    session_id = create_session(host,
+                                title=f"db_admin {execution_id[:8]}")
+    if not session_id:
+        msg = "Failed to create OpenCode session"
+        print(f"[db_admin] ERROR: {msg}", file=sys.stderr)
+        write_timeline_entry(timeline_path, "ERROR", msg,
+                             data={"exec": execution_id[:8]})
+        return 1
 
-        print("[db_admin] Completed.")
-        return 0
-    except subprocess.TimeoutExpired as exc:
-        # Kill the opencode process inside the container to prevent zombie processes
-        cleanup_opencode_process()
-        
-        run_id = resolve_run_id()
-        output_dir = os.path.join("/home/shared/Trident/outputs", run_id, "benign_agent")
-        os.makedirs(output_dir, exist_ok=True)
-        timeline_path = os.path.join(output_dir, "db_admin_timeline.jsonl")
-        stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
-        stderr_path = os.path.join(output_dir, "opencode_stderr.log")
-        
-        with open(stdout_path, "w", encoding="utf-8") as handle:
-            handle.write(exc.stdout or "")
-        with open(stderr_path, "w", encoding="utf-8") as handle:
-            handle.write(exc.stderr or "")
-        append_opencode_events(timeline_path, execution_id, exc.stdout or "")
-        write_timeline_entry(timeline_path, "ERROR", "db_admin execution timed out", data={
-            "timeout_seconds": args.timeout,
-            "stdout_path": stdout_path,
-            "stderr_path": stderr_path,
-            "exec": execution_id[:8],
-        })
-        print("[db_admin] Completed.")
-        return 0
-    except Exception as exc:
-        run_id = resolve_run_id()
-        output_dir = os.path.join("/home/shared/Trident/outputs", run_id, "benign_agent")
-        os.makedirs(output_dir, exist_ok=True)
-        timeline_path = os.path.join(output_dir, "db_admin_timeline.jsonl")
-        write_timeline_entry(timeline_path, "ERROR", "db_admin execution exception", data={
-            "error": str(exc),
-            "exec": execution_id[:8],
-        })
-        print("[db_admin] Completed.")
-        return 0
+    _active_host = host
+    _active_session_id = session_id
+
+    print(f"[db_admin] ✓ Session created: {session_id[:8]}")
+    write_timeline_entry(timeline_path, "SESSION", "Session created",
+                         data={"session_id": session_id,
+                               "exec": execution_id[:8]})
+
+    # ── 3. Send goal (prompt) ────────────────────────────────────────
+    start_time = time.time()
+    print("[db_admin] Sending prompt (async)...")
+    if not send_message_async(host, session_id, goal_text, agent=agent):
+        msg = "Failed to send prompt to session"
+        print(f"[db_admin] ERROR: {msg}", file=sys.stderr)
+        write_timeline_entry(timeline_path, "ERROR", msg,
+                             data={"session_id": session_id,
+                                   "exec": execution_id[:8]})
+        return 1
+    print("[db_admin] ✓ Prompt sent")
+
+    # ── 4. Wait for completion ───────────────────────────────────────
+    print(f"[db_admin] Waiting for session to complete "
+          f"(timeout: {timeout}s)...")
+    completed = wait_for_session_complete(host, session_id,
+                                         timeout=timeout)
+    duration = time.time() - start_time
+
+    if completed:
+        print(f"[db_admin] ✓ Session completed in {duration:.1f}s")
+    else:
+        print("[db_admin] ⚠ Session did not complete within timeout")
+
+    # ── 5. Fetch results ─────────────────────────────────────────────
+    messages = get_session_messages(host, session_id)
+    messages_path = os.path.join(output_dir,
+                                 "opencode_api_messages.json")
+    if messages:
+        with open(messages_path, "w", encoding="utf-8") as fh:
+            json.dump(messages, fh, indent=2)
+        print(f"[db_admin] ✓ Saved {len(messages)} messages to "
+              f"{messages_path}")
+    else:
+        print("[db_admin] ⚠ No messages retrieved")
+
+    write_timeline_entry(timeline_path, "DONE",
+                         "db_admin execution finished", data={
+                             "session_id": session_id,
+                             "duration_seconds": round(duration, 2),
+                             "completed": completed,
+                             "messages_count": (len(messages)
+                                                if messages else 0),
+                             "exec": execution_id[:8],
+                         })
+
+    _active_session_id = None
+    print("[db_admin] Done.")
+    return 0
 
 
 if __name__ == "__main__":
