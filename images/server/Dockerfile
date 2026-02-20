@@ -17,24 +17,43 @@ RUN apt-get update \
        man-db manpages \
        tcpdump traceroute dnsutils \
        ca-certificates curl iproute2 logrotate \
-       iputils-ping gettext-base ripgrep fzf git unzip openssh-server iptables ufw \
+       iputils-ping gettext-base git unzip openssh-server iptables ufw \
        net-tools procps kmod systemd systemd-sysv \
     && rm -rf /var/lib/apt/lists/*
-
-# Add PostgreSQL APT repository (11.x) using vendored key/list to avoid network fetch during build
-COPY postgresql.gpg /usr/share/keyrings/postgresql.gpg
-COPY pgdg.list /etc/apt/sources.list.d/pgdg.list
 
 # === SERVER-SPECIFIC PACKAGES ===
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       nginx postgresql-11 postgresql-contrib-11 rsyslog netcat \
+       nginx rsyslog netcat \
        python3 python3-pip \
+       build-essential wget ca-certificates \
+       libreadline-dev zlib1g-dev libssl-dev libxml2-dev libxslt1-dev libicu-dev \
+       bison flex libuuid1 uuid-dev \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/run/sshd \
     && echo 'root:admin123' | chpasswd \
     && echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+
+# Build PostgreSQL 11.4 from source for CVE-2019-10208 testing.
+ARG PG_SRC_VERSION=11.4
+RUN set -e; \
+    wget -q -O /tmp/postgresql.tar.gz "https://ftp.postgresql.org/pub/source/v${PG_SRC_VERSION}/postgresql-${PG_SRC_VERSION}.tar.gz"; \
+    mkdir -p /usr/src/postgresql; \
+    tar -xzf /tmp/postgresql.tar.gz -C /usr/src/postgresql --strip-components=1; \
+    cd /usr/src/postgresql; \
+    ./configure --prefix=/usr/local/pgsql-${PG_SRC_VERSION}; \
+    make -j"$(nproc)"; \
+    make install; \
+    ln -s /usr/local/pgsql-${PG_SRC_VERSION} /usr/local/pgsql; \
+    rm -rf /usr/src/postgresql /tmp/postgresql.tar.gz
+
+# Create postgres system user and data directory
+RUN useradd -m -s /bin/bash postgres \
+    && mkdir -p /var/lib/postgresql/data /var/log/postgresql \
+    && chown -R postgres:postgres /var/lib/postgresql /var/log/postgresql
+
+ENV PATH="/usr/local/pgsql/bin:${PATH}"
 
 COPY app/index.html /var/www/html/index.html
 COPY nginx-login.conf /etc/nginx/sites-available/default
@@ -47,6 +66,7 @@ RUN pip3 install --no-cache-dir -r /opt/flask_app/requirements.txt
 RUN mkdir -p /opt/database
 COPY employees_data_large.sql /opt/database/employees_data_modified.sql
 COPY roles_users.sql /opt/database/roles_users.sql
+COPY unsafe_definer.sql /opt/database/unsafe_definer.sql
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

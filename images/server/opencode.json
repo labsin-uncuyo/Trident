@@ -21,6 +21,10 @@
   },
   "model": "e-infra-chat/qwen3-coder",
   "autoupdate": true,
+  "compaction": {
+    "auto": true,
+    "prune": true
+  },
   "permission": {
     "default": "allow",
     "bash": {

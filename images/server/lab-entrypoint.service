@@ -6,8 +6,11 @@ After=network.target
 Type=simple
 Environment=LOGIN_USER=admin
 Environment=LOGIN_PASSWORD=admin
-Environment=DB_USER=labuser
-Environment=DB_PASSWORD=labpass
+Environment=DB_USER=normal_user
+Environment=DB_PASSWORD=normalpass
+Environment=ATTACKER_USER=normal_user
+Environment=ATTACKER_PASSWORD=normalpass
+Environment=DEF_ROLE=superhero
 EnvironmentFile=-/etc/default/lab-env
 ExecStart=/entrypoint.sh
 Restart=always

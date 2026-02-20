@@ -26,5 +26,4 @@ CREATE USER john_scott WITH PASSWORD 'john_scott' LOGIN;
 -- 4. Asignar el rol al usuario
 GRANT senior_developer_role TO john_scott;
 
--- 5. Establecer permisos por defecto
-ALTER ROLE john_scott SET ROLE senior_developer_role;
+-- 5. No establecer ROLE por defecto; mantener herencia de permisos.

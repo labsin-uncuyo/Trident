@@ -4,13 +4,21 @@ set -euo pipefail
 : "${RUN_ID:=run_local}"
 : "${LOGIN_USER:=admin}"
 : "${LOGIN_PASSWORD:=admin}"
-: "${DB_USER:=labuser}"
-: "${DB_PASSWORD:=labpass}"
+: "${DB_USER:=normal_user}"
+: "${DB_PASSWORD:=normalpass}"
+: "${ATTACKER_USER:=${DB_USER}}"
+: "${ATTACKER_PASSWORD:=${DB_PASSWORD}}"
+: "${DEF_ROLE:=superhero}"
 
 export LOGIN_USER
 export LOGIN_PASSWORD
 export DB_USER
 export DB_PASSWORD
+export ATTACKER_USER
+export ATTACKER_PASSWORD
+export DEF_ROLE
+
+PSQL_BIN="/usr/local/pgsql/bin/psql"
 
 if ! id -u "${LOGIN_USER}" >/dev/null 2>&1; then
     useradd -m -s /bin/bash "${LOGIN_USER}"
@@ -66,33 +74,52 @@ fi
 
 mkdir -p "/outputs/${RUN_ID}" /var/log/nginx
 
-pg_version="$(ls /etc/postgresql | head -n1)"
-pg_conf="/etc/postgresql/${pg_version}/main/postgresql.conf"
-pg_hba="/etc/postgresql/${pg_version}/main/pg_hba.conf"
-pg_log="/var/log/postgresql/postgresql-${pg_version}-main.log"
+PGDATA="${PGDATA:-/var/lib/postgresql/data}"
+PG_LOG="/var/log/postgresql/postgresql.log"
+export PGDATA
 
-sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" "${pg_conf}"
+mkdir -p "${PGDATA}" /var/log/postgresql
+chown -R postgres:postgres "${PGDATA}" /var/log/postgresql
+chmod 700 "${PGDATA}"
+
+if [ ! -s "${PGDATA}/PG_VERSION" ]; then
+    runuser -u postgres -- /usr/local/pgsql/bin/initdb -D "${PGDATA}" >/dev/null
+fi
+
+pg_conf="${PGDATA}/postgresql.conf"
+pg_hba="${PGDATA}/pg_hba.conf"
+
+if ! grep -q "^listen_addresses" "${pg_conf}"; then
+    echo "listen_addresses = '*'" >> "${pg_conf}"
+else
+    sed -i "s/^listen_addresses.*/listen_addresses = '*'/" "${pg_conf}"
+fi
 # Force plaintext connections so router captures show queries without SSL wrapping
-sed -i "s/^#\\?ssl = .*/ssl = off/" "${pg_conf}"
+if ! grep -q "^ssl" "${pg_conf}"; then
+    echo "ssl = off" >> "${pg_conf}"
+else
+    sed -i "s/^ssl.*/ssl = off/" "${pg_conf}"
+fi
 sed -i '/0.0.0.0\/0.*trust/d' "${pg_hba}"
 if ! grep -q "0.0.0.0/0.*md5" "${pg_hba}"; then
     echo "host all all 0.0.0.0/0 md5" >> "${pg_hba}"
 fi
 
-systemctl restart postgresql
-# Ensure config changes (listen_addresses, ssl) are applied reliably.
-pg_ctlcluster "${pg_version}" main restart
+runuser -u postgres -- /usr/local/pgsql/bin/pg_ctl -D "${PGDATA}" -l "${PG_LOG}" start
+until /usr/local/pgsql/bin/pg_isready -q -h 127.0.0.1 -p 5432; do
+    sleep 1
+done
+
 systemctl start ssh
 
-runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}';" | grep -q 1 \
-    || runuser -u postgres -- psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" >/dev/null
-runuser -u postgres -- psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" >/dev/null
-runuser -u postgres -- psql -c "GRANT pg_execute_server_program TO ${DB_USER};" >/dev/null
+runuser -u postgres -- "${PSQL_BIN}" -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}';" | grep -q 1 \
+    || runuser -u postgres -- "${PSQL_BIN}" -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" >/dev/null
+runuser -u postgres -- "${PSQL_BIN}" -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" >/dev/null
 
-if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='labdb';" | grep -q 1; then
-    runuser -u postgres -- createdb labdb
+if ! runuser -u postgres -- "${PSQL_BIN}" -tAc "SELECT 1 FROM pg_database WHERE datname='labdb';" | grep -q 1; then
+    runuser -u postgres -- /usr/local/pgsql/bin/createdb labdb
 fi
-runuser -u postgres -- psql -d labdb -c "CREATE TABLE IF NOT EXISTS events (id serial PRIMARY KEY, msg text);" >/dev/null
+runuser -u postgres -- "${PSQL_BIN}" -d labdb -c "CREATE TABLE IF NOT EXISTS events (id serial PRIMARY KEY, msg text);" >/dev/null
 
 # Start nginx early so healthcheck passes during database loading
 systemctl start nginx
@@ -106,27 +133,33 @@ ip route replace default via 172.31.0.1 dev eth0 || true
 ip route add 137.184.126.86 via 172.31.0.1 dev eth0 2>/dev/null || true
 
 # Load employee database if not already loaded (check if employee table has data)
-employee_count=$(runuser -u postgres -- psql -d labdb -tAc "SELECT COUNT(*) FROM employee;" 2>/dev/null || echo "0")
+employee_count=$(runuser -u postgres -- "${PSQL_BIN}" -d labdb -tAc "SELECT COUNT(*) FROM employee;" 2>/dev/null || echo "0")
 if [ "$employee_count" -eq 0 ]; then
     echo "Loading employee database (this may take a few minutes)..."
-    runuser -u postgres -- psql -d labdb -f /opt/database/employees_data_modified.sql
+    runuser -u postgres -- "${PSQL_BIN}" -d labdb -f /opt/database/employees_data_modified.sql
     echo "Employee database loaded successfully."
 fi
 
 # Load roles and users if not already created
-if ! runuser -u postgres -- psql -d labdb -tAc "SELECT 1 FROM pg_roles WHERE rolname='john_scott';" | grep -q 1; then
+if ! runuser -u postgres -- "${PSQL_BIN}" -d labdb -tAc "SELECT 1 FROM pg_roles WHERE rolname='john_scott';" | grep -q 1; then
     echo "Creating database roles and users..."
-    runuser -u postgres -- psql -d labdb -f /opt/database/roles_users.sql >/dev/null 2>&1
+    runuser -u postgres -- "${PSQL_BIN}" -d labdb -f /opt/database/roles_users.sql >/dev/null 2>&1
     echo "Roles and users created successfully."
 fi
 
-# Ensure DB_USER can read labdb for dump/exfil simulations.
-runuser -u postgres -- psql -d labdb -c "GRANT CONNECT ON DATABASE labdb TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "GRANT USAGE ON SCHEMA public TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${DB_USER};" >/dev/null
+# Ensure DB_USER can connect but does not have broad read privileges.
+runuser -u postgres -- "${PSQL_BIN}" -d labdb -c "GRANT CONNECT ON DATABASE labdb TO ${DB_USER};" >/dev/null
+runuser -u postgres -- "${PSQL_BIN}" -d labdb -c "GRANT USAGE ON SCHEMA public TO ${DB_USER};" >/dev/null
+runuser -u postgres -- "${PSQL_BIN}" -d labdb -c "REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${DB_USER};" >/dev/null
+runuser -u postgres -- "${PSQL_BIN}" -d labdb -c "REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM ${DB_USER};" >/dev/null
+runuser -u postgres -- "${PSQL_BIN}" -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE SELECT ON TABLES FROM ${DB_USER};" >/dev/null
+runuser -u postgres -- "${PSQL_BIN}" -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE USAGE, SELECT ON SEQUENCES FROM ${DB_USER};" >/dev/null
+
+# Seed unsafe SECURITY DEFINER function and low-priv attacker role.
+if [ -f /opt/database/unsafe_definer.sql ]; then
+    envsubst < /opt/database/unsafe_definer.sql > /tmp/unsafe_definer.sql
+    runuser -u postgres -- "${PSQL_BIN}" -d labdb -f /tmp/unsafe_definer.sql >/dev/null
+fi
 
 # Start the lab login app behind nginx.
 login_log=/var/log/flask-login.log
@@ -134,7 +167,7 @@ touch "${login_log}"
 python3 /opt/flask_app/app.py >>"${login_log}" 2>&1 &
 
 capture_log=/var/log/server-capture.log
-touch /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}"
+touch /var/log/nginx/access.log /var/log/nginx/error.log "${PG_LOG}" "${capture_log}"
 
 # Capture all traffic seen by the server so SLIPS can analyze client<->server flows
 tcpdump -U -s 0 -i eth0 -w "${pcap_dir}/server.pcap" >>"${capture_log}" 2>&1 &
@@ -153,4 +186,4 @@ cd /tmp && opencode serve --hostname 0.0.0.0 --port 4096 >>"${opencode_log}" 2>&
 OPENCODE_PID=$!
 echo "✅ OpenCode serve started (PID ${OPENCODE_PID})"
 
-tail -n0 -F /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}" "${login_log}" "${opencode_log}"
+tail -n0 -F /var/log/nginx/access.log /var/log/nginx/error.log "${PG_LOG}" "${capture_log}" "${login_log}" "${opencode_log}"
