@@ -8,7 +8,7 @@ RUN_ID_FILE := ./outputs/.current_run
 
 build:
 	@echo "Building all compose services (including defender/benign/attacker)..."
-	$(COMPOSE) build --pull --no-cache
+	$(COMPOSE) --profile core --profile attackers --profile defender build --pull --no-cache
 
 up:
 	@RUN_ID_VALUE=$${RUN_ID:-logs_$$(date +%Y%m%d_%H%M%S)}; \

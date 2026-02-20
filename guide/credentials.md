@@ -15,8 +15,10 @@ These defaults are **for the isolated lab only**. Do not reuse them on real syst
 - Password: `LOGIN_PASSWORD` (default `admin`)
 
 ## PostgreSQL
-- User: `DB_USER` (default `labuser`)
-- Password: `DB_PASSWORD` (default `labpass`)
+- User: `DB_USER` (default `normal_user`)
+- Password: `DB_PASSWORD` (default `normalpass`)
+- Low-priv attacker DB user (defaults to DB_USER/DB_PASSWORD): `ATTACKER_USER`, `ATTACKER_PASSWORD` (default `normal_user`)
+- High-priv definer role: `DEF_ROLE` (default `superhero`)
 
 ## Where to set overrides
 - Copy `.env.example` to `.env` and change values.

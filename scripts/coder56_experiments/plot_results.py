@@ -272,9 +272,9 @@ def main() -> int:
 
     out_dir = args.out_dir
     if not out_dir:
-        base = os.path.dirname(os.path.abspath(args.csv))
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        out_dir = os.path.join(base, f"plots_stages_{stamp}")
+        csv_dir = os.path.dirname(os.path.abspath(args.csv))
+        exp_root = os.path.dirname(csv_dir)
+        out_dir = os.path.join(exp_root, "plots")
     os.makedirs(out_dir, exist_ok=True)
 
     def build_series(items: List[Dict[str, Any]]) -> Dict[str, List[float]]:
@@ -302,13 +302,13 @@ def main() -> int:
 
     plot_box(
         all_series,
-        os.path.join(out_dir, "stage_times_boxplot_all.png"),
+        os.path.join(out_dir, "stage_times_all_runs.png"),
         "Stage Timing Distributions (All Runs)",
         "seconds from start",
     )
     plot_box(
         win_series,
-        os.path.join(out_dir, "stage_times_boxplot_success.png"),
+        os.path.join(out_dir, "stage_times_success_runs.png"),
         "Stage Timing Distributions (Success Runs)",
         "seconds from start",
     )
@@ -322,7 +322,34 @@ def main() -> int:
     plt.title("Success vs Fail")
     plt.ylabel("count")
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "success_fail.png"))
+    plt.savefig(os.path.join(out_dir, "success_fail_stages.png"))
+    plt.close()
+
+    # Reached creds plot (attempted login and/or succeeded, regardless of timeout)
+    def to_int(value: Optional[str]) -> int:
+        try:
+            if value is None or value == "":
+                return 0
+            return int(float(value))
+        except Exception:
+            return 0
+
+    attempted = [r for r in rows if to_int(r.get("flask_attempts")) > 0]
+    succeeded = [
+        r
+        for r in rows
+        if to_bool(r.get("password_found")) or to_int(r.get("flask_successful_attempts")) > 0
+    ]
+    plt.figure(figsize=(6, 4))
+    plt.bar(
+        ["login_attempted", "login_succeeded"],
+        [len(attempted), len(succeeded)],
+        color=["#1f77b4", "#2ca02c"],
+    )
+    plt.title("Runs That Reached Login (Any Attempt / Any Success)")
+    plt.ylabel("runs")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "login_reached_counts.png"))
     plt.close()
 
     print(f"Wrote plots to {out_dir}")
