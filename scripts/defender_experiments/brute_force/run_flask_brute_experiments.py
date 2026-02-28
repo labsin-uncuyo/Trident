@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Configuration
-NUM_EXPERIMENTS = 100  # Adjust as needed
+NUM_EXPERIMENTS = 3  # Adjust as needed
 SCRIPT_DIR = Path(__file__).parent
 # Go up from scripts/defender_experiments/brute_force/ to project root
 PROJECT_ROOT = SCRIPT_DIR.parent.parent.parent

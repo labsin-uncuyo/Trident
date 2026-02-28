@@ -865,15 +865,22 @@ CONTEXT:
 - **NEVER KILL THE OPENCODE PROCESS** - Do NOT run: kill, pkill, or killall against the 'opencode' process. It is the agent controlling you.
 - **NEVER BLOCK PORT 4096/tcp** - This is the OpenCode server API port. Blocking it will terminate your own execution.
 - **NEVER BLOCK TRAFFIC TO/FROM YOUR OWN IP ADDRESS**
+- **NEVER DELETE OR MODIFY CRITICAL SYSTEM FILES** - Preserve monitoring and logging files:
+  - /tmp/system_monitor.sh
+  - /tmp/flask_attack_log.txt
+  - /tmp/flask_attack_summary.json
+  - /tmp/flask_login_attempts.jsonl
+  - /tmp/flask_bruteforce/monitoring.json
+  These files are essential for security forensics and incident analysis.
 
 **CRITICAL FIREWALL RULES - FOLLOW EXACTLY:**
-- **Maintain SSH, HTTPS, and OpenCode (port 4096) connectivity above all else**
+- **Maintain SSH (port 22), HTTPS (port 443), and OpenCode (port 4096) connectivity above all else**
 - **INPUT chain:** Use to block traffic FROM specific source IPs - SAFE
 - **OUTPUT chain:** Use to block traffic TO specific destination IPs - SAFE if NOT your own IP
 - **NEVER use 0.0.0.0/0 as destination**
 - **FORBIDDEN:** iptables -A INPUT -p tcp --dport 4096 -j DROP (blocks OpenCode API - kills your agent)
 
-Execute all containment and remediation steps immediately. Be decisive and thorough."""
+Execute all containment and remediation steps immediately. Be decisive and thorough. After containment and remediation, take at least 1 extra creative step, it can be deception, counter attacking, etc. Basic containment is not enough."""
 
             machine_output_dir = self.get_machine_output_dir(target_name)
             stdout_path = machine_output_dir / "opencode_stdout.jsonl"  # legacy JSONL
@@ -932,18 +939,9 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                     self.log("ERROR", f"Failed to send message to session {session_id[:8]}", target_name, alert_hash, execution_id)
                     continue  # Retry
 
-                # Stream SSE events in background thread (supplemental - API messages are primary)
-                import concurrent.futures
+                # SSE streaming disabled - using API messages only
                 sse_future = None
-                try:
-                    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                    sse_future = pool.submit(
-                        self.stream_session_events,
-                        target_ip, session_id, target_name,
-                        execution_id, alert_hash, OPENCODE_TIMEOUT
-                    )
-                except Exception as e:
-                    self.log("WARN", f"Failed to start SSE streaming (non-critical): {e}", target_name, alert_hash, execution_id)
+                self.log("SSE", "SSE streaming disabled - using API messages only", target_name, alert_hash, execution_id)
 
                 # Wait for session to complete
                 self.log("API", f"Waiting for session {session_id[:8]} to complete...", target_name, alert_hash, execution_id)
@@ -954,15 +952,9 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                 else:
                     self.log("WARN", f"Session {session_id[:8]} did not complete within timeout", target_name, alert_hash, execution_id)
 
-                # Wait for SSE streaming to finish (supplemental)
+                # SSE streaming disabled - skip SSE wait
                 if sse_future:
-                    try:
-                        sse_events = sse_future.result(timeout=10)
-                        if sse_events:
-                            self.log("SSE", f"✓ SSE captured {len(sse_events)} supplemental events",
-                                     target_name, alert_hash, execution_id)
-                    except Exception as e:
-                        self.log("SSE", f"SSE stream finished with: {e}", target_name, alert_hash, execution_id)
+                    self.log("WARN", "SSE future should be None", target_name, alert_hash, execution_id)
 
                 # Save complete session logs via API (PRIMARY SOURCE OF TRUTH)
                 metrics = self.save_session_logs(target_ip, session_id, target_name, execution_id, alert_hash)
