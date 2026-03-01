@@ -22,7 +22,7 @@ ALERT_FILE = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
 _LOCK = threading.Lock()
 
 # LLM Configuration
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://chat.ai.e-infra.cz/api/v1")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://llm.ai.e-infra.cz/v1")
 LLM_API_KEY = os.getenv("OPENCODE_API_KEY", "")
 PLANNER_MODEL = "gpt-oss-120b"  # Hardcoded for /plan endpoint only
 # Note: LLM_MODEL env var is used by OpenCode execution (should remain qwen3-coder)

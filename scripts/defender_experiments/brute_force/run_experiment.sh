@@ -906,8 +906,31 @@ if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack.log" ]]; then
     fi
 fi
 
-# Then parse Flask login attempt logs from server
-if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" ]]; then
+# Parse Flask attempt data - PREFER flask_attack_summary.json (actual password attempts)
+# flask_login_attempts.jsonl contains HTTP requests (not unique password attempts)
+if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" ]]; then
+    flask_login_attempts=$(grep -o '"total_attempts_before_blocked": [0-9]*' "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" | cut -d: -f2 | tr -d ' ' || echo "0")
+    password_found=$(grep -o '"guess_password_successfully": [^,}]*' "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" | cut -d: -f2 | tr -d ' ' || echo "false")
+    flask_successful_attempts="0"
+    if [[ "$password_found" == "true" ]]; then
+        flask_successful_attempts="1"
+    fi
+    log "Flask attack summary: $flask_login_attempts password attempts, $flask_successful_attempts successful"
+elif [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack_log.txt" ]]; then
+    # Fallback: parse from attack log (may have duplicates, but more accurate than HTTP logs)
+    # Get the last "Attempt N/3000" line for actual password attempt count
+    flask_login_attempts=$(grep -o 'Attempt [0-9]*/3000:' "$EXPERIMENT_OUTPUTS/logs/flask_attack_log.txt" | tail -1 | grep -o '[0-9]*' || echo "0")
+    # Check for password found in logs
+    if grep -q "SUCCESS: Password" "$EXPERIMENT_OUTPUTS/logs/flask_attack_log.txt" 2>/dev/null; then
+        password_found="true"
+        flask_successful_attempts="1"
+    else
+        password_found="false"
+        flask_successful_attempts="0"
+    fi
+    log "Flask attack log: $flask_login_attempts password attempts, $flask_successful_attempts successful"
+elif [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" ]]; then
+    # LAST RESORT: Use Flask login logs (counts HTTP requests, not passwords - will be inflated)
     flask_login_attempts=$(wc -l < "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
     flask_successful_attempts=$(grep -c '"success": *true' "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" 2>/dev/null | tr -d ' ' || echo "0")
 
@@ -921,12 +944,21 @@ if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_login_attempts.jsonl" ]]; then
         password_found="true"
     fi
 
-    log "Flask login logs: $flask_login_attempts attempts, $flask_successful_attempts successful"
+    log "Flask login logs (HTTP requests, not passwords): $flask_login_attempts attempts, $flask_successful_attempts successful"
 else
-    # Fallback to attack summary if Flask logs not available
-    if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" ]]; then
-        flask_login_attempts=$(grep -o '"total_attempts_before_blocked": [0-9]*' "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" | cut -d: -f2 | tr -d ' ' || echo "0")
-        password_found=$(grep -o '"guess_password_successfully": [^,]*' "$EXPERIMENT_OUTPUTS/logs/flask_attack_summary.json" | cut -d: -f2 | tr -d ' ' || echo "false")
+    log "No Flask attempt logs found"
+fi
+
+# Get timestamps from attack log if available (more accurate than HTTP logs)
+if [[ -f "$EXPERIMENT_OUTPUTS/logs/flask_attack_log.txt" ]]; then
+    flask_first_attempt_time=$(grep "Attempt 1/" "$EXPERIMENT_OUTPUTS/logs/flask_attack_log.txt" | head -1 | grep -o '\[.*?\]' | tr -d '[]' | head -1 || echo "null")
+    # Convert log timestamp format to match summary format
+    if [[ "$flask_first_attempt_time" != "null" ]]; then
+        flask_first_attempt_time="${flask_first_attempt_time// /T}.000000"
+    fi
+    flask_last_attempt_time=$(grep "Attempt " "$EXPERIMENT_OUTPUTS/logs/flask_attack_log.txt" | tail -1 | grep -o '\[.*?\]' | tr -d '[]' | head -1 || echo "null")
+    if [[ "$flask_last_attempt_time" != "null" ]]; then
+        flask_last_attempt_time="${flask_last_attempt_time// /T}.000000"
     fi
 fi
 
