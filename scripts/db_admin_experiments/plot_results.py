@@ -83,6 +83,8 @@ def categorize_command(cmd: str) -> str:
 def get_category(t: dict) -> str:
     if t["tool"] == "bash":
         return categorize_command(t["command"])
+    if t["tool"] == "webfetch":
+        return "other"
     return t["tool"]
 
 
@@ -244,6 +246,13 @@ def plot_06_sql_count_boxplot(tools: list[dict], fig_dir: Path):
     plt.close(fig)
 
 
+EXIT_CODE_LABELS = {
+    "0":   "exit 0\n(success)",
+    "1":   "exit 1\n(general error)",
+    "2":   "exit 2\n(syntax / misuse)",
+    "127": "exit 127\n(command not found)",
+}
+
 def plot_07_exit_codes(tools: list[dict], n_runs: int, fig_dir: Path):
     """Bar chart: average exit-code counts per run."""
     bash = [t for t in tools if t["tool"] == "bash" and t["exit_code"] != ""]
@@ -254,7 +263,8 @@ def plot_07_exit_codes(tools: list[dict], n_runs: int, fig_dir: Path):
     other_count = 0
     for code, count in codes.most_common():
         if count >= threshold:
-            main_codes[f"exit {code}"] = count
+            label = EXIT_CODE_LABELS.get(str(code), f"exit {code}")
+            main_codes[label] = count
         else:
             other_count += count
     if other_count:
@@ -276,7 +286,12 @@ def plot_07_exit_codes(tools: list[dict], n_runs: int, fig_dir: Path):
 
 def plot_08_tool_type_counts(tools: list[dict], n_runs: int, fig_dir: Path):
     """Bar chart: average tool-type counts per run (bash, webfetch, etc.)."""
-    tool_types = Counter(t["tool"] for t in tools)
+    raw_counts = Counter(t["tool"] for t in tools)
+    # Merge webfetch into 'other'
+    tool_types: Counter = Counter()
+    for tool, count in raw_counts.items():
+        key = "other" if tool == "webfetch" else tool
+        tool_types[key] += count
     ordered = tool_types.most_common()
     labels = [x[0] for x in ordered]
     avgs = [x[1] / n_runs for x in ordered]
@@ -307,11 +322,34 @@ def plot_09_success_vs_error_top10(tools: list[dict], top10: list[str], n_runs: 
     labels = top10
     ok_avgs = [ok.get(c, 0) / n_runs for c in labels]
     fail_avgs = [fail.get(c, 0) / n_runs for c in labels]
+    totals = [o + f for o, f in zip(ok_avgs, fail_avgs)]
 
     x = np.arange(len(labels))
-    fig, ax = plt.subplots(figsize=(11, 5))
-    ax.bar(x, ok_avgs, label="Success (exit 0)", color=PALETTE[2])
-    ax.bar(x, fail_avgs, bottom=ok_avgs, label="Error / non-zero", color=PALETTE[3])
+    fig, ax = plt.subplots(figsize=(12, 6))
+    bars_ok   = ax.bar(x, ok_avgs,   label="Success (exit 0)",    color=PALETTE[2])
+    bars_fail = ax.bar(x, fail_avgs, bottom=ok_avgs, label="Error / non-zero", color=PALETTE[3])
+
+    # Annotate each segment with avg count + percentage
+    min_height = 0.8  # minimum segment height to show a label
+    for i, (o, f, tot) in enumerate(zip(ok_avgs, fail_avgs, totals)):
+        if tot == 0:
+            continue
+        ok_pct   = 100 * o / tot
+        fail_pct = 100 * f / tot
+        # Success segment label (centred in green area)
+        if o >= min_height:
+            ax.text(x[i], o / 2, f"{o:.1f}\n({ok_pct:.0f}%)",
+                    ha="center", va="center", fontsize=7.5,
+                    color="white", fontweight="bold")
+        # Error segment label (centred in red area)
+        if f >= min_height:
+            ax.text(x[i], o + f / 2, f"{f:.1f}\n({fail_pct:.0f}%)",
+                    ha="center", va="center", fontsize=7.5,
+                    color="white", fontweight="bold")
+        # Total label above the full bar
+        ax.text(x[i], tot, f"{tot:.1f}", ha="center", va="bottom",
+                fontsize=8, color="black")
+
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=25, ha="right")
     ax.set_ylabel("Avg. commands per run")
@@ -353,7 +391,7 @@ def main():
     args = parser.parse_args()
 
     raw_dir = args.raw_runs_dir.resolve()
-    fig_dir = raw_dir / "figures"
+    fig_dir = raw_dir / "figures2"
     fig_dir.mkdir(parents=True, exist_ok=True)
 
     summary_path = raw_dir / "db_admin_runs_summary.csv"
