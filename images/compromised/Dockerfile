@@ -49,9 +49,6 @@ RUN apt-get update \
 RUN echo "labuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/labuser \
     && chmod 440 /etc/sudoers.d/labuser
 
-# Provide a small built-in wordlist for brute-force experiments (used by ARACNE)
-COPY wordlists/rockyou.txt /usr/share/wordlists/rockyou.txt
-
 # --------------------------------------------------------------------
 # OPENCODE INSTALLATION (from shared/opencode-install.dockerfile)
 # --------------------------------------------------------------------
