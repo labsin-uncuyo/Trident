@@ -172,6 +172,34 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/bash", "/agent/start_lab.sh"]
 
+  dashboard:
+    build: ./images/dashboard
+    image: lab/dashboard:latest
+    container_name: lab_dashboard
+    profiles:
+      - core
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./outputs:/outputs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      lab_net_a:
+      lab_net_b:
+    depends_on:
+      router:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+      compromised:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   opencode_data:
   postgres_data:
