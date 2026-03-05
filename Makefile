@@ -83,24 +83,50 @@ coder56:
 		echo "Usage: make coder56 \"<goal text>\""; \
 		exit 1; \
 	fi; \
-	$(PYTHON) ./scripts/attacker_opencode_interactive.py $$goal
+	RUN_ID_VALUE=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo "manual"); \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/coder56; \
+	nohup $(PYTHON) ./scripts/attacker_opencode_interactive.py $$goal > /dev/null 2>&1 & \
+	echo "[coder56] Started in background (PID=$$!)"
+
+# Usage:
+#   make benign                          # default goal, no time limit
+#   make benign TIME_LIMIT=900           # default goal, 900s limit
+#   make benign GOAL="my goal"           # custom goal, no time limit
+#   make benign GOAL="my goal" TIME_LIMIT=900
+GOAL ?=
+TIME_LIMIT ?=
 
 benign:
-	@goal="$(filter-out $@,$(MAKECMDGOALS))"; \
-	if [ -z "$$goal" ]; then \
-		echo "Usage: make benign \"<goal text>\""; \
-		echo "Example: make benign \"Perform morning database checks\""; \
-		exit 1; \
-	fi; \
-	if [ ! -f $(RUN_ID_FILE) ]; then \
+	@if [ ! -f $(RUN_ID_FILE) ]; then \
 		echo "✗ Error: RUN_ID not found. Please run 'make up' first to initialize the infrastructure."; \
 		exit 1; \
 	fi; \
 	RUN_ID_VALUE=$$(cat $(RUN_ID_FILE)); \
 	echo "[benign] Starting db_admin agent with RUN_ID=$$RUN_ID_VALUE"; \
+	if [ -n "$(GOAL)" ]; then \
+		echo "[benign] Goal: $(GOAL)"; \
+	else \
+		echo "[benign] Using default goal"; \
+	fi; \
+	if [ -n "$(TIME_LIMIT)" ]; then \
+		echo "[benign] Time limit: $(TIME_LIMIT) seconds"; \
+	else \
+		echo "[benign] Time limit: None (run until manually stopped)"; \
+	fi; \
 	mkdir -p ./outputs/$$RUN_ID_VALUE/benign_agent; \
 	export RUN_ID=$$RUN_ID_VALUE; \
-	$(PYTHON) ./images/compromised/db_admin_logger.py "$$goal"
+	cmd="$(PYTHON) ./images/compromised/db_admin_opencode_client.py"; \
+	if [ -n "$(GOAL)" ]; then \
+		cmd="$$cmd \"$(GOAL)\""; \
+	fi; \
+	if [ -n "$(TIME_LIMIT)" ]; then \
+		cmd="$$cmd --time-limit $(TIME_LIMIT)"; \
+	fi; \
+	eval $$cmd
+
+.PHONY: benign-run
+benign-run:
+	@:
 
 %:
 	@:
