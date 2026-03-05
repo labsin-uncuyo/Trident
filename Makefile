@@ -4,7 +4,7 @@ PYTHON ?= python3
 export COMPOSE_PROJECT_NAME := lab
 RUN_ID_FILE := ./outputs/.current_run
 
-.PHONY: build up down clean ssh_keys aracne defend not_defend coder56 benign
+.PHONY: build up down clean ssh_keys aracne defend not_defend coder56 benign dashboard
 
 build:
 	@echo "Building all compose services (including defender/benign/attacker)..."
@@ -24,6 +24,13 @@ up:
 down:
 	$(COMPOSE) --profile core --profile attackers --profile defender down --volumes
 	@rm -f $(RUN_ID_FILE)
+
+dashboard:
+	@echo "Building and starting dashboard..."
+	$(COMPOSE) --profile core build dashboard
+	RUN_ID=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo none) $(COMPOSE) --profile core up -d --no-recreate --no-build router server compromised
+	RUN_ID=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo none) $(COMPOSE) --profile core up -d --force-recreate --build dashboard
+	@echo "✓ Dashboard running at http://localhost:8080"
 
 ssh_keys:
 	@echo "Setting up SSH keys for auto_responder..."
