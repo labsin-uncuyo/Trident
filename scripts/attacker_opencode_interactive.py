@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import subprocess
+import selectors
 import sys
 import time
 from datetime import datetime, timezone
@@ -95,6 +96,57 @@ def write_timeline_entry(path: str, level: str, message: str, data: Optional[dic
         handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
 
+def _init_opencode_metrics() -> dict:
+    return {
+        "tool_calls": [],
+        "llm_calls": 0,
+        "errors": [],
+        "text_outputs": [],
+        "final_output": None,
+    }
+
+
+def _handle_opencode_line(
+    line: str,
+    timeline_handle,
+    execution_id: str,
+    metrics: dict,
+) -> None:
+    line = line.strip()
+    if not line:
+        return
+    try:
+        event = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        if metrics["final_output"] is None:
+            metrics["final_output"] = line[:500]
+        return
+
+    event_type = event.get("type", "")
+    if event_type == "step_start":
+        metrics["llm_calls"] += 1
+    elif event_type == "tool_use":
+        part = event.get("part", {})
+        metrics["tool_calls"].append(part.get("tool", "unknown"))
+    elif event_type == "text":
+        part = event.get("part", {})
+        text_content = part.get("text", "")
+        if text_content:
+            metrics["text_outputs"].append(text_content)
+    elif event_type.lower() == "error":
+        metrics["errors"].append(str(event))
+
+    timeline_entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "level": "OPENCODE",
+        "msg": event_type,
+        "exec": execution_id[:8],
+        "data": event,
+    }
+    timeline_handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
+    timeline_handle.flush()
+
+
 def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: str) -> dict:
     tool_calls = []
     llm_calls = 0
@@ -155,13 +207,17 @@ def main() -> int:
         print("Error: goal is required.", file=sys.stderr)
         return 2
 
+    override_cmd = os.environ.get("OPENCODE_RUN_CMD", "").strip()
     if args.mode == "tui":
         display_cmd = f"docker exec -it --user {args.user} {args.container} opencode --agent coder56"
     else:
-        display_cmd = (
-            f"docker exec -i --user {args.user} {args.container} "
-            "opencode run --agent coder56 --format json"
-        )
+        if override_cmd:
+            display_cmd = override_cmd
+        else:
+            display_cmd = (
+                f"docker exec -i --user {args.user} {args.container} "
+                "opencode run --agent coder56 --format json"
+            )
     print(f"[coder56_tui] Starting: {display_cmd}")
     execution_id = uuid4().hex
     try:
@@ -229,34 +285,106 @@ def main() -> int:
                 }
                 exit_code = 124
         else:
-            cmd = [
-                "docker",
-                "exec",
-                "-i",
-                "--user",
-                args.user,
-                args.container,
-                "opencode",
-                "run",
-                "--agent",
-                "coder56",
-                "--format",
-                "json",
-            ]
-            result = subprocess.run(
+            override_cmd = os.environ.get("OPENCODE_RUN_CMD", "").strip()
+            if override_cmd:
+                cmd = ["bash", "-lc", override_cmd]
+            else:
+                cmd = [
+                    "docker",
+                    "exec",
+                    "-i",
+                    "--user",
+                    args.user,
+                    args.container,
+                    "opencode",
+                    "run",
+                    "--agent",
+                    "coder56",
+                    "--format",
+                    "json",
+                ]
+
+            proc = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                input=goal_text + "\n",
-                timeout=args.timeout,
+                bufsize=1,
             )
+            if proc.stdin:
+                proc.stdin.write(goal_text + "\n")
+                proc.stdin.flush()
+                proc.stdin.close()
+
+            metrics = _init_opencode_metrics()
+            deadline = time.time() + args.timeout
+            timed_out = False
+
+            selector = selectors.DefaultSelector()
+            if proc.stdout:
+                selector.register(proc.stdout, selectors.EVENT_READ, data="stdout")
+            if proc.stderr:
+                selector.register(proc.stderr, selectors.EVENT_READ, data="stderr")
+
+            stdout_done = False
+            stderr_done = False
+
+            with open(stdout_path, "w", encoding="utf-8") as out_handle, \
+                open(stderr_path, "w", encoding="utf-8") as err_handle, \
+                open(timeline_path, "a", encoding="utf-8") as timeline_handle:
+                while True:
+                    now = time.time()
+                    if now >= deadline:
+                        timed_out = True
+                        break
+
+                    if proc.poll() is not None and stdout_done and stderr_done:
+                        break
+
+                    timeout = min(1.0, max(0.0, deadline - now))
+                    events = selector.select(timeout)
+                    if not events:
+                        continue
+
+                    for key, _ in events:
+                        stream = key.fileobj
+                        stream_name = key.data
+                        line = stream.readline()
+                        if line == "":
+                            selector.unregister(stream)
+                            if stream_name == "stdout":
+                                stdout_done = True
+                            else:
+                                stderr_done = True
+                            continue
+
+                        if stream_name == "stdout":
+                            out_handle.write(line)
+                            out_handle.flush()
+                            _handle_opencode_line(line, timeline_handle, execution_id, metrics)
+                        else:
+                            err_handle.write(line)
+                            err_handle.flush()
+
+            if timed_out:
+                try:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                except Exception:
+                    pass
+                exit_code = 124
+                metrics["errors"].append("timeout")
+            else:
+                exit_code = proc.wait()
+
+            if not metrics["final_output"] and metrics["text_outputs"]:
+                metrics["final_output"] = " ".join(metrics["text_outputs"])[-500:]
+
             duration = time.time() - start_time
-            exit_code = result.returncode
-            with open(stdout_path, "w", encoding="utf-8") as handle:
-                handle.write(result.stdout or "")
-            with open(stderr_path, "w", encoding="utf-8") as handle:
-                handle.write(result.stderr or "")
-            metrics = append_opencode_events(timeline_path, execution_id, result.stdout or "")
         write_timeline_entry(timeline_path, "EXEC", "coder56 execution completed", data={
             "exit_code": exit_code,
             "duration_seconds": round(duration, 2),
@@ -272,9 +400,9 @@ def main() -> int:
             "exec": execution_id[:8],
         })
 
-        if args.mode == "run" and result.returncode != 0:
+        if args.mode == "run" and exit_code != 0:
             write_timeline_entry(timeline_path, "ERROR", "coder56 execution failed", data={
-                "exit_code": result.returncode,
+                "exit_code": exit_code,
                 "exec": execution_id[:8],
             })
 
