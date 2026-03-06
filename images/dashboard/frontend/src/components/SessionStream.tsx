@@ -1,25 +1,66 @@
 import type { MessagePart, SessionMessage } from '@/types';
-import { ChevronDown, ChevronRight, Terminal, MessageSquare, Wrench, Play, CheckCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Terminal, MessageSquare, Wrench } from 'lucide-react';
 import { useState } from 'react';
+
+const TEXT_PREVIEW_LENGTH = 300;
+
+/** Extract a one-line human-readable description from a tool's input object. */
+function toolInputSummary(input: unknown): string {
+  if (typeof input === 'string') return input.trim().replace(/\n/g, ' ').slice(0, 120);
+  if (!input || typeof input !== 'object') return '';
+  const obj = input as Record<string, unknown>;
+  // Prefer human-readable description fields first, then raw command/content
+  const priorityKeys = ['description', 'title', 'command', 'cmd', 'query', 'message', 'content', 'path', 'url', 'file', 'filename', 'text', 'code', 'script', 'input'];
+  for (const key of priorityKeys) {
+    const val = obj[key];
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim().replace(/\n/g, ' ').slice(0, 120);
+    }
+  }
+  // Fallback: first string value
+  for (const val of Object.values(obj)) {
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim().replace(/\n/g, ' ').slice(0, 120);
+    }
+  }
+  return '';
+}
 
 function PartRenderer({ part }: { part: MessagePart }) {
   const [expanded, setExpanded] = useState(false);
+  const [textExpanded, setTextExpanded] = useState(false);
 
   switch (part.type) {
-    case 'text':
+    case 'text': {
+      const raw = typeof part.text === 'string' ? part.text : JSON.stringify(part.text);
+      const isLong = raw.length > TEXT_PREVIEW_LENGTH;
+      const displayed = isLong && !textExpanded ? raw.slice(0, TEXT_PREVIEW_LENGTH) + '…' : raw;
       return (
         <div className="flex gap-2 py-1">
           <MessageSquare size={14} className="mt-0.5 flex-shrink-0 text-blue-400" />
-          <pre className="whitespace-pre-wrap break-words text-xs text-trident-text font-mono leading-relaxed">
-            {typeof part.text === 'string' ? part.text : JSON.stringify(part.text)}
-          </pre>
+          <div className="min-w-0 flex-1">
+            <pre className="whitespace-pre-wrap break-words text-xs text-trident-text font-mono leading-relaxed">
+              {displayed}
+            </pre>
+            {isLong && (
+              <button
+                onClick={() => setTextExpanded((v) => !v)}
+                className="mt-0.5 text-[10px] text-trident-accent hover:underline"
+              >
+                {textExpanded ? 'Show less' : 'Show more'}
+              </button>
+            )}
+          </div>
         </div>
       );
+    }
 
     case 'tool': {
       const toolName = part.tool || 'unknown_tool';
-      const input = (part as any).input ?? (part as any).args ?? {};
-      const output = (part as any).output ?? (part as any).result ?? '';
+      const state = (part as any).state ?? {};
+      const input = state.input ?? (part as any).input ?? (part as any).args ?? {};
+      const output = state.output ?? (part as any).output ?? (part as any).result ?? '';
+      const summary = toolInputSummary(input);
       return (
         <div className="my-1 rounded-lg border border-trident-border bg-black/30">
           <button
@@ -27,8 +68,11 @@ function PartRenderer({ part }: { part: MessagePart }) {
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-white/5"
           >
             {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            <Wrench size={12} className="text-amber-400" />
-            <span className="font-mono font-medium text-amber-400">{toolName}</span>
+            <Wrench size={12} className="text-amber-400 flex-shrink-0" />
+            <span className="font-mono font-medium text-amber-400 flex-shrink-0">{toolName}</span>
+            {summary && (
+              <span className="truncate text-trident-muted font-mono">{summary}</span>
+            )}
           </button>
           {expanded && (
             <div className="space-y-2 border-t border-trident-border px-3 py-2">
@@ -56,21 +100,9 @@ function PartRenderer({ part }: { part: MessagePart }) {
 
     case 'step-start':
     case 'step_start':
-      return (
-        <div className="flex items-center gap-2 py-1 text-xs text-trident-muted">
-          <Play size={10} className="text-green-400" />
-          <span>Step started</span>
-        </div>
-      );
-
     case 'step-finish':
     case 'step_finish':
-      return (
-        <div className="flex items-center gap-2 py-1 text-xs text-trident-muted">
-          <CheckCircle size={10} className="text-green-400" />
-          <span>Step finished</span>
-        </div>
-      );
+      return null;
 
     default:
       return (

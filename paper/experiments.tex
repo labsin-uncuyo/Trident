@@ -1,0 +1,106 @@
+\section{Experiment Design}
+
+\subsection{Objective}
+
+We evaluate the effectiveness of our LLM-based autonomous defender against two types of cyberattacks: database exfiltration and web application brute force attacks. The primary research question is: \textit{How quickly and effectively can an automated system detect, plan, and execute a response to realistic cyberattacks?} We focus on timing metrics (detection latency, planning latency, execution latency), effectiveness metrics (data volume prevented from exfiltration, login attempts blocked), and behavioral analysis (what actions the defender chooses and why).
+
+\subsection{Attack Scenarios}
+
+\subsubsection{Database Exfiltration}
+
+The database exfiltration experiment simulates a realistic database exfiltration attack exploiting CVE-2019-9193, a PostgreSQL vulnerability that allows remote code execution, which we will use to exfiltrate the database. In this attack, the target database is a 2.8~GB PostgreSQL 11 instance containing employee records. Exfiltration proceeds via \texttt{pg\_dump -U postgres labdb | nc -w 600 137.184.126.86 443}, where the attacker IP (137.184.126.86) receives data on port 443 to masquerade as HTTPS traffic. For this experiment, the scripted attack was performed 99 different times.
+
+\subsubsection{Flask Brute Force}
+
+The Flask brute force experiment tests the defender's response to a web application login brute force attack targeting a Flask login page. The attack performs network reconnaissance (nmap scans) followed by a brute force attack using a 3,000-word password list against the Flask application's login endpoint. The correct password is placed at the end of the wordlist to ensure the attack continues long enough for the defender to respond. Real-time monitoring detects when the Flask port becomes blocked (indicating successful defender intervention). This experiment is currently in progress with results pending.
+
+\subsection{Experimental Setup}
+
+\subsubsection{Infrastructure}
+
+Experiments run in a Docker-based network environment with four containers. The server container (172.31.0.10) runs the target service (PostgreSQL 11 for exfiltration, Flask web application for brute force). The compromised container (172.30.0.10) simulates an attacker-controlled machine from which attacks originate. A router container sits between the networks, providing traffic monitoring and PCAP capture. The defender container (172.31.0.5) runs SLIPS IDS and the auto-responder service. Network configuration places server infrastructure on 172.31.0.0/24 and compromised hosts on 172.30.0.0/24, with all traffic mirrored to SLIPS for real-time analysis. PCAP rotation occurs at 30-second intervals to enable low-latency detection.
+
+
+
+
+\section{Results}
+
+\subsection{Database Exfiltration}
+
+\subsubsection{Overview}
+
+We successfully completed 99 experimental runs evaluating the automated defender against PostgreSQL database exfiltration. The following sections present findings on defender effectiveness, response timing, and behavioral patterns.
+
+\subsubsection{Data Exfiltration Effectiveness}
+
+Figure~\ref{fig:exfil_size} shows the distribution of exfiltrated data sizes across all runs. The baseline (no defender) resulted in 2,920~MB (2.8~GB) fully exfiltrated. With the automated defender, the mean exfiltration was 848.1~MB (71.0\% reduction), median was 758.2~MB (74.0\% reduction), minimum was 517.9~MB (82.2\% reduction), and maximum was 1,762.4~MB (39.6\% reduction).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/exfil_size_boxplot.png}
+    \caption{Distribution of exfiltrated data sizes across 99 experimental runs. The baseline (no defender) shows 2.8~GB exfiltrated. With the automated defender, median exfiltration was 758.2~MB (72.9\% reduction), with significant variation in effectiveness across runs.}
+    \label{fig:exfil_size}
+    
+\end{figure}
+
+The defender successfully reduced exfiltration volume in all runs compared to baseline, demonstrating consistent effectiveness. However, the variation (517.9~MB to 1,762.4~MB) indicates that response timing significantly impacts outcomes. 
+\subsubsection{Response Timing Analysis}
+
+Figure~\ref{fig:timing} presents the distribution of key timing metrics across the defender pipeline. Detection (time to high confidence alert) averaged 24.6 seconds.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/timing_metrics_boxplots.png}
+    \caption{Timing metrics across the defender pipeline. T1: Time to high confidence alert (SLIPS detection, median 24.6s). T2: Time to plan generation (LLM planner, median 33.1s). T3: Time to OpenCode execution (auto-responder, median 158.5s). T4: Time from OpenCode start to block (network blocking, median 28.7s).}
+    \label{fig:timing}
+\end{figure}
+
+Execution (time to OpenCode execution completion) averaged 158.5 seconds, with 125.4 seconds of execution latency (T3 minus T2) representing the bottleneck in the pipeline. Network blocking (time from OpenCode start to block) averaged 28.7 seconds, indicating that firewall rules are applied early in OpenCode execution but total execution continues for verification and cleanup. The median time since attack start to attack blocked is 61.8 seconds. The total response time from attack start to execution completion averaged 158.5 seconds. 
+
+
+
+\subsubsection{Action Analysis}
+
+\paragraph{Action Frequency}
+
+Table~\ref{tab:action_freq} shows the frequency of different action types across all successful OpenCode executions. Network blocking dominates the response strategy, with 91.9\% of runs including outbound traffic blocking. This is the primary containment mechanism, directly interrupting the exfiltration channel. Reconnaissance before action is also common, with 82.8\% of runs checking network connections and 82.8\% listing processes before taking containment action. This suggests the defender prefers to understand system state before modifying it.
+
+\begin{table}[H]
+    \centering
+    \caption{Frequency of defensive actions across 99 experimental runs. The most common actions were outbound traffic blocking (91.9\%), reconnaissance (network connections and process listing at 82.8\% each), and firewall modifications (76.8\%).}
+    \label{tab:action_freq}
+    \begin{tabular}{lcc}
+        \toprule
+        \textbf{Action} & \textbf{Frequency} & \textbf{Percentage} \\
+        \midrule
+        Block outbound traffic & 91/99 & 91.9\% \\
+        Check network connections & 82/99 & 82.8\% \\
+        List processes & 82/99 & 82.8\% \\
+        Firewall rule modification & 76/99 & 76.8\% \\
+        Kill process & 67/99 & 67.7\% \\
+        Block inbound traffic & 56/99 & 56.6\% \\
+        Stop service & 47/99 & 47.5\% \\
+        List files & 39/99 & 39.4\% \\
+        Delete file & 33/99 & 33.3\% \\
+        Service management & 31/99 & 31.3\% \\
+        Other actions & 35/99 & 35.4\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Process termination occurred in 67.7\% of runs, but not all, some responses relied solely on firewall rules without killing the dump process. Service disruption occurred in 47.5\% of runs (stopping SSH, PostgreSQL, or nginx), demonstrating aggressive containment. Inbound blocking from the attacker occurred in 56.6\% of runs, a proactive measure that prevents the attacker from establishing new connections even if outbound blocking fails. Beyond these top categories, 21 distinct action types appeared across runs, including file listing, deletion, service management, log searching, and scheduled task inspection.
+
+\subsection{Flask Brute Force}
+
+\subsubsection{Overview}
+
+The Flask brute force experiment evaluates the defender's response to web application login attacks. The attack involves network reconnaissance (nmap scanning) followed by a brute force attack using a 1,000-word password list against a Flask login page. This experiment is currently in progress, with results pending completion of the experimental runs.
+
+\subsubsection{Attack Scenario}
+
+The attack targets a Flask web application running on the server container (172.31.0.10:5000) with a login endpoint protected by username/password authentication. The brute force attack attempts approximately 3,000 different passwords using curl, with the correct password placed at the end of the wordlist to ensure attack continuation. Network reconnaissance precedes the brute force, consisting of nmap discovery and port scanning to identify the Flask service. A monitoring script tracks Flask port availability, detecting when the port becomes blocked (indicating successful defender intervention via firewall rules).
+
+\subsubsection{Metrics Collected}
+
+The experiment tracks the same timing metrics as the exfiltration experiment: time to high confidence alert, time to plan generation, time to OpenCode execution, and time to port blocked. Additionally, Flask-specific metrics are collected from server-side logs: total login attempts received, successful attempts, timestamps of first/last/successful attempts, and whether the password was found. These server-side logs provide more accurate metrics than attacker-side logs, as they reflect actual requests processed by the Flask application.
+

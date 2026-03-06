@@ -4,9 +4,13 @@ import { api } from '@/api';
 
 /**
  * Live timeline stream for an agent.
- * Loads existing entries via REST, then tails new ones via WebSocket.
- * Also re-polls REST every 10s as a fallback in case the WS tail
- * misses entries (e.g. file didn't exist when WS first connected).
+ *
+ * 1. REST poll every 3 s — always authoritative (reads the file on disk).
+ * 2. WebSocket pushes new entries as they appear for lower latency.
+ *    The WS backend polls the same file every 2 s and sends any new lines.
+ *
+ * The REST poll acts as safety-net so the UI is never stale for more
+ * than a few seconds, even if the WS connection drops.
  */
 export function useTimelineStream(agent: string) {
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
@@ -15,7 +19,7 @@ export function useTimelineStream(agent: string) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
   const backoffRef = useRef(1000);
 
-  // ── REST load + periodic refresh ─────────────────────────────
+  // ── REST poll every 3 s ──────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -25,15 +29,14 @@ export function useTimelineStream(agent: string) {
         .then((r: any) => {
           if (cancelled) return;
           const fetched: TimelineEntry[] = r?.entries ?? [];
-          if (fetched.length > 0) {
-            setEntries((prev) => (fetched.length > prev.length ? fetched : prev));
-          }
+          // Replace if the server has more entries than local state
+          setEntries((prev) => (fetched.length > prev.length ? fetched : prev));
         })
         .catch(() => {});
     };
 
     load();
-    const interval = setInterval(load, 10_000);
+    const interval = setInterval(load, 3_000);
 
     return () => {
       cancelled = true;
@@ -54,9 +57,10 @@ export function useTimelineStream(agent: string) {
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data) as WsTimelineMessage;
-        if (msg.type === 'timeline' && msg.data) {
-          setEntries((prev) => [...prev, msg.data]);
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'timeline' && msg.full && Array.isArray(msg.data)) {
+          // Full replacement — no duplicates
+          setEntries(msg.data as TimelineEntry[]);
         }
       } catch {}
     };

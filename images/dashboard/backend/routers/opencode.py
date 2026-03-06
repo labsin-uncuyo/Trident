@@ -60,8 +60,9 @@ async def get_session_messages(host: str, session_id: str):
 async def ws_opencode(ws: WebSocket, host: str):
     """Stream OpenCode session updates for a host.
 
-    Polls /session/status every 2s, diffs against previous state,
-    and pushes new/changed sessions and their latest messages.
+    Polls the OpenCode HTTP API every 1s and pushes full state each
+    time something changes.  The frontend simply replaces its local
+    state with whatever arrives — no delta / append logic needed.
     """
     if host not in HOSTS:
         await ws.close(code=4004, reason=f"Unknown host: {host}")
@@ -74,41 +75,43 @@ async def ws_opencode(ws: WebSocket, host: str):
 
     try:
         while True:
-            sessions = await client.list_sessions()
+            try:
+                sessions = await client.list_sessions()
+            except Exception:
+                await asyncio.sleep(2)
+                continue
 
-            # Detect new / status-changed sessions
-            changed_ids: list[str] = []
-            for sid, status in sessions.items():
-                if sid not in prev_sessions or prev_sessions[sid] != status:
-                    changed_ids.append(sid)
-
-            # Send session list if anything changed
+            # Push session map whenever it changes
             if sessions != prev_sessions:
                 await ws.send_json({
                     "type": "sessions",
                     "host": host,
                     "data": sessions,
                 })
+                prev_sessions = dict(sessions)
 
-            # For each active/changed session, fetch messages and push new ones
-            for sid in sessions:
-                if sessions[sid] in ("idle", "busy", "running") or sid in changed_ids:
+            # For each active session, push FULL message list when count changes
+            for sid, status in sessions.items():
+                if status not in ("idle", "busy", "running"):
+                    continue
+                try:
                     msgs = await client.get_messages(sid)
-                    msg_count = len(msgs)
-                    if msg_count != prev_msg_counts.get(sid, 0):
-                        # Send only new messages (delta)
-                        old_count = prev_msg_counts.get(sid, 0)
-                        new_msgs = msgs[old_count:] if old_count < msg_count else msgs
-                        await ws.send_json({
-                            "type": "messages",
-                            "host": host,
-                            "session_id": sid,
-                            "data": new_msgs,
-                            "total": msg_count,
-                        })
-                        prev_msg_counts[sid] = msg_count
+                except Exception:
+                    continue
+                msg_count = len(msgs)
+                if msg_count != prev_msg_counts.get(sid, 0):
+                    await ws.send_json({
+                        "type": "messages",
+                        "host": host,
+                        "session_id": sid,
+                        "data": msgs,       # full list, not delta
+                        "total": msg_count,
+                        "full": True,
+                    })
+                    prev_msg_counts[sid] = msg_count
 
-            prev_sessions = dict(sessions)
-            await asyncio.sleep(2)
-    except (WebSocketDisconnect, Exception):
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
         pass
+    except Exception as exc:
+        logger.debug("ws_opencode(%s) ended: %s", host, exc)

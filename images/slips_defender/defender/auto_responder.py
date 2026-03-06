@@ -1100,7 +1100,12 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
             elif dest_ip == 'unknown':
                 ip_match = re.findall(r'(\d+\.\d+\.\d+\.\d+)', raw_alert)
                 if len(ip_match) >= 2:
-                    dest_ip = ip_match[-1] if ip_match[-1] != source_ip else list(dict.fromkeys(ip_match))[1]
+                    unique_ips = list(dict.fromkeys(ip_match))
+                    if len(unique_ips) >= 2:
+                        dest_ip = ip_match[-1] if ip_match[-1] != source_ip else unique_ips[1]
+                    else:
+                        # Only one unique IP found in alert
+                        dest_ip = 'unknown'
 
         self.log("ALERT", f"New: {source_ip} → {dest_ip}", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
             "source_ip": source_ip,

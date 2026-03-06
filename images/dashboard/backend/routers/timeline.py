@@ -74,18 +74,32 @@ async def get_timeline(agent: str, run_id: str | None = None, limit: int = 500):
 
 @router.websocket("/{agent}/ws")
 async def ws_timeline(ws: WebSocket, agent: str):
-    """Live-stream timeline entries for an agent."""
-    await ws.accept()
-    run_id = _current_run_id()
-    path = _find_timeline_path(agent, run_id)
+    """Live-stream timeline entries for an agent.
 
-    if path is None:
-        await ws.send_json({"type": "error", "msg": f"No timeline path for agent '{agent}'"})
-        await ws.close()
-        return
+    Polls the JSONL file every 2s and sends the **full** list when it
+    changes.  The frontend replaces its state — no append / dedup needed.
+    """
+    await ws.accept()
+    last_count = 0
 
     try:
-        async for entry in tail_ndjson(path, from_beginning=False, poll_interval=1.0):
-            await ws.send_json({"type": "timeline", "agent": agent, "data": entry})
-    except (WebSocketDisconnect, Exception):
+        while True:
+            run_id = _current_run_id()
+            path = _find_timeline_path(agent, run_id)
+            if path is not None:
+                entries = read_ndjson_file(path, max_lines=10_000)
+                if len(entries) != last_count:
+                    await ws.send_json(
+                        {
+                            "type": "timeline",
+                            "agent": agent,
+                            "data": entries,
+                            "full": True,
+                        }
+                    )
+                    last_count = len(entries)
+            await asyncio.sleep(2)
+    except WebSocketDisconnect:
         pass
+    except Exception as exc:
+        logger.debug("ws_timeline(%s) ended: %s", agent, exc)

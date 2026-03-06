@@ -120,14 +120,14 @@ file_log=/var/log/router-capture.log
 touch "${file_log}"
 
 # Rotate captures to keep SLIPS runs small and fast
-# Capture on "any" so a single PCAP contains both eth0 and eth1 traffic.
+# Capture on all interfaces using 'any' to capture all traffic
+# including DNS TXT queries from compromised container AND cross-network traffic
 tcpdump -U -s 0 -i any \
   -G "${PCAP_ROTATE_SECS}" \
   -w "${pcap_dir}/router_%Y-%m-%d_%H-%M-%S.pcap" \
   -Z root \
   >>"${file_log}" 2>&1 &
-TCPDUMP_PID=$!
 
-trap 'kill "${TCPDUMP_PID}" >/dev/null 2>&1 || true' EXIT
+trap 'pkill tcpdump || true' EXIT
 
 tail -n0 -F "${file_log}"
