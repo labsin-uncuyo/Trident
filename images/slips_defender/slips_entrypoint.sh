@@ -34,7 +34,7 @@ export DEFENDER_URL
 cd /opt/lab
 
 # Ensure SSH keys are generated and authorized on target hosts
-if ! /opt/lab/setup_ssh_keys.sh; then
+if ! bash /opt/lab/setup_ssh_keys.sh; then
     echo "⚠️ SSH key setup encountered issues; continuing startup. Check logs above."
 fi
 

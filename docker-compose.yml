@@ -52,7 +52,11 @@ services:
       - slips_redis_data:/var/lib/redis
       - slips_ti_data:/StratosphereLinuxIPS/modules/threat_intelligence/remote_data_files
       - auto_responder_ssh_keys:/root/.ssh
-    network_mode: "host"
+    networks:
+      lab_net_a:
+        ipv4_address: 172.30.0.30
+      lab_net_b:
+        ipv4_address: 172.31.0.30
     cap_add:
       - NET_ADMIN
     command: ["/bin/bash", "/opt/lab/slips_entrypoint.sh"]
@@ -187,7 +191,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       lab_net_a:
+        ipv4_address: 172.30.0.20
       lab_net_b:
+        ipv4_address: 172.31.0.20
     depends_on:
       router:
         condition: service_healthy

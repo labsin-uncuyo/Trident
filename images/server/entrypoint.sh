@@ -100,7 +100,6 @@ systemctl start nginx
 # Ensure hosts on net_a are reachable through router (do this BEFORE database loading)
 ip route replace blackhole 172.30.0.254/32 || true
 ip route replace blackhole 172.31.0.254/32 || true
-ip route replace blackhole 172.32.0.254/32 || true
 ip route replace 172.30.0.0/24 via 172.31.0.1 || true
 ip route replace default via 172.31.0.1 dev eth0 || true
 

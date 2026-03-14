@@ -123,14 +123,20 @@ benign:
 	fi; \
 	mkdir -p ./outputs/$$RUN_ID_VALUE/benign_agent; \
 	export RUN_ID=$$RUN_ID_VALUE; \
-	cmd="$(PYTHON) ./images/compromised/db_admin_opencode_client.py"; \
+	cmd="python /workspace/images/compromised/db_admin_opencode_client.py"; \
 	if [ -n "$(GOAL)" ]; then \
 		cmd="$$cmd \"$(GOAL)\""; \
 	fi; \
 	if [ -n "$(TIME_LIMIT)" ]; then \
 		cmd="$$cmd --time-limit $(TIME_LIMIT)"; \
 	fi; \
-	eval $$cmd
+	docker run --rm \
+		--network lab_net_a \
+		-e RUN_ID=$$RUN_ID_VALUE \
+		-v "$$(pwd)":/workspace \
+		-w /workspace \
+		lab/dashboard:latest \
+		sh -lc "$$cmd"
 
 .PHONY: benign-run
 benign-run:

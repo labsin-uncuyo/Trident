@@ -49,6 +49,13 @@ lan_b_if="$(wait_for_iface "${lan_b_ip}" || true)"
 egress_if="$(wait_for_iface "${egress_ip}" || true)"
 
 if [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
+    # Block direct access from lab networks to the egress subnet.
+    if ! iptables-legacy -C INPUT -i "${lan_a_if}" -d 172.32.0.0/24 -j DROP 2>/dev/null; then
+        iptables-legacy -I INPUT 1 -i "${lan_a_if}" -d 172.32.0.0/24 -j DROP
+    fi
+    if ! iptables-legacy -C INPUT -i "${lan_b_if}" -d 172.32.0.0/24 -j DROP 2>/dev/null; then
+        iptables-legacy -I INPUT 1 -i "${lan_b_if}" -d 172.32.0.0/24 -j DROP
+    fi
     if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -o "${lan_a_if}" -j ACCEPT 2>/dev/null; then
         iptables-legacy -A FORWARD -i "${lan_b_if}" -o "${lan_a_if}" -j ACCEPT
     fi
@@ -108,6 +115,12 @@ else
 fi
 
 if [ -n "${egress_if}" ] && [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
+    if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -d 172.32.0.0/24 -j DROP 2>/dev/null; then
+        iptables-legacy -I FORWARD 1 -i "${lan_a_if}" -d 172.32.0.0/24 -j DROP
+    fi
+    if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -d 172.32.0.0/24 -j DROP 2>/dev/null; then
+        iptables-legacy -I FORWARD 1 -i "${lan_b_if}" -d 172.32.0.0/24 -j DROP
+    fi
     if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -o "${egress_if}" -j ACCEPT 2>/dev/null; then
         iptables-legacy -A FORWARD -i "${lan_a_if}" -o "${egress_if}" -j ACCEPT
     fi

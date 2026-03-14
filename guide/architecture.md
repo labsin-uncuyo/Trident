@@ -17,24 +17,23 @@ Makefile: `Makefile`
 Compose: `docker-compose.yml`
 
 ## Networks and routing
-Two Docker bridge networks are created:
+Three Docker bridge networks are created:
 - `lab_net_a` — 172.30.0.0/24 (gateway 172.30.0.254)
 - `lab_net_b` — 172.31.0.0/24 (gateway 172.31.0.254)
+- `lab_egress` — 172.32.0.0/24 (gateway 172.32.0.254, **router-only**)
 
 Note: Docker assigns the `.254` gateway to the bridge network itself. The lab containers then **override their default routes** to point at the router (`.1`) so all traffic is forced through `lab_router` and captured.
 
 Static IPs:
-- `lab_router`: 172.30.0.1 + 172.31.0.1
+- `lab_router`: 172.30.0.1 + 172.31.0.1 + 172.32.0.1
 - `lab_compromised`: 172.30.0.10
 - `lab_server`: 172.31.0.10
 
 Default routes:
-- `lab_compromised` forces default via `172.30.0.1` and adds routes to `172.31.0.0/24` and `172.32.0.0/24` through the router. `images/compromised/entrypoint.sh`
-
-Note: `172.32.0.0/24` is not used by the current topology, but a route is pre-installed so a future third subnet can be added without 
-changing the compromised host setup.
-
+- `lab_compromised` forces default via `172.30.0.1` and adds a route to `172.31.0.0/24` through the router. `images/compromised/entrypoint.sh`
 - `lab_server` forces default via `172.31.0.1` and routes `172.30.0.0/24` through the router. `images/server/entrypoint.sh`
+
+Note: `lab_egress` is attached only to `lab_router`. Lab hosts do not have routes to `172.32.0.0/24`, and the router drops any attempts to access that subnet from the lab networks.
 
 Router forwarding and NAT:
 - Enables `net.ipv4.ip_forward=1`.
