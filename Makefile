@@ -18,6 +18,7 @@ up:
 	docker ps -aq --filter "name=^lab_" | xargs -r docker rm -f >/dev/null 2>&1 || true; \
 	docker network rm lab_net_a >/dev/null 2>&1 || true; \
 	docker network rm lab_net_b >/dev/null 2>&1 || true; \
+	docker network rm lab_egress >/dev/null 2>&1 || true; \
 	opts="--profile core"; \
 	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d
 

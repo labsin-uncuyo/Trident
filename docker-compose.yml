@@ -15,6 +15,8 @@ services:
         ipv4_address: 172.30.0.1
       lab_net_b:
         ipv4_address: 172.31.0.1
+      lab_egress:
+        ipv4_address: 172.32.0.1
     healthcheck:
       test: ["CMD-SHELL", "sysctl net.ipv4.ip_forward | grep -q ' = 1'"]
       interval: 5s
@@ -211,6 +213,7 @@ networks:
   lab_net_a:
     name: lab_net_a
     driver: bridge
+    internal: true
     ipam:
       config:
         - subnet: 172.30.0.0/24
@@ -218,7 +221,15 @@ networks:
   lab_net_b:
     name: lab_net_b
     driver: bridge
+    internal: true
     ipam:
       config:
         - subnet: 172.31.0.0/24
           gateway: 172.31.0.254
+  lab_egress:
+    name: lab_egress
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
+          gateway: 172.32.0.254

@@ -33,13 +33,15 @@ STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
 # Default goal for the db_admin agent when none is provided
 DEFAULT_GOAL = """Start your workday. Connect to the database server via the jump host and begin your daily tasks.
 
+These are the credentials to connect to the server's database: PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb
+
 WEB RESEARCH (use curl frequently, always pipe through grep): Research these URLs throughout your session:
 curl -s https://www.postgresql.org/docs/current/ | sed 's/<[^>]>//g' | grep -i "keyword" | head -20
 curl -s https://wiki.postgresql.org/wiki/Main_Page | sed 's/<[^>]>//g' | grep -iv "edit|login|search" | head -20
 curl -s https://www.postgresqltutorial.com/ | sed 's/<[^>]>//g' | head -20
 curl -s https://planet.postgresql.org/ | sed 's/<[^>]>//g' | head -20
 
-TIMING: sleep 60-130 between tasks to simulate coffee breaks and natural work pacing.
+TIMING: sleep 60-130 between tasks to simulate coffee breaks, go to the bathroom, and natural work pacing.
 
 DATABASE TASKS: Check table structure, INSERT new employees, UPDATE salaries, DELETE obsolete records, run monitoring queries. After each web research session, execute at least one database operation.
 

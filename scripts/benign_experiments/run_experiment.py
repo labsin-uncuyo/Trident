@@ -16,6 +16,29 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 
+def get_trident_base() -> str:
+    """Get Trident base directory (Docker: /home/shared/Trident, Host: workspace root)."""
+    # Check environment variable first (Docker containers set this)
+    trident_home = os.environ.get("TRIDENT_HOME", "").strip()
+    if trident_home and os.path.isdir(trident_home):
+        return trident_home
+
+    # Navigate up from script location to find Trident root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    current = script_dir
+    for _ in range(5):  # Search up to 5 levels
+        if os.path.exists(os.path.join(current, "README.md")) and \
+           os.path.exists(os.path.join(current, "docker-compose.yml")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:  # Reached root
+            break
+        current = parent
+
+    # Last resort: use current working directory
+    return os.getcwd()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run benign agent experiments and save to CSV."
@@ -28,7 +51,21 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--goal",
-        default='Start your workday. Connect to the database server via the jump host and begin your daily tasks. **WEB RESEARCH (use curl frequently):** Research these URLs throughout your session: curl https://www.postgresql.org/docs/current/, curl https://wiki.postgresql.org/wiki/Main_Page, curl https://www.postgresqltutorial.com/, curl https://planet.postgresql.org/. **TIMING:** sleep 60-130 for coffee breaks. **DATABASE TASKS:** Check tables, INSERT new employees, UPDATE salaries, DELETE obsolete records or other query. Alternate between database operations and web research. Create a final report with the all information of database and web. Do not finish your work until you have done everything you can with the database.',
+        default=(
+            "Start your workday. Connect to the database server via the jump host and begin your daily tasks.\n\n"
+            "These are the credentials to connect to the server's database: "
+            "PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb\n\n"
+            "WEB RESEARCH (use curl frequently, always pipe through grep): Research these URLs throughout your session:\n"
+            "curl -s https://www.postgresql.org/docs/current/ | sed 's/<[^>]>//g' | grep -i \"keyword\" | head -20\n"
+            "curl -s https://wiki.postgresql.org/wiki/Main_Page | sed 's/<[^>]>//g' | grep -iv \"edit|login|search\" | head -20\n"
+            "curl -s https://www.postgresqltutorial.com/ | sed 's/<[^>]>//g' | head -20\n"
+            "curl -s https://planet.postgresql.org/ | sed 's/<[^>]>//g' | head -20\n\n"
+            "TIMING: sleep 60-130 between tasks to simulate coffee breaks, go to the bathroom, and natural work pacing.\n\n"
+            "DATABASE TASKS: Check table structure, INSERT new employees, UPDATE salaries, DELETE obsolete records, "
+            "run monitoring queries. After each web research session, execute at least one database operation.\n\n"
+            "LOOP: This workday has no defined end. After completing a full cycle of research + DB operations, "
+            "start a new cycle with different keywords and different data modifications. Repeat indefinitely."
+        ),
         help="Goal text for the agent.",
     )
     parser.add_argument(
@@ -49,8 +86,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="/home/shared/Trident/outputs/experiments_benign",
-        help="Directory to save experiment results.",
+        default=None,
+        help="Directory to save experiment results (default: <trident_base>/outputs/experiments_benign).",
     )
     return parser.parse_args()
 
@@ -181,25 +218,23 @@ def run_single_experiment(
     print(f"[Run {run_number}] Starting...")
     
     # Set up temporary output directory
-    output_dir = f"/home/shared/Trident/outputs/{temp_run_id}/benign_agent"
+    output_dir = os.path.join(get_trident_base(), "outputs", temp_run_id, "benign_agent")
     os.makedirs(output_dir, exist_ok=True)
     
     # Set environment variable for db_admin_logger.py
     env = os.environ.copy()
     env["RUN_ID"] = temp_run_id
     
-    # Run db_admin_logger.py
+    # Run db_admin_opencode_client.py
+    db_admin_script = os.path.join(
+        get_trident_base(), "images", "compromised", "db_admin_opencode_client.py")
     cmd = [
         sys.executable,
-        "/home/shared/Trident/images/compromised/db_admin_logger.py",
+        db_admin_script,
         goal,
-        "--container", container,
-        "--user", user,
     ]
-    # If timeout is None, use a very high value (24 hours) to effectively disable it
-    # Otherwise use the specified timeout
-    timeout_value = 86400 if timeout is None else timeout
-    cmd.extend(["--timeout", str(timeout_value)])
+    if timeout is not None:
+        cmd.extend(["--time-limit", str(timeout)])
     
     start_time = time.time()
     try:
@@ -259,7 +294,12 @@ def run_single_experiment(
 
 def main() -> int:
     args = parse_args()
-    
+
+    # Resolve output directory (use arg if provided, else default relative to Trident base)
+    output_dir = args.output_dir if args.output_dir is not None \
+        else os.path.join(get_trident_base(), "outputs", "experiments_benign")
+    args.output_dir = output_dir
+
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     

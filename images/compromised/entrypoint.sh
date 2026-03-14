@@ -88,6 +88,9 @@ if [ -f /root/.ssh_auto_responder/id_rsa_auto_responder.pub ]; then
 fi
 
 # Ensure the compromised host routes traffic through the router
+ip route replace blackhole 172.30.0.254/32 || true
+ip route replace blackhole 172.31.0.254/32 || true
+ip route replace blackhole 172.32.0.254/32 || true
 ip route replace 172.31.0.0/24 via 172.30.0.1 || true
 ip route replace 172.32.0.0/24 via 172.30.0.1 || true
 ip route replace default via 172.30.0.1 dev eth0 || true

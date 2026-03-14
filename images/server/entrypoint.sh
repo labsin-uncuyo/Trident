@@ -98,6 +98,9 @@ runuser -u postgres -- psql -d labdb -c "CREATE TABLE IF NOT EXISTS events (id s
 systemctl start nginx
 
 # Ensure hosts on net_a are reachable through router (do this BEFORE database loading)
+ip route replace blackhole 172.30.0.254/32 || true
+ip route replace blackhole 172.31.0.254/32 || true
+ip route replace blackhole 172.32.0.254/32 || true
 ip route replace 172.30.0.0/24 via 172.31.0.1 || true
 ip route replace default via 172.31.0.1 dev eth0 || true
 
@@ -123,10 +126,10 @@ fi
 # Ensure DB_USER can read labdb for dump/exfil simulations.
 runuser -u postgres -- psql -d labdb -c "GRANT CONNECT ON DATABASE labdb TO ${DB_USER};" >/dev/null
 runuser -u postgres -- psql -d labdb -c "GRANT USAGE ON SCHEMA public TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${DB_USER};" >/dev/null
-runuser -u postgres -- psql -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${DB_USER};" >/dev/null
+runuser -u postgres -- psql -d labdb -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ${DB_USER};" >/dev/null
 
 # Start the lab login app behind nginx.
 login_log=/var/log/flask-login.log

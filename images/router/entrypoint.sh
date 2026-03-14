@@ -13,8 +13,10 @@ sysctl -w net.ipv4.ip_forward=1 >/dev/null
 # Ensure the router is the default gateway for lab traffic.
 lan_a_ip="172.30.0.1"
 lan_b_ip="172.31.0.1"
+egress_ip="172.32.0.1"
 host_a_ip="172.30.0.254"
 host_b_ip="172.31.0.254"
+host_c_ip="172.32.0.254"
 compromised_ip="172.30.0.10"
 server_ip="172.31.0.10"
 
@@ -44,6 +46,7 @@ wait_for_iface() {
 
 lan_a_if="$(wait_for_iface "${lan_a_ip}" || true)"
 lan_b_if="$(wait_for_iface "${lan_b_ip}" || true)"
+egress_if="$(wait_for_iface "${egress_ip}" || true)"
 
 if [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
     if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -o "${lan_a_if}" -j ACCEPT 2>/dev/null; then
@@ -102,6 +105,27 @@ if [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
     fi
 else
     echo "router: interfaces not ready; skipping forward/NAT rules" >&2
+fi
+
+if [ -n "${egress_if}" ] && [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
+    if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -o "${egress_if}" -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A FORWARD -i "${lan_a_if}" -o "${egress_if}" -j ACCEPT
+    fi
+    if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -o "${egress_if}" -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A FORWARD -i "${lan_b_if}" -o "${egress_if}" -j ACCEPT
+    fi
+    if ! iptables-legacy -C FORWARD -i "${egress_if}" -o "${lan_a_if}" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A FORWARD -i "${egress_if}" -o "${lan_a_if}" -m state --state RELATED,ESTABLISHED -j ACCEPT
+    fi
+    if ! iptables-legacy -C FORWARD -i "${egress_if}" -o "${lan_b_if}" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A FORWARD -i "${egress_if}" -o "${lan_b_if}" -m state --state RELATED,ESTABLISHED -j ACCEPT
+    fi
+    if ! iptables-legacy -t nat -C POSTROUTING -s 172.30.0.0/24 -o "${egress_if}" -j MASQUERADE 2>/dev/null; then
+        iptables-legacy -t nat -A POSTROUTING -s 172.30.0.0/24 -o "${egress_if}" -j MASQUERADE
+    fi
+    if ! iptables-legacy -t nat -C POSTROUTING -s 172.31.0.0/24 -o "${egress_if}" -j MASQUERADE 2>/dev/null; then
+        iptables-legacy -t nat -A POSTROUTING -s 172.31.0.0/24 -o "${egress_if}" -j MASQUERADE
+    fi
 fi
 
 # Setup DNAT rule for simulated data exfiltration to fake public IP
