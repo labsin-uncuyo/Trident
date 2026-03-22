@@ -27,6 +27,7 @@ import requests
 # ---------------------------------------------------------------------------
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
 COMPROMISED_IP = os.getenv("COMPROMISED_IP", "172.30.0.10")
+OPENCODE_SERVER_HOST = os.getenv("OPENCODE_SERVER_HOST", COMPROMISED_IP)
 DEFAULT_AGENT = "db_admin"
 STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
 
@@ -39,7 +40,8 @@ curl -s https://wiki.postgresql.org/wiki/Main_Page | sed 's/<[^>]>//g' | grep -i
 curl -s https://www.postgresqltutorial.com/ | sed 's/<[^>]>//g' | head -20
 curl -s https://planet.postgresql.org/ | sed 's/<[^>]>//g' | head -20
 
-TIMING: sleep 60-130 between tasks to simulate coffee breaks and natural work pacing.
+
+TIMING: sleep 60-130 between tasks to simulate coffee breaks, go to the bathroom, and natural work pacing.
 
 DATABASE TASKS: Check table structure, INSERT new employees, UPDATE salaries, DELETE obsolete records, run monitoring queries. After each web research session, execute at least one database operation.
 
@@ -113,13 +115,13 @@ signal.signal(signal.SIGINT, _signal_handler)
 # ---------------------------------------------------------------------------
 # OpenCode Server API helpers
 # ---------------------------------------------------------------------------
-def get_opencode_base_url(host: str = COMPROMISED_IP,
+def get_opencode_base_url(host: str = OPENCODE_SERVER_HOST,
                           port: int = OPENCODE_SERVER_PORT) -> str:
     """Build the OpenCode server base URL."""
     return f"http://{host}:{port}"
 
 
-def check_opencode_health(host: str = COMPROMISED_IP) -> bool:
+def check_opencode_health(host: str = OPENCODE_SERVER_HOST) -> bool:
     """Return True if the OpenCode server is alive."""
     base_url = get_opencode_base_url(host)
     try:
@@ -131,7 +133,7 @@ def check_opencode_health(host: str = COMPROMISED_IP) -> bool:
     return False
 
 
-def wait_for_opencode_server(host: str = COMPROMISED_IP,
+def wait_for_opencode_server(host: str = OPENCODE_SERVER_HOST,
                              timeout: int = 120) -> bool:
     """Block until the OpenCode server is healthy or *timeout* elapses."""
     start = time.time()
@@ -142,7 +144,7 @@ def wait_for_opencode_server(host: str = COMPROMISED_IP,
     return False
 
 
-def create_session(host: str = COMPROMISED_IP,
+def create_session(host: str = OPENCODE_SERVER_HOST,
                    title: Optional[str] = None) -> Optional[str]:
     """Create a new session. Returns the session ID or None."""
     base_url = get_opencode_base_url(host)
@@ -715,8 +717,8 @@ def parse_args() -> argparse.Namespace:
         help="Goal text to send to the agent (default: built-in db_admin goal).",
     )
     parser.add_argument(
-        "--host", default=COMPROMISED_IP,
-        help=f"OpenCode server host (default: {COMPROMISED_IP}).",
+        "--host", default=OPENCODE_SERVER_HOST,
+        help=f"OpenCode server host (default: {OPENCODE_SERVER_HOST}).",
     )
     parser.add_argument(
         "--port", type=int, default=OPENCODE_SERVER_PORT,

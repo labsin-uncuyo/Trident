@@ -56,14 +56,29 @@ if [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
     if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -d "${compromised_ip}" --dport 22 -j ACCEPT 2>/dev/null; then
         iptables-legacy -A FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -d "${compromised_ip}" --dport 22 -j ACCEPT
     fi
+        if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -d "${compromised_ip}" --dport 4096 -j ACCEPT 2>/dev/null; then
+            iptables-legacy -A FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -d "${compromised_ip}" --dport 4096 -j ACCEPT
+        fi
     if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -s "${compromised_ip}" --sport 22 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
         iptables-legacy -A FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -s "${compromised_ip}" --sport 22 -m state --state RELATED,ESTABLISHED -j ACCEPT
+    fi
+    if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -d "${compromised_ip}" --dport 4096 -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -d "${compromised_ip}" --dport 4096 -j ACCEPT
+    fi
+    if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -s "${compromised_ip}" --sport 4096 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A FORWARD -i "${lan_a_if}" -o "${lan_a_if}" -p tcp -s "${compromised_ip}" --sport 4096 -m state --state RELATED,ESTABLISHED -j ACCEPT
     fi
     if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -d "${server_ip}" --dport 80 -j ACCEPT 2>/dev/null; then
         iptables-legacy -A FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -d "${server_ip}" --dport 80 -j ACCEPT
     fi
     if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -s "${server_ip}" --sport 80 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
         iptables-legacy -A FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -s "${server_ip}" --sport 80 -m state --state RELATED,ESTABLISHED -j ACCEPT
+    fi
+    if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -d "${server_ip}" --dport 4096 -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -d "${server_ip}" --dport 4096 -j ACCEPT
+    fi
+    if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -s "${server_ip}" --sport 4096 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
+        iptables-legacy -A FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -s "${server_ip}" --sport 4096 -m state --state RELATED,ESTABLISHED -j ACCEPT
     fi
     if ! iptables-legacy -C FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -d "${server_ip}" --dport 5432 -j ACCEPT 2>/dev/null; then
         iptables-legacy -A FORWARD -i "${lan_b_if}" -o "${lan_b_if}" -p tcp -d "${server_ip}" --dport 5432 -j ACCEPT
@@ -74,21 +89,42 @@ if [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
     if ! iptables-legacy -t nat -C POSTROUTING -s 172.31.0.0/24 ! -d 172.30.0.0/24 -o "${lan_a_if}" -j MASQUERADE 2>/dev/null; then
         iptables-legacy -t nat -A POSTROUTING -s 172.31.0.0/24 ! -d 172.30.0.0/24 -o "${lan_a_if}" -j MASQUERADE
     fi
+    if ! iptables-legacy -t nat -C POSTROUTING -s 172.30.0.0/24 ! -d 172.31.0.0/24 -o "${lan_a_if}" -j MASQUERADE 2>/dev/null; then
+        iptables-legacy -t nat -A POSTROUTING -s 172.30.0.0/24 ! -d 172.31.0.0/24 -o "${lan_a_if}" -j MASQUERADE
+    fi
     # Host access through router IPs (DNAT + SNAT to keep replies routed).
     if ! iptables-legacy -t nat -C PREROUTING -i "${lan_a_if}" -d "${lan_a_ip}" -p tcp --dport 22 -j DNAT --to-destination "${compromised_ip}:22" 2>/dev/null; then
         iptables-legacy -t nat -A PREROUTING -i "${lan_a_if}" -d "${lan_a_ip}" -p tcp --dport 22 -j DNAT --to-destination "${compromised_ip}:22"
     fi
+        if ! iptables-legacy -t nat -C PREROUTING -i "${lan_a_if}" -d "${lan_a_ip}" -p tcp --dport 4096 -j DNAT --to-destination "${compromised_ip}:4096" 2>/dev/null; then
+            iptables-legacy -t nat -A PREROUTING -i "${lan_a_if}" -d "${lan_a_ip}" -p tcp --dport 4096 -j DNAT --to-destination "${compromised_ip}:4096"
+        fi
+        if ! iptables-legacy -t nat -C POSTROUTING -s "${host_a_ip}" -d "${compromised_ip}" -p tcp --dport 4096 -j SNAT --to-source "${lan_a_ip}" 2>/dev/null; then
+            iptables-legacy -t nat -A POSTROUTING -s "${host_a_ip}" -d "${compromised_ip}" -p tcp --dport 4096 -j SNAT --to-source "${lan_a_ip}"
+        fi
     if ! iptables-legacy -t nat -C POSTROUTING -s "${host_a_ip}" -d "${compromised_ip}" -p tcp --dport 22 -j SNAT --to-source "${lan_a_ip}" 2>/dev/null; then
         iptables-legacy -t nat -A POSTROUTING -s "${host_a_ip}" -d "${compromised_ip}" -p tcp --dport 22 -j SNAT --to-source "${lan_a_ip}"
     fi
+    if ! iptables-legacy -t nat -C PREROUTING -i "${lan_a_if}" -d "${lan_a_ip}" -p tcp --dport 4096 -j DNAT --to-destination "${compromised_ip}:4096" 2>/dev/null; then
+        iptables-legacy -t nat -A PREROUTING -i "${lan_a_if}" -d "${lan_a_ip}" -p tcp --dport 4096 -j DNAT --to-destination "${compromised_ip}:4096"
+    fi
+    if ! iptables-legacy -t nat -C POSTROUTING -s "${host_a_ip}" -d "${compromised_ip}" -p tcp --dport 4096 -j SNAT --to-source "${lan_a_ip}" 2>/dev/null; then
+        iptables-legacy -t nat -A POSTROUTING -s "${host_a_ip}" -d "${compromised_ip}" -p tcp --dport 4096 -j SNAT --to-source "${lan_a_ip}"
+    fi
     if ! iptables-legacy -t nat -C PREROUTING -i "${lan_b_if}" -d "${lan_b_ip}" -p tcp --dport 80 -j DNAT --to-destination "${server_ip}:80" 2>/dev/null; then
         iptables-legacy -t nat -A PREROUTING -i "${lan_b_if}" -d "${lan_b_ip}" -p tcp --dport 80 -j DNAT --to-destination "${server_ip}:80"
+    fi
+    if ! iptables-legacy -t nat -C PREROUTING -i "${lan_b_if}" -d "${lan_b_ip}" -p tcp --dport 4096 -j DNAT --to-destination "${server_ip}:4096" 2>/dev/null; then
+        iptables-legacy -t nat -A PREROUTING -i "${lan_b_if}" -d "${lan_b_ip}" -p tcp --dport 4096 -j DNAT --to-destination "${server_ip}:4096"
     fi
     if ! iptables-legacy -t nat -C PREROUTING -i "${lan_b_if}" -d "${lan_b_ip}" -p tcp --dport 5432 -j DNAT --to-destination "${server_ip}:5432" 2>/dev/null; then
         iptables-legacy -t nat -A PREROUTING -i "${lan_b_if}" -d "${lan_b_ip}" -p tcp --dport 5432 -j DNAT --to-destination "${server_ip}:5432"
     fi
     if ! iptables-legacy -t nat -C POSTROUTING -s "${host_b_ip}" -d "${server_ip}" -p tcp --dport 80 -j SNAT --to-source "${lan_b_ip}" 2>/dev/null; then
         iptables-legacy -t nat -A POSTROUTING -s "${host_b_ip}" -d "${server_ip}" -p tcp --dport 80 -j SNAT --to-source "${lan_b_ip}"
+    fi
+    if ! iptables-legacy -t nat -C POSTROUTING -s "${host_b_ip}" -d "${server_ip}" -p tcp --dport 4096 -j SNAT --to-source "${lan_b_ip}" 2>/dev/null; then
+        iptables-legacy -t nat -A POSTROUTING -s "${host_b_ip}" -d "${server_ip}" -p tcp --dport 4096 -j SNAT --to-source "${lan_b_ip}"
     fi
     if ! iptables-legacy -t nat -C POSTROUTING -s "${host_b_ip}" -d "${server_ip}" -p tcp --dport 5432 -j SNAT --to-source "${lan_b_ip}" 2>/dev/null; then
         iptables-legacy -t nat -A POSTROUTING -s "${host_b_ip}" -d "${server_ip}" -p tcp --dport 5432 -j SNAT --to-source "${lan_b_ip}"

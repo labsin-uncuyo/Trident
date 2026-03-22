@@ -7,7 +7,7 @@ import selectors
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 HAS_PEXPECT = False
@@ -198,6 +198,113 @@ def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: s
         "tool_calls": tool_calls,
         "errors": errors,
     }
+
+
+def _legacy_event_to_part(event: Dict[str, Any]) -> Dict[str, Any]:
+    event_type = event.get("type", "")
+    payload = event.get("part") if isinstance(event.get("part"), dict) else {}
+    if event_type == "step_start":
+        return {"type": "step-start", **payload}
+    if event_type == "step_finish":
+        return {"type": "step-finish", **payload}
+    if event_type == "tool_use":
+        return {"type": "tool", **payload}
+    if event_type == "text":
+        return {"type": "text", **payload}
+    if event_type:
+        return {"type": event_type, **payload}
+    return {"type": "unknown", "raw": event}
+
+
+def build_coder56_api_messages(
+    execution_id: str,
+    stdout_path: str,
+    mode: str,
+    goal_text: str,
+) -> List[Dict[str, Any]]:
+    """Build a db_admin/defender-style API message wrapper for coder56 output."""
+    session_id = execution_id[:8]
+    messages: List[Dict[str, Any]] = []
+    raw_lines: List[str] = []
+
+    if os.path.exists(stdout_path):
+        with open(stdout_path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    event = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    raw_lines.append(raw)
+                    continue
+
+                part = _legacy_event_to_part(event)
+                tokens = {}
+                if part.get("type") == "step-finish":
+                    tokens = part.get("tokens", {}) if isinstance(part.get("tokens"), dict) else {}
+                messages.append(
+                    {
+                        "info": {
+                            "sessionID": session_id,
+                            "role": "assistant",
+                            "tokens": tokens,
+                            "source": "coder56_legacy_jsonl",
+                            "mode": mode,
+                        },
+                        "parts": [part],
+                    }
+                )
+
+    if not messages and raw_lines:
+        messages.append(
+            {
+                "info": {
+                    "sessionID": session_id,
+                    "role": "assistant",
+                    "tokens": {},
+                    "source": "coder56_tui_text",
+                    "mode": mode,
+                },
+                "parts": [
+                    {
+                        "type": "text",
+                        "text": "\n".join(raw_lines)[-5000:],
+                    }
+                ],
+            }
+        )
+
+    return [
+        {
+            "session_id": session_id,
+            "session_num": 1,
+            "exec": execution_id[:8],
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "agent": "coder56",
+            "goal": goal_text,
+            "messages": messages,
+        }
+    ]
+
+
+def write_coder56_api_messages(
+    output_dir: str,
+    execution_id: str,
+    stdout_path: str,
+    mode: str,
+    goal_text: str,
+) -> str:
+    api_path = os.path.join(output_dir, "opencode_api_messages.json")
+    wrapped = build_coder56_api_messages(
+        execution_id=execution_id,
+        stdout_path=stdout_path,
+        mode=mode,
+        goal_text=goal_text,
+    )
+    with open(api_path, "w", encoding="utf-8") as handle:
+        json.dump(wrapped, handle, indent=2)
+    return api_path
 
 
 def main() -> int:
@@ -400,6 +507,24 @@ def main() -> int:
             "exec": execution_id[:8],
         })
 
+        try:
+            api_path = write_coder56_api_messages(
+                output_dir=output_dir,
+                execution_id=execution_id,
+                stdout_path=stdout_path,
+                mode=args.mode,
+                goal_text=goal_text,
+            )
+            write_timeline_entry(timeline_path, "LOG", "coder56 API messages saved", data={
+                "api_path": api_path,
+                "exec": execution_id[:8],
+            })
+        except Exception as exc:
+            write_timeline_entry(timeline_path, "ERROR", "coder56 api message save failed", data={
+                "error": str(exc),
+                "exec": execution_id[:8],
+            })
+
         if args.mode == "run" and exit_code != 0:
             write_timeline_entry(timeline_path, "ERROR", "coder56 execution failed", data={
                 "exit_code": exit_code,
@@ -437,6 +562,16 @@ def main() -> int:
         except Exception:
             pass
         append_opencode_events(timeline_path, execution_id, exc.stdout or "")
+        try:
+            write_coder56_api_messages(
+                output_dir=output_dir,
+                execution_id=execution_id,
+                stdout_path=stdout_path,
+                mode=args.mode,
+                goal_text=goal_text,
+            )
+        except Exception:
+            pass
         write_timeline_entry(timeline_path, "ERROR", "coder56 execution timed out", data={
             "timeout_seconds": args.timeout,
             "stdout_path": stdout_path,
@@ -450,6 +585,20 @@ def main() -> int:
         output_dir = os.path.join("outputs", run_id, "coder56")
         os.makedirs(output_dir, exist_ok=True)
         timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
+        stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
+        if not os.path.exists(stdout_path):
+            with open(stdout_path, "w", encoding="utf-8"):
+                pass
+        try:
+            write_coder56_api_messages(
+                output_dir=output_dir,
+                execution_id=execution_id,
+                stdout_path=stdout_path,
+                mode=args.mode,
+                goal_text=goal_text,
+            )
+        except Exception:
+            pass
         write_timeline_entry(timeline_path, "ERROR", "coder56 execution exception", data={
             "error": str(exc),
             "exec": execution_id[:8],

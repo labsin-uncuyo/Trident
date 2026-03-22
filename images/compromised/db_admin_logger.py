@@ -235,11 +235,38 @@ def abort_session(host: str, session_id: str) -> bool:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def get_trident_base() -> str:
+    """Get Trident base directory (Docker: /home/shared/Trident, Host: workspace root)."""
+    # Check environment variable first (Docker containers set this)
+    trident_home = os.environ.get("TRIDENT_HOME", "").strip()
+    if trident_home and os.path.isdir(trident_home):
+        return trident_home
+
+    # Fall back to workspace root (for host execution)
+    # Navigate up from script location to find Trident root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    current = script_dir
+    for _ in range(5):  # Search up to 5 levels
+        if os.path.exists(os.path.join(current, "README.md")) and \
+           os.path.exists(os.path.join(current, "docker-compose.yml")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:  # Reached root
+            break
+        current = parent
+
+    # Last resort: use current working directory
+    return os.getcwd()
+
+
+
 def resolve_run_id() -> str:
     run_id = os.environ.get("RUN_ID", "").strip()
     if run_id:
         return run_id
-    current_run = os.path.join("/home/shared/Trident/outputs", ".current_run")
+    base_dir = get_trident_base()
+    current_run = os.path.join(base_dir, "outputs", ".current_run")
     try:
         with open(current_run, "r", encoding="utf-8") as fh:
             return fh.read().strip()
@@ -313,8 +340,8 @@ def main() -> int:
 
     execution_id = uuid4().hex
     run_id = resolve_run_id()
-    output_dir = os.path.join("/home/shared/Trident/outputs",
-                              run_id, "benign_agent")
+    base_dir = get_trident_base()
+    output_dir = os.path.join(base_dir, "outputs", run_id, "benign_agent")
     os.makedirs(output_dir, exist_ok=True)
     timeline_path = os.path.join(output_dir, "db_admin_timeline.jsonl")
 

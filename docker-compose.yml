@@ -39,6 +39,8 @@ services:
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LAB_PASSWORD=${LAB_PASSWORD}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - OPENCODE_SERVER_HOST=${OPENCODE_SERVER_HOST:-172.31.0.1}
+      - OPENCODE_COMPROMISED_HOST=${OPENCODE_COMPROMISED_HOST:-172.30.0.1}
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
       - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output

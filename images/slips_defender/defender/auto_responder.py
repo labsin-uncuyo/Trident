@@ -40,6 +40,8 @@ OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
 # Network topology
 SERVER_IP = "172.31.0.10"
 COMPROMISED_IP = "172.30.0.10"
+OPENCODE_SERVER_HOST = os.getenv("OPENCODE_SERVER_HOST", SERVER_IP)
+OPENCODE_COMPROMISED_HOST = os.getenv("OPENCODE_COMPROMISED_HOST", COMPROMISED_IP)
 
 # OpenCode status polling
 OPENCODE_STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
@@ -66,6 +68,8 @@ class AutoResponder:
                 "opencode_timeout": OPENCODE_TIMEOUT,
                 "server_ip": SERVER_IP,
                 "compromised_ip": COMPROMISED_IP,
+                "opencode_server_host": OPENCODE_SERVER_HOST,
+                "opencode_compromised_host": OPENCODE_COMPROMISED_HOST,
                 "opencode_server_port": OPENCODE_SERVER_PORT,
                 "duplicate_window": DUPLICATE_DETECTION_WINDOW,
                 "retry_delays": RETRY_DELAYS,
@@ -74,8 +78,8 @@ class AutoResponder:
         })
 
         print(f"[auto_responder] ✓ OpenCode Server API mode ENABLED")
-        print(f"[auto_responder]   - Server: http://{SERVER_IP}:{OPENCODE_SERVER_PORT}")
-        print(f"[auto_responder]   - Compromised: http://{COMPROMISED_IP}:{OPENCODE_SERVER_PORT}")
+        print(f"[auto_responder]   - Server: http://{OPENCODE_SERVER_HOST}:{OPENCODE_SERVER_PORT}")
+        print(f"[auto_responder]   - Compromised: http://{OPENCODE_COMPROMISED_HOST}:{OPENCODE_SERVER_PORT}")
         print(f"[auto_responder]   - Retry delays: {RETRY_DELAYS}s (for model errors)")
 
     def get_opencode_base_url(self, target_ip: str) -> str:
@@ -372,9 +376,9 @@ class AutoResponder:
 
     def determine_target_info(self, executor_ip: str) -> Optional[tuple]:
         if executor_ip.startswith("172.31.0."):
-            return SERVER_IP, "server"
+            return OPENCODE_SERVER_HOST, "server"
         elif executor_ip.startswith("172.30.0."):
-            return COMPROMISED_IP, "compromised"
+            return OPENCODE_COMPROMISED_HOST, "compromised"
         else:
             return SERVER_IP, "server"
 
