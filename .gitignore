@@ -39,6 +39,9 @@ images/server/employees_data_large.sql
 exfil_experiment_output_*/
 flask_brute_experiment_output/
 photorec.se*
+experiments*
+
+scripts/db_admin_experiment*
 
 # Test scripts
 test_opencode_*.py
