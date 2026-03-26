@@ -2,8 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type {
   SessionsMap,
   SessionMessage,
-  WsSessionsMessage,
-  WsMessagesMessage,
+  OpenCodeStatePayload,
 } from '@/types';
 import { api } from '@/api';
 
@@ -24,11 +23,12 @@ function normaliseSessions(raw: Record<string, unknown>): SessionsMap {
  *    the frontend simply replaces state; no delta / append logic.
  * 3. Periodic REST poll every 5 s as safety-net.
  */
-export function useOpenCodeStream(host: string) {
+export function useOpenCodeStream(_host?: string) {
   const [sessions, setSessions] = useState<SessionsMap>({});
   const [messagesBySession, setMessagesBySession] = useState<
     Record<string, SessionMessage[]>
   >({});
+  const [sessionSources, setSessionSources] = useState<Record<string, string>>({});
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -40,22 +40,14 @@ export function useOpenCodeStream(host: string) {
 
     const load = async () => {
       try {
-        const sessData: any = await api.openCodeSessions(host);
+        const state = (await api.openCodeState()) as OpenCodeStatePayload;
         if (cancelled) return;
-        const normalised = normaliseSessions(sessData);
+        const normalised = normaliseSessions((state?.sessions ?? {}) as Record<string, unknown>);
         setSessions(normalised);
 
-        const bySession: Record<string, SessionMessage[]> = {};
-        for (const sid of Object.keys(normalised)) {
-          try {
-            const msgs: any = await api.openCodeMessages(host, sid);
-            if (cancelled) return;
-            bySession[sid] = Array.isArray(msgs) ? msgs : [];
-          } catch {
-            bySession[sid] = [];
-          }
-        }
+        const bySession = (state?.messages_by_session ?? {}) as Record<string, SessionMessage[]>;
         setMessagesBySession(bySession);
+        setSessionSources((state?.session_sources ?? {}) as Record<string, string>);
       } catch {
         // host unreachable
       }
@@ -64,12 +56,12 @@ export function useOpenCodeStream(host: string) {
     load();
     const interval = setInterval(load, 5_000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [host]);
+  }, []);
 
   // ── WebSocket live stream ──────────────────────────────────────
   const connect = useCallback(() => {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${window.location.host}/api/opencode/${host}/ws`;
+    const url = `${proto}//${window.location.host}/api/opencode/ws`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
@@ -81,15 +73,13 @@ export function useOpenCodeStream(host: string) {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'sessions') {
-          setSessions(normaliseSessions((msg as WsSessionsMessage).data));
-        } else if (msg.type === 'messages') {
-          const m = msg as WsMessagesMessage & { full?: boolean };
-          // Backend sends full message list — always replace.
-          setMessagesBySession((prev) => ({
-            ...prev,
-            [m.session_id]: Array.isArray(m.data) ? m.data : [],
-          }));
+        if (msg.type === 'state') {
+          const sessionsRaw = (msg as any)?.data?.sessions ?? {};
+          const messagesRaw = (msg as any)?.data?.messages_by_session ?? {};
+          const sourcesRaw = (msg as any)?.data?.session_sources ?? {};
+          setSessions(normaliseSessions(sessionsRaw));
+          setMessagesBySession(messagesRaw);
+          setSessionSources(sourcesRaw);
         }
       } catch {}
     };
@@ -101,7 +91,7 @@ export function useOpenCodeStream(host: string) {
       reconnectTimer.current = setTimeout(connect, delay);
     };
     ws.onerror = () => ws.close();
-  }, [host]);
+  }, []);
 
   useEffect(() => {
     connect();
@@ -111,5 +101,5 @@ export function useOpenCodeStream(host: string) {
     };
   }, [connect]);
 
-  return { sessions, messagesBySession, connected };
+  return { sessions, messagesBySession, sessionSources, connected };
 }

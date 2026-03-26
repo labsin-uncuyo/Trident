@@ -149,6 +149,14 @@ export interface WsMessagesMessage {
   total: number;
 }
 
+export interface OpenCodeStatePayload {
+  run_id: string | null;
+  updated_at: string;
+  sessions: SessionsMap;
+  session_sources?: Record<string, string>;
+  messages_by_session: Record<string, SessionMessage[]>;
+}
+
 export interface WsAlertMessage {
   type: 'alert';
   run_id: string;

@@ -25,9 +25,11 @@ export const api = {
 
   /** OpenCode */
   openCodeHosts: () => api.get('/opencode/hosts'),
-  openCodeSessions: (host: string) => api.get(`/opencode/${host}/sessions`),
-  openCodeMessages: (host: string, sessionId: string) =>
-    api.get(`/opencode/${host}/sessions/${sessionId}/messages`),
+  openCodeAgents: () => api.get('/opencode/agents'),
+  openCodeState: () => api.get('/opencode/state'),
+  openCodeSessions: () => api.get('/opencode/sessions'),
+  openCodeMessages: (sessionId: string) =>
+    api.get(`/opencode/sessions/${sessionId}/messages`),
 
   /** Alerts */
   alerts: (runId?: string) =>

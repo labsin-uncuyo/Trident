@@ -16,7 +16,7 @@ import signal
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 from uuid import uuid4
 
 import requests
@@ -249,7 +249,8 @@ def _is_context_overflow(status_str: str) -> bool:
 
 
 def wait_for_session_complete(host: str, session_id: str,
-                              timeout: int = 600) -> bool:
+                              timeout: int = 600,
+                              on_poll: Optional[Callable[[str], None]] = None) -> bool:
     """Poll session status until it completes, fails, or times out.
 
     The function waits through an initial *grace period* during which
@@ -272,6 +273,11 @@ def wait_for_session_complete(host: str, session_id: str,
 
         # ── session disappeared from status map ──────────────────────
         if status is None:
+            if on_poll:
+                try:
+                    on_poll("unknown")
+                except Exception:
+                    pass
             if _last_logged_status != "__none__":
                 print(f"[db_admin]   status: None (saw_busy={saw_busy}, "
                       f"elapsed={elapsed:.0f}s)")
@@ -285,6 +291,11 @@ def wait_for_session_complete(host: str, session_id: str,
             continue
 
         status_str = str(status).lower()
+        if on_poll:
+            try:
+                on_poll(status_str)
+            except Exception:
+                pass
         if status_str != _last_logged_status:
             print(f"[db_admin]   status: {status_str[:80]} "
                   f"(saw_busy={saw_busy}, elapsed={elapsed:.0f}s)")
@@ -501,25 +512,17 @@ def save_session_logs(host: str, session_id: str, output_dir: str,
                 "tool_calls": [], "errors": [],
                 "messages": messages}
 
-    # ── Save API format (load existing, append, rewrite) ──
-    existing: List = []
-    if os.path.exists(api_path):
-        try:
-            with open(api_path, "r", encoding="utf-8") as fh:
-                existing = json.load(fh)
-        except (json.JSONDecodeError, OSError):
-            existing = []
-
-    existing.append({
-        "session_id": session_id,
-        "session_num": session_num,
-        "exec": execution_id[:8],
-        "saved_at": datetime.now(timezone.utc).isoformat(),
-        "messages": messages,
-    })
-    with open(api_path, "w", encoding="utf-8") as fh:
-        json.dump(existing, fh, indent=2)
-    print(f"[db_admin] Saved API messages → {api_path}")
+    # ── Save canonical API format (atomic) ──
+    run_id = os.path.basename(os.path.dirname(output_dir.rstrip("/")))
+    update_canonical_opencode_state(
+        api_path=api_path,
+        agent="db_admin",
+        run_id=run_id,
+        session_id=session_id,
+        status="completed",
+        messages=messages,
+    )
+    print(f"[db_admin] Updated canonical API messages → {api_path}")
 
     # ── Convert and save legacy JSONL format (append) ──
     legacy_lines = convert_api_messages_to_legacy_jsonl(messages)
@@ -705,6 +708,105 @@ def write_timeline_entry(path: str, level: str, message: str,
         fh.flush()
 
 
+def _atomic_write_json(path: str, payload: dict) -> None:
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+    os.replace(tmp_path, path)
+
+
+def _load_canonical_opencode_state(api_path: str, agent: str, run_id: str) -> dict:
+    state = {
+        "agent": agent,
+        "run_id": run_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "sessions": {},
+    }
+    if os.path.exists(api_path):
+        try:
+            with open(api_path, "r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if isinstance(existing, dict):
+                state.update(existing)
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass
+    if not isinstance(state.get("sessions"), dict):
+        state["sessions"] = {}
+    state["agent"] = agent
+    state["run_id"] = run_id
+    return state
+
+
+def _infer_last_event_ts(messages: List[Dict]) -> int:
+    last_ts = 0
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        info = msg.get("info", {}) if isinstance(msg.get("info"), dict) else {}
+        info_time = info.get("time", {}) if isinstance(info.get("time"), dict) else {}
+        for key in ("completed", "created"):
+            value = info_time.get(key)
+            if isinstance(value, int) and value > last_ts:
+                last_ts = value
+        parts = msg.get("parts", []) if isinstance(msg.get("parts"), list) else []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            part_time = part.get("time", {}) if isinstance(part.get("time"), dict) else {}
+            for key in ("end", "start"):
+                value = part_time.get(key)
+                if isinstance(value, int) and value > last_ts:
+                    last_ts = value
+    return last_ts if last_ts > 0 else int(time.time() * 1000)
+
+
+def update_canonical_opencode_state(
+    api_path: str,
+    agent: str,
+    run_id: str,
+    session_id: str,
+    status: str,
+    messages: Optional[List[Dict]] = None,
+) -> None:
+    state = _load_canonical_opencode_state(api_path, agent=agent, run_id=run_id)
+    sessions = state.setdefault("sessions", {})
+    session = sessions.get(session_id)
+    if not isinstance(session, dict):
+        session = {"status": status, "last_event_ts": int(time.time() * 1000), "messages": []}
+        sessions[session_id] = session
+
+    session["status"] = status
+    if messages is not None:
+        session["messages"] = messages
+        session["last_event_ts"] = _infer_last_event_ts(messages)
+    elif not isinstance(session.get("messages"), list):
+        session["messages"] = []
+
+    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _atomic_write_json(api_path, state)
+
+
+def sync_realtime_opencode_state(
+    host: str,
+    session_id: str,
+    output_dir: str,
+    run_id: str,
+    status: str,
+) -> None:
+    messages = get_session_messages(host, session_id)
+    if messages is None:
+        return
+    api_path = os.path.join(output_dir, "opencode_api_messages.json")
+    update_canonical_opencode_state(
+        api_path=api_path,
+        agent="db_admin",
+        run_id=run_id,
+        session_id=session_id,
+        status=status,
+        messages=messages,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -761,6 +863,7 @@ def main() -> int:
     output_dir = os.path.join(base_dir, "outputs", run_id, "benign_agent")
     os.makedirs(output_dir, exist_ok=True)
     timeline_path = os.path.join(output_dir, "db_admin_timeline.jsonl")
+    api_path = os.path.join(output_dir, "opencode_api_messages.json")
 
     # Expose log context so the signal handler can flush on Ctrl+C.
     global _signal_log_ctx
@@ -855,6 +958,14 @@ def main() -> int:
 
         print(f"[db_admin] ✓ Session {session_count} created: "
               f"{session_id[:12]} ({'forked' if is_forked else 'new'})")
+        update_canonical_opencode_state(
+            api_path=api_path,
+            agent="db_admin",
+            run_id=run_id,
+            session_id=session_id,
+            status="created",
+            messages=[],
+        )
         write_timeline_entry(
             timeline_path, "SESSION",
             f"Session {session_count} created",
@@ -938,7 +1049,17 @@ def main() -> int:
             else:
                 turn_timeout = 3600  # 1 hour per turn when no limit
             completed = wait_for_session_complete(
-                host, session_id, timeout=turn_timeout)
+                host,
+                session_id,
+                timeout=turn_timeout,
+                on_poll=lambda polled_status: sync_realtime_opencode_state(
+                    host=host,
+                    session_id=session_id,
+                    output_dir=output_dir,
+                    run_id=run_id,
+                    status=polled_status,
+                ),
+            )
             turn_duration = time.time() - session_start
 
             if not completed:
@@ -966,6 +1087,15 @@ def main() -> int:
 
             # Fetch messages and inspect the agent's last response
             messages = get_session_messages(host, session_id)
+            if messages is not None:
+                update_canonical_opencode_state(
+                    api_path=api_path,
+                    agent="db_admin",
+                    run_id=run_id,
+                    session_id=session_id,
+                    status="idle",
+                    messages=messages,
+                )
             last_text = _get_last_assistant_text(messages)
             snippet = last_text[:200].replace("\n", " ")
             print(f"[db_admin] [{turn_label}] Agent responded "

@@ -107,13 +107,14 @@ const TIMELINE_AGENTS: Array<{ key: string; label: string; desc: string; color: 
   },
 ];
 
-function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySession }: {
+function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySession, sessionSources }: {
   agentKey: string;
   label: string;
   desc: string;
   color: string;
   host: string;
   messagesBySession: Record<string, SessionMessage[]>;
+  sessionSources: Record<string, string>;
 }) {
   const { entries, connected } = useTimelineStream(agentKey);
   const recent = entries.slice(-200);
@@ -137,8 +138,13 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
         if (typeof sid === 'string' && !ids.includes(sid)) ids.push(sid);
       }
     }
+    if (ids.length === 0) {
+      for (const [sid, source] of Object.entries(sessionSources)) {
+        if (source === agentKey && !ids.includes(sid)) ids.push(sid);
+      }
+    }
     return ids;
-  }, [entries]);
+  }, [entries, sessionSources, agentKey]);
 
   // Reconstruct messages from timeline OPENCODE entries grouped by messageID.
   // This is used as a fallback when the API session has already ended and returns no data.
@@ -177,7 +183,7 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
     for (const sid of sessionIds) {
       if (!messagesBySession[sid] && !fetchedRef.current.has(sid)) {
         fetchedRef.current.add(sid);
-        (api.openCodeMessages(host, sid) as Promise<any>)
+        (api.openCodeMessages(sid) as Promise<any>)
           .then((msgs: any) => {
             // Only store if API actually returned messages; otherwise timeline fallback is used
             if (Array.isArray(msgs) && msgs.length > 0) {
@@ -187,7 +193,7 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
           .catch(() => {});
       }
     }
-  }, [sessionIds, messagesBySession, host]);
+  }, [sessionIds, messagesBySession]);
 
   // Collect all OpenCode messages: shared stream > API fetch > timeline reconstruction
   const ocMessages = useMemo(() => {
@@ -391,13 +397,12 @@ function HostPanel({ host, stream }: { host: string; stream: ReturnType<typeof u
 }
 
 export function AgentsPage() {
-  // Lift OpenCode streams — one per host, shared by all agent panels
-  const compromisedStream = useOpenCodeStream('compromised');
-  const serverStream = useOpenCodeStream('server');
+  // Hostless OpenCode stream shared across all panels
+  const openCodeStream = useOpenCodeStream();
 
   const streamByHost: Record<string, ReturnType<typeof useOpenCodeStream>> = {
-    compromised: compromisedStream,
-    server: serverStream,
+    compromised: openCodeStream,
+    server: openCodeStream,
   };
 
   return (
@@ -418,6 +423,7 @@ export function AgentsPage() {
               color={a.color}
               host={a.host}
               messagesBySession={streamByHost[a.host]?.messagesBySession ?? {}}
+              sessionSources={streamByHost[a.host]?.sessionSources ?? {}}
             />
           ))}
         </div>

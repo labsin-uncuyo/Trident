@@ -1,117 +1,74 @@
-"""OpenCode proxy routes + WebSocket live session stream."""
+"""File-backed OpenCode routes + WebSocket merged stream."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from typing import Any
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.services.opencode_client import HOSTS, get_client
+from backend.services.opencode_client import get_session_messages, load_all_agent_states
 
 logger = logging.getLogger("dashboard.opencode_router")
 
 router = APIRouter(prefix="/api/opencode", tags=["opencode"])
 
 
-def _validate_host(host: str) -> None:
-    if host not in HOSTS:
-        raise HTTPException(404, f"Unknown host '{host}'. Valid: {list(HOSTS)}")
-
-
 # ── REST endpoints ──────────────────────────────────────────────────
 
 @router.get("/hosts")
-async def get_hosts():
-    """List configured OpenCode hosts."""
-    results = {}
-    for name, url in HOSTS.items():
-        client = get_client(name)
-        health = await client.health()
-        results[name] = {"url": url, "healthy": health.get("healthy", False)}
-    return results
+async def get_hosts_compat():
+    """Compatibility endpoint; returns per-agent file source state."""
+    return (await get_agents())
 
 
-@router.get("/{host}/health")
-async def host_health(host: str):
-    _validate_host(host)
-    return await get_client(host).health()
+@router.get("/agents")
+async def get_agents(run_id: str | None = None):
+    state = load_all_agent_states(run_id=run_id)
+    return {"run_id": state.get("run_id"), "updated_at": state.get("updated_at", ""), "agents": state.get("agents", {})}
 
 
-@router.get("/{host}/sessions")
-async def list_sessions(host: str):
-    """List all sessions on a host with their status."""
-    _validate_host(host)
-    return await get_client(host).list_sessions()
+@router.get("/state")
+async def get_state(run_id: str | None = None):
+    return load_all_agent_states(run_id=run_id)
 
 
-@router.get("/{host}/sessions/{session_id}/messages")
-async def get_session_messages(host: str, session_id: str):
-    """Fetch all messages for a session."""
-    _validate_host(host)
-    return await get_client(host).get_messages(session_id)
+@router.get("/sessions")
+async def list_sessions(run_id: str | None = None):
+    return load_all_agent_states(run_id=run_id).get("sessions", {})
+
+
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages_endpoint(session_id: str, run_id: str | None = None):
+    return get_session_messages(session_id=session_id, run_id=run_id)
 
 
 # ── WebSocket: live session stream ──────────────────────────────────
 
-@router.websocket("/{host}/ws")
-async def ws_opencode(ws: WebSocket, host: str):
-    """Stream OpenCode session updates for a host.
-
-    Polls the OpenCode HTTP API every 1s and pushes full state each
-    time something changes.  The frontend simply replaces its local
-    state with whatever arrives — no delta / append logic needed.
-    """
-    if host not in HOSTS:
-        await ws.close(code=4004, reason=f"Unknown host: {host}")
-        return
-
+@router.websocket("/ws")
+async def ws_opencode(ws: WebSocket):
+    """Stream merged OpenCode state from mounted output files."""
     await ws.accept()
-    client = get_client(host)
-    prev_sessions: dict[str, str] = {}
-    prev_msg_counts: dict[str, int] = {}
+    prev_signature = ""
 
     try:
         while True:
             try:
-                sessions = await client.list_sessions()
+                state = load_all_agent_states()
             except Exception:
                 await asyncio.sleep(2)
                 continue
 
-            # Push session map whenever it changes
-            if sessions != prev_sessions:
-                await ws.send_json({
-                    "type": "sessions",
-                    "host": host,
-                    "data": sessions,
-                })
-                prev_sessions = dict(sessions)
-
-            # For each active session, push FULL message list when count changes
-            for sid, status in sessions.items():
-                if status not in ("idle", "busy", "running"):
-                    continue
-                try:
-                    msgs = await client.get_messages(sid)
-                except Exception:
-                    continue
-                msg_count = len(msgs)
-                if msg_count != prev_msg_counts.get(sid, 0):
-                    await ws.send_json({
-                        "type": "messages",
-                        "host": host,
-                        "session_id": sid,
-                        "data": msgs,       # full list, not delta
-                        "total": msg_count,
-                        "full": True,
-                    })
-                    prev_msg_counts[sid] = msg_count
+            signature = (
+                f"{state.get('run_id','')}|{state.get('updated_at','')}|"
+                f"{len(state.get('sessions', {}))}|{len(state.get('messages_by_session', {}))}"
+            )
+            if signature != prev_signature:
+                await ws.send_json({"type": "state", "data": state})
+                prev_signature = signature
 
             await asyncio.sleep(1)
     except WebSocketDisconnect:
         pass
     except Exception as exc:
-        logger.debug("ws_opencode(%s) ended: %s", host, exc)
+        logger.debug("ws_opencode ended: %s", exc)

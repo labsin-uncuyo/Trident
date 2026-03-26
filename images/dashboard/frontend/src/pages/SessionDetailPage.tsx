@@ -22,7 +22,7 @@ export function SessionDetailPage() {
     if (!sessionId) return;
     setLoading(true);
     api
-      .openCodeMessages(host, sessionId)
+      .openCodeMessages(sessionId)
       .then((data: any) => {
         // Normalize: API may return raw messages or wrapped
         const msgs = Array.isArray(data) ? data : [];

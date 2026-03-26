@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.models import HealthResponse, ServiceHealth
 from backend.routers import alerts, containers, opencode, pcaps, runs, timeline, topology
-from backend.services.opencode_client import HOSTS, close_all, get_client
+from backend.services.opencode_client import close_all, load_all_agent_states
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,17 +71,16 @@ def _current_run_id() -> str | None:
 
 @app.get("/api/health", response_model=HealthResponse)
 async def health():
-    """Dashboard health, including connectivity to OpenCode servers."""
+    """Dashboard health, including mounted file-backed OpenCode state."""
     services: list[ServiceHealth] = []
 
-    for name in HOSTS:
-        client = get_client(name)
-        h = await client.health()
+    state = load_all_agent_states()
+    for agent, meta in state.get("agents", {}).items():
         services.append(
             ServiceHealth(
-                name=f"opencode_{name}",
-                healthy=h.get("healthy", False),
-                detail=h.get("error", "ok"),
+                name=f"opencode_{agent}",
+                healthy=bool(meta.get("exists", False)),
+                detail=meta.get("updated_at") or "missing",
             )
         )
 

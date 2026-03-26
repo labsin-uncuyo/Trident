@@ -19,7 +19,7 @@ import threading
 import hashlib
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 import requests
 import logging
 
@@ -104,6 +104,94 @@ class AutoResponder:
 
     def get_machine_timeline_path(self, machine_name: str) -> Path:
         return self.get_machine_output_dir(machine_name) / "auto_responder_timeline.jsonl"
+
+    def get_machine_opencode_path(self, machine_name: str) -> Path:
+        return self.get_machine_output_dir(machine_name) / "opencode_api_messages.json"
+
+    def _atomic_write_json(self, path: Path, payload: Dict) -> None:
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+        tmp_path.replace(path)
+
+    def _infer_last_event_ts(self, messages: List[Dict]) -> int:
+        last_ts = 0
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            info = msg.get("info", {}) if isinstance(msg.get("info"), dict) else {}
+            info_time = info.get("time", {}) if isinstance(info.get("time"), dict) else {}
+            for key in ("completed", "created"):
+                value = info_time.get(key)
+                if isinstance(value, int) and value > last_ts:
+                    last_ts = value
+            parts = msg.get("parts", []) if isinstance(msg.get("parts"), list) else []
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                part_time = part.get("time", {}) if isinstance(part.get("time"), dict) else {}
+                for key in ("end", "start"):
+                    value = part_time.get(key)
+                    if isinstance(value, int) and value > last_ts:
+                        last_ts = value
+        return last_ts if last_ts > 0 else int(time.time() * 1000)
+
+    def update_canonical_opencode_state(self, machine_name: str, session_id: str,
+                                        status: str,
+                                        messages: Optional[List[Dict]] = None) -> None:
+        api_path = self.get_machine_opencode_path(machine_name)
+        state = {
+            "agent": f"soc_god_{machine_name}",
+            "run_id": RUN_ID,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "sessions": {},
+        }
+
+        if api_path.exists():
+            try:
+                existing = json.loads(api_path.read_text(encoding="utf-8"))
+                if isinstance(existing, dict):
+                    state.update(existing)
+            except (json.JSONDecodeError, OSError, ValueError):
+                pass
+
+        sessions = state.get("sessions")
+        if not isinstance(sessions, dict):
+            sessions = {}
+            state["sessions"] = sessions
+
+        session = sessions.get(session_id)
+        if not isinstance(session, dict):
+            session = {
+                "status": status,
+                "last_event_ts": int(time.time() * 1000),
+                "messages": [],
+            }
+            sessions[session_id] = session
+
+        session["status"] = status
+        if messages is not None:
+            session["messages"] = messages
+            session["last_event_ts"] = self._infer_last_event_ts(messages)
+        elif not isinstance(session.get("messages"), list):
+            session["messages"] = []
+
+        state["agent"] = f"soc_god_{machine_name}"
+        state["run_id"] = RUN_ID
+        state["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._atomic_write_json(api_path, state)
+
+    def sync_realtime_opencode_state(self, target_ip: str, session_id: str,
+                                     machine_name: str, status: str) -> None:
+        messages = self.get_session_messages(target_ip, session_id)
+        if messages is None:
+            return
+        self.update_canonical_opencode_state(
+            machine_name=machine_name,
+            session_id=session_id,
+            status=status,
+            messages=messages,
+        )
 
     def setup_logging(self):
         main_output_dir = Path("/outputs") / RUN_ID / "defender"
@@ -487,7 +575,9 @@ class AutoResponder:
         print(f"[auto_responder] All attempts failed to get messages from {target_ip} session {session_id}: {last_error}")
         return None
 
-    def wait_for_session_complete(self, target_ip: str, session_id: str, timeout: int = None) -> bool:
+    def wait_for_session_complete(self, target_ip: str, session_id: str,
+                                  timeout: int = None,
+                                  on_poll: Optional[Callable[[str], None]] = None) -> bool:
         """Poll session status until it is no longer busy/active."""
         if timeout is None:
             timeout = OPENCODE_TIMEOUT
@@ -501,6 +591,11 @@ class AutoResponder:
             # If status is None, the session is no longer listed in /session/status
             # This means it has completed (OpenCode removes finished sessions from the busy list)
             if status is None:
+                if on_poll:
+                    try:
+                        on_poll("unknown")
+                    except Exception:
+                        pass
                 # Only treat as completed if we've been polling for at least a few seconds
                 # (to avoid false positives from race conditions at startup)
                 if elapsed > 5:
@@ -515,6 +610,12 @@ class AutoResponder:
                 status_str = str(status).lower()
             else:
                 status_str = str(status).lower()
+
+            if on_poll:
+                try:
+                    on_poll(status_str)
+                except Exception:
+                    pass
 
             self.log("POLL", f"Session {session_id[:8]} status: {status_str} ({elapsed:.0f}s)", machine_name)
 
@@ -694,8 +795,8 @@ class AutoResponder:
                           execution_id: str = None, alert_hash: str = None) -> Dict:
         """Fetch session messages and save in both API and legacy formats.
 
-        Saves:
-          - opencode_api_messages.json  : Full API response (JSON array)
+                Saves:
+                    - opencode_api_messages.json  : Canonical session map (atomic)
           - opencode_stdout.jsonl       : Legacy JSONL format (one event per line)
 
         Returns dict with parsed metrics (llm_calls, tool_calls, etc.).
@@ -714,14 +815,22 @@ class AutoResponder:
             # Empty list — session had no messages (possibly early completion)
             self.log("WARN", f"Empty message list for session {session_id[:8]} — saving empty log",
                      machine_name, alert_hash, execution_id)
-            with open(api_path, "w", encoding="utf-8") as f:
-                json.dump(messages, f, indent=2)
+            self.update_canonical_opencode_state(
+                machine_name=machine_name,
+                session_id=session_id,
+                status="completed",
+                messages=[],
+            )
             return {"final_output": None, "llm_calls": 0, "tool_calls": [], "errors": []}
 
-        # ── Save API format ──
-        with open(api_path, "w", encoding="utf-8") as f:
-            json.dump(messages, f, indent=2)
-        self.log("LOG", f"Saved API messages to {api_path}",
+        # ── Save canonical API format (atomic) ──
+        self.update_canonical_opencode_state(
+            machine_name=machine_name,
+            session_id=session_id,
+            status="completed",
+            messages=messages,
+        )
+        self.log("LOG", f"Updated canonical API messages in {api_path}",
                  machine_name, alert_hash, execution_id)
 
         # ── Convert and save legacy JSONL format ──
@@ -884,7 +993,6 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
 
             machine_output_dir = self.get_machine_output_dir(target_name)
             stdout_path = machine_output_dir / "opencode_stdout.jsonl"  # legacy JSONL
-            api_path = machine_output_dir / "opencode_api_messages.json"  # full API messages
             stderr_path = machine_output_dir / "opencode_stderr.log"
 
             start_time = time.time()
@@ -933,11 +1041,25 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                 with self.lock:
                     self.active_sessions[target_ip] = session_id
 
+                self.update_canonical_opencode_state(
+                    machine_name=target_name,
+                    session_id=session_id,
+                    status="created",
+                    messages=[],
+                )
+
                 self.log("API", f"Sending plan to session {session_id[:8]} (async, fire-and-continue)", target_name, alert_hash, execution_id)
                 success = self.send_message_async(target_ip, session_id, context, agent="soc_god")
                 if not success:
                     self.log("ERROR", f"Failed to send message to session {session_id[:8]}", target_name, alert_hash, execution_id)
                     continue  # Retry
+
+                self.update_canonical_opencode_state(
+                    machine_name=target_name,
+                    session_id=session_id,
+                    status="running",
+                    messages=None,
+                )
 
                 # SSE streaming disabled - using API messages only
                 sse_future = None
@@ -945,7 +1067,17 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
 
                 # Wait for session to complete
                 self.log("API", f"Waiting for session {session_id[:8]} to complete...", target_name, alert_hash, execution_id)
-                completed = self.wait_for_session_complete(target_ip, session_id, timeout=OPENCODE_TIMEOUT)
+                completed = self.wait_for_session_complete(
+                    target_ip,
+                    session_id,
+                    timeout=OPENCODE_TIMEOUT,
+                    on_poll=lambda polled_status: self.sync_realtime_opencode_state(
+                        target_ip=target_ip,
+                        session_id=session_id,
+                        machine_name=target_name,
+                        status=polled_status,
+                    ),
+                )
 
                 if completed:
                     self.log("API", f"✓ Session {session_id[:8]} completed successfully", target_name, alert_hash, execution_id)
@@ -970,8 +1102,7 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
 
                 # Check for model availability errors
                 model_error = self.check_for_model_error(
-                    json.loads((machine_output_dir / "opencode_api_messages.json").read_text())
-                    if (machine_output_dir / "opencode_api_messages.json").exists() else []
+                    self.get_session_messages(target_ip, session_id) or []
                 )
 
                 if model_error:

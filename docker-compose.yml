@@ -190,10 +190,7 @@ services:
       - ./outputs:/outputs:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
-      lab_net_a:
-        ipv4_address: 172.30.0.20
-      lab_net_b:
-        ipv4_address: 172.31.0.20
+      dashboard_net:
     depends_on:
       router:
         condition: service_healthy
@@ -239,3 +236,6 @@ networks:
       config:
         - subnet: 172.32.0.0/24
           gateway: 172.32.0.254
+  dashboard_net:
+    name: lab_dashboard_net
+    driver: bridge

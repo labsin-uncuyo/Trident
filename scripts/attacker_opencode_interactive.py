@@ -96,6 +96,106 @@ def write_timeline_entry(path: str, level: str, message: str, data: Optional[dic
         handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
 
+def _atomic_write_json(path: str, payload: dict) -> None:
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+    os.replace(tmp_path, path)
+
+
+def _event_ts_ms(event: dict) -> int:
+    if isinstance(event.get("timestamp"), int):
+        return int(event["timestamp"])
+    part = event.get("part", {}) if isinstance(event.get("part"), dict) else {}
+    part_time = part.get("time", {}) if isinstance(part.get("time"), dict) else {}
+    for key in ("start", "end"):
+        value = part_time.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+    return int(time.time() * 1000)
+
+
+def _legacy_event_to_part(event: dict) -> Optional[dict]:
+    event_type = str(event.get("type", "")).strip()
+    type_map = {
+        "step_start": "step-start",
+        "step_finish": "step-finish",
+        "tool_use": "tool",
+        "text": "text",
+    }
+    part_type = type_map.get(event_type)
+    if not part_type:
+        return None
+    part = event.get("part", {})
+    if isinstance(part, dict):
+        merged = dict(part)
+        merged["type"] = part_type
+        return merged
+    return {"type": part_type}
+
+
+def update_realtime_opencode_state(
+    api_path: str,
+    run_id: str,
+    session_id: str,
+    status: str,
+    event: Optional[dict] = None,
+) -> None:
+    payload = {
+        "agent": "coder56",
+        "run_id": run_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "sessions": {},
+    }
+    if os.path.exists(api_path):
+        try:
+            with open(api_path, "r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if isinstance(existing, dict):
+                payload.update(existing)
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass
+
+    sessions = payload.setdefault("sessions", {})
+    if not isinstance(sessions, dict):
+        sessions = {}
+        payload["sessions"] = sessions
+
+    session = sessions.get(session_id)
+    if not isinstance(session, dict):
+        session = {
+            "status": status,
+            "last_event_ts": int(time.time() * 1000),
+            "messages": [],
+        }
+        sessions[session_id] = session
+
+    session["status"] = status
+    if "messages" not in session or not isinstance(session["messages"], list):
+        session["messages"] = []
+
+    if event is not None:
+        ts_ms = _event_ts_ms(event)
+        part = _legacy_event_to_part(event)
+        if part is not None:
+            session["messages"].append(
+                {
+                    "info": {
+                        "sessionID": session_id,
+                        "role": "assistant",
+                        "time": {"created": ts_ms, "completed": ts_ms},
+                    },
+                    "parts": [part],
+                }
+            )
+        session["last_event_ts"] = ts_ms
+
+    payload["agent"] = "coder56"
+    payload["run_id"] = run_id
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _atomic_write_json(api_path, payload)
+
+
 def _init_opencode_metrics() -> dict:
     return {
         "tool_calls": [],
@@ -111,6 +211,8 @@ def _handle_opencode_line(
     timeline_handle,
     execution_id: str,
     metrics: dict,
+    api_path: Optional[str] = None,
+    run_id: Optional[str] = None,
 ) -> None:
     line = line.strip()
     if not line:
@@ -145,6 +247,15 @@ def _handle_opencode_line(
     }
     timeline_handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
     timeline_handle.flush()
+
+    if api_path and run_id:
+        update_realtime_opencode_state(
+            api_path=api_path,
+            run_id=run_id,
+            session_id=execution_id,
+            status="running",
+            event=event,
+        )
 
 
 def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: str) -> dict:
@@ -227,6 +338,15 @@ def main() -> int:
         output_dir = os.path.join("outputs", run_id, "coder56")
         os.makedirs(output_dir, exist_ok=True)
         timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
+        api_path = os.path.join(output_dir, "opencode_api_messages.json")
+
+        update_realtime_opencode_state(
+            api_path=api_path,
+            run_id=run_id,
+            session_id=execution_id,
+            status="running",
+            event=None,
+        )
 
         write_timeline_entry(timeline_path, "INIT", "coder56 execution started", data={
             "goal": goal_text,
@@ -362,7 +482,14 @@ def main() -> int:
                         if stream_name == "stdout":
                             out_handle.write(line)
                             out_handle.flush()
-                            _handle_opencode_line(line, timeline_handle, execution_id, metrics)
+                            _handle_opencode_line(
+                                line,
+                                timeline_handle,
+                                execution_id,
+                                metrics,
+                                api_path=api_path,
+                                run_id=run_id,
+                            )
                         else:
                             err_handle.write(line)
                             err_handle.flush()
@@ -385,6 +512,14 @@ def main() -> int:
                 metrics["final_output"] = " ".join(metrics["text_outputs"])[-500:]
 
             duration = time.time() - start_time
+
+        update_realtime_opencode_state(
+            api_path=api_path,
+            run_id=run_id,
+            session_id=execution_id,
+            status="completed" if exit_code == 0 else "error",
+            event=None,
+        )
         write_timeline_entry(timeline_path, "EXEC", "coder56 execution completed", data={
             "exit_code": exit_code,
             "duration_seconds": round(duration, 2),
@@ -422,6 +557,7 @@ def main() -> int:
         timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
         stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
         stderr_path = os.path.join(output_dir, "opencode_stderr.log")
+        api_path = os.path.join(output_dir, "opencode_api_messages.json")
         with open(stdout_path, "w", encoding="utf-8") as handle:
             handle.write(_coerce_text(exc.stdout))
         with open(stderr_path, "w", encoding="utf-8") as handle:
@@ -437,6 +573,25 @@ def main() -> int:
         except Exception:
             pass
         append_opencode_events(timeline_path, execution_id, exc.stdout or "")
+        for raw_line in (exc.stdout or "").splitlines():
+            try:
+                parsed = json.loads(raw_line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            update_realtime_opencode_state(
+                api_path=api_path,
+                run_id=run_id,
+                session_id=execution_id,
+                status="error",
+                event=parsed,
+            )
+        update_realtime_opencode_state(
+            api_path=api_path,
+            run_id=run_id,
+            session_id=execution_id,
+            status="error",
+            event=None,
+        )
         write_timeline_entry(timeline_path, "ERROR", "coder56 execution timed out", data={
             "timeout_seconds": args.timeout,
             "stdout_path": stdout_path,
@@ -450,6 +605,14 @@ def main() -> int:
         output_dir = os.path.join("outputs", run_id, "coder56")
         os.makedirs(output_dir, exist_ok=True)
         timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
+        api_path = os.path.join(output_dir, "opencode_api_messages.json")
+        update_realtime_opencode_state(
+            api_path=api_path,
+            run_id=run_id,
+            session_id=execution_id,
+            status="error",
+            event=None,
+        )
         write_timeline_entry(timeline_path, "ERROR", "coder56 execution exception", data={
             "error": str(exc),
             "exec": execution_id[:8],

@@ -1,131 +1,195 @@
-"""Async HTTP client for OpenCode server API."""
+"""File-backed OpenCode state aggregator for dashboard."""
 
 from __future__ import annotations
 
-import asyncio
-import logging
+import json
+import os
+import ast
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-import httpx
+OUTPUTS_DIR = Path(os.getenv("OUTPUTS_DIR", "/outputs"))
 
-logger = logging.getLogger("dashboard.opencode")
-
-# Known OpenCode hosts
-HOSTS: dict[str, str] = {
-    "compromised": "http://172.30.0.10:4096",
-    "server": "http://172.31.0.10:4096",
+AGENT_FILE_PATHS: dict[str, str] = {
+    "coder56": "coder56/opencode_api_messages.json",
+    "db_admin": "benign_agent/opencode_api_messages.json",
+    "soc_god_server": "defender/server/opencode_api_messages.json",
+    "soc_god_compromised": "defender/compromised/opencode_api_messages.json",
 }
 
-_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
+def _current_run_id() -> str | None:
+    current = OUTPUTS_DIR / ".current_run"
+    if current.exists():
+        return current.read_text().strip() or None
+    return None
 
 
-class OpenCodeClient:
-    """Thin async wrapper around the OpenCode HTTP server API."""
-
-    def __init__(self, base_url: str) -> None:
-        self.base_url = base_url.rstrip("/")
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=self.base_url, timeout=_TIMEOUT
-            )
-        return self._client
-
-    async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-
-    # ── Health ──────────────────────────────────────────────────────
-
-    async def health(self) -> dict[str, Any]:
-        try:
-            c = await self._get_client()
-            r = await c.get("/global/health")
-            r.raise_for_status()
-            return r.json()
-        except Exception as exc:
-            logger.debug("health check failed for %s: %s", self.base_url, exc)
-            return {"healthy": False, "error": str(exc)}
-
-    # ── Sessions ────────────────────────────────────────────────────
-
-    async def list_sessions(self) -> dict[str, str]:
-        """Return {session_id: status} mapping.
-
-        The upstream API may return statuses as plain strings OR as
-        objects like ``{"type": "busy"}``.  This method normalises
-        both forms into simple string values.
-        """
-        try:
-            c = await self._get_client()
-            r = await c.get("/session/status")
-            r.raise_for_status()
-            raw = r.json()
-            # Normalise: {sid: "idle"} or {sid: {"type": "idle"}} → {sid: "idle"}
-            normalised: dict[str, str] = {}
-            for sid, val in raw.items():
-                if isinstance(val, dict):
-                    normalised[sid] = val.get("type", "unknown")
-                elif isinstance(val, str):
-                    normalised[sid] = val
-                else:
-                    normalised[sid] = str(val)
-            return normalised
-        except Exception as exc:
-            logger.warning("list_sessions failed on %s: %s", self.base_url, exc)
-            return {}
-
-    async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
-        """Fetch all messages for a session."""
-        try:
-            c = await self._get_client()
-            r = await c.get(f"/session/{session_id}/message")
-            r.raise_for_status()
-            return r.json()
-        except Exception as exc:
-            logger.warning(
-                "get_messages(%s) failed on %s: %s",
-                session_id, self.base_url, exc,
-            )
-            return []
-
-    async def create_session(self, title: str = "dashboard") -> str | None:
-        """Create a new session, return session ID."""
-        try:
-            c = await self._get_client()
-            r = await c.post("/session", json={"title": title})
-            r.raise_for_status()
-            return r.json().get("id")
-        except Exception as exc:
-            logger.warning("create_session failed on %s: %s", self.base_url, exc)
-            return None
-
-    async def abort_session(self, session_id: str) -> bool:
-        try:
-            c = await self._get_client()
-            r = await c.post(f"/session/{session_id}/abort")
-            return r.is_success
-        except Exception:
-            return False
+def _safe_json_load(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
 
 
-# ── Global client pool ──────────────────────────────────────────────
+def _legacy_to_canonical(agent: str, run_id: str, raw: list[Any]) -> dict[str, Any]:
+    legacy_messages: list[Any] = []
+    for item in raw:
+        if isinstance(item, dict) and isinstance(item.get("messages"), list):
+            legacy_messages.extend(item.get("messages", []))
+        else:
+            legacy_messages.append(item)
 
-_clients: dict[str, OpenCodeClient] = {}
+    return {
+        "agent": agent,
+        "run_id": run_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "sessions": {
+            "legacy": {
+                "status": "completed",
+                "last_event_ts": int(datetime.now(timezone.utc).timestamp() * 1000),
+                "messages": legacy_messages,
+            }
+        },
+    }
 
 
-def get_client(host: str) -> OpenCodeClient:
-    """Get or create a client for a known host name."""
-    if host not in HOSTS:
-        raise ValueError(f"Unknown host '{host}'. Valid: {list(HOSTS)}")
-    if host not in _clients:
-        _clients[host] = OpenCodeClient(HOSTS[host])
-    return _clients[host]
+def _normalise_state(agent: str, run_id: str, raw: Any) -> dict[str, Any]:
+    if isinstance(raw, list):
+        return _legacy_to_canonical(agent, run_id, raw)
+
+    state = {
+        "agent": agent,
+        "run_id": run_id,
+        "updated_at": "",
+        "sessions": {},
+    }
+    if isinstance(raw, dict):
+        state.update(raw)
+
+    if not isinstance(state.get("sessions"), dict):
+        state["sessions"] = {}
+
+    state["agent"] = agent
+    state["run_id"] = run_id
+    return state
+
+
+def _agent_file(run_id: str, agent: str) -> Path:
+    return OUTPUTS_DIR / run_id / AGENT_FILE_PATHS[agent]
+
+
+def _agent_status_from_sessions(sessions: dict[str, Any]) -> str:
+    def _normalise_status(raw_status: Any) -> str:
+        if isinstance(raw_status, dict):
+            return str(raw_status.get("type", "unknown")).lower()
+        if isinstance(raw_status, str):
+            text = raw_status.strip()
+            if text.startswith("{") and "type" in text:
+                try:
+                    parsed = ast.literal_eval(text)
+                    if isinstance(parsed, dict):
+                        return str(parsed.get("type", "unknown")).lower()
+                except (ValueError, SyntaxError):
+                    pass
+            return text.lower()
+        return str(raw_status).lower()
+
+    statuses: list[str] = []
+    for session_data in sessions.values():
+        if not isinstance(session_data, dict):
+            continue
+        raw_status = session_data.get("status", "unknown")
+        normal = _normalise_status(raw_status)
+        statuses.append(normal)
+    if any(s in ("running", "busy", "active", "pending", "generating") for s in statuses):
+        return "running"
+    if any(s in ("error", "failed") for s in statuses):
+        return "error"
+    if statuses:
+        return "idle"
+    return "unknown"
+
+
+def load_all_agent_states(run_id: str | None = None) -> dict[str, Any]:
+    rid = run_id or _current_run_id()
+    if not rid:
+        return {
+            "run_id": None,
+            "agents": {},
+            "sessions": {},
+            "session_sources": {},
+            "messages_by_session": {},
+            "updated_at": "",
+        }
+
+    agents: dict[str, Any] = {}
+    merged_sessions: dict[str, str] = {}
+    session_sources: dict[str, str] = {}
+    messages_by_session: dict[str, list[dict[str, Any]]] = {}
+    latest_updated_at = ""
+
+    for agent in AGENT_FILE_PATHS:
+        path = _agent_file(rid, agent)
+        exists = path.exists()
+        raw = _safe_json_load(path) if exists else None
+        state = _normalise_state(agent, rid, raw)
+        sessions = state.get("sessions", {}) if isinstance(state.get("sessions"), dict) else {}
+
+        for session_id, session_data in sessions.items():
+            if not isinstance(session_data, dict):
+                continue
+            raw_status = session_data.get("status", "unknown")
+            if isinstance(raw_status, dict):
+                status = str(raw_status.get("type", "unknown"))
+            elif isinstance(raw_status, str) and raw_status.strip().startswith("{") and "type" in raw_status:
+                try:
+                    parsed = ast.literal_eval(raw_status)
+                    status = str(parsed.get("type", "unknown")) if isinstance(parsed, dict) else str(raw_status)
+                except (ValueError, SyntaxError):
+                    status = str(raw_status)
+            else:
+                status = str(raw_status)
+            merged_sessions[session_id] = status
+            session_sources[session_id] = agent
+            session_messages = session_data.get("messages", [])
+            if isinstance(session_messages, list):
+                messages_by_session[session_id] = session_messages
+
+        updated_at = str(state.get("updated_at", ""))
+        if updated_at and updated_at > latest_updated_at:
+            latest_updated_at = updated_at
+
+        mtime = ""
+        if exists:
+            mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+
+        agents[agent] = {
+            "agent": agent,
+            "path": str(path),
+            "exists": exists,
+            "updated_at": updated_at,
+            "file_mtime": mtime,
+            "session_count": len(sessions),
+            "status": _agent_status_from_sessions(sessions),
+        }
+
+    return {
+        "run_id": rid,
+        "updated_at": latest_updated_at,
+        "agents": agents,
+        "sessions": merged_sessions,
+        "session_sources": session_sources,
+        "messages_by_session": messages_by_session,
+    }
+
+
+def get_session_messages(session_id: str, run_id: str | None = None) -> list[dict[str, Any]]:
+    state = load_all_agent_states(run_id)
+    messages = state.get("messages_by_session", {}).get(session_id, [])
+    return messages if isinstance(messages, list) else []
 
 
 async def close_all() -> None:
-    for c in _clients.values():
-        await c.close()
-    _clients.clear()
+    return None
