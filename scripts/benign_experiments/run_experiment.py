@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any
 
-
 def get_trident_base() -> str:
     """Get Trident base directory (Docker: /home/shared/Trident, Host: workspace root)."""
     # Check environment variable first (Docker containers set this)
@@ -51,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--goal",
-        default=(
+                default=(
             "Start your workday. Connect to the database server via the jump host and begin your daily tasks.\n\n"
             "These are the credentials to connect to the server's database: "
             "PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb\n\n"
@@ -86,8 +85,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default=None,
-        help="Directory to save experiment results (default: <trident_base>/outputs/experiments_benign).",
+        default="None",
+        help="Directory to save experiment results.",
     )
     return parser.parse_args()
 
@@ -225,13 +224,15 @@ def run_single_experiment(
     env = os.environ.copy()
     env["RUN_ID"] = temp_run_id
     
+    
     # Run db_admin_opencode_client.py
     db_admin_script = os.path.join(
-        get_trident_base(), "images", "compromised", "db_admin_opencode_client.py")
+    get_trident_base(), "images", "compromised", "db_admin_opencode_client.py")
+
     cmd = [
         sys.executable,
         db_admin_script,
-        goal,
+        goal
     ]
     if timeout is not None:
         cmd.extend(["--time-limit", str(timeout)])
@@ -295,11 +296,11 @@ def run_single_experiment(
 def main() -> int:
     args = parse_args()
 
-    # Resolve output directory (use arg if provided, else default relative to Trident base)
+        # Resolve output directory (use arg if provided, else default relative to Trident base)
     output_dir = args.output_dir if args.output_dir is not None \
         else os.path.join(get_trident_base(), "outputs", "experiments_benign")
     args.output_dir = output_dir
-
+    
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     

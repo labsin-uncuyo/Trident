@@ -7,7 +7,7 @@ import selectors
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 HAS_PEXPECT = False
@@ -96,106 +96,6 @@ def write_timeline_entry(path: str, level: str, message: str, data: Optional[dic
         handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
 
-def _atomic_write_json(path: str, payload: dict) -> None:
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
-    os.replace(tmp_path, path)
-
-
-def _event_ts_ms(event: dict) -> int:
-    if isinstance(event.get("timestamp"), int):
-        return int(event["timestamp"])
-    part = event.get("part", {}) if isinstance(event.get("part"), dict) else {}
-    part_time = part.get("time", {}) if isinstance(part.get("time"), dict) else {}
-    for key in ("start", "end"):
-        value = part_time.get(key)
-        if isinstance(value, int) and value > 0:
-            return value
-    return int(time.time() * 1000)
-
-
-def _legacy_event_to_part(event: dict) -> Optional[dict]:
-    event_type = str(event.get("type", "")).strip()
-    type_map = {
-        "step_start": "step-start",
-        "step_finish": "step-finish",
-        "tool_use": "tool",
-        "text": "text",
-    }
-    part_type = type_map.get(event_type)
-    if not part_type:
-        return None
-    part = event.get("part", {})
-    if isinstance(part, dict):
-        merged = dict(part)
-        merged["type"] = part_type
-        return merged
-    return {"type": part_type}
-
-
-def update_realtime_opencode_state(
-    api_path: str,
-    run_id: str,
-    session_id: str,
-    status: str,
-    event: Optional[dict] = None,
-) -> None:
-    payload = {
-        "agent": "coder56",
-        "run_id": run_id,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "sessions": {},
-    }
-    if os.path.exists(api_path):
-        try:
-            with open(api_path, "r", encoding="utf-8") as handle:
-                existing = json.load(handle)
-            if isinstance(existing, dict):
-                payload.update(existing)
-        except (json.JSONDecodeError, OSError, ValueError):
-            pass
-
-    sessions = payload.setdefault("sessions", {})
-    if not isinstance(sessions, dict):
-        sessions = {}
-        payload["sessions"] = sessions
-
-    session = sessions.get(session_id)
-    if not isinstance(session, dict):
-        session = {
-            "status": status,
-            "last_event_ts": int(time.time() * 1000),
-            "messages": [],
-        }
-        sessions[session_id] = session
-
-    session["status"] = status
-    if "messages" not in session or not isinstance(session["messages"], list):
-        session["messages"] = []
-
-    if event is not None:
-        ts_ms = _event_ts_ms(event)
-        part = _legacy_event_to_part(event)
-        if part is not None:
-            session["messages"].append(
-                {
-                    "info": {
-                        "sessionID": session_id,
-                        "role": "assistant",
-                        "time": {"created": ts_ms, "completed": ts_ms},
-                    },
-                    "parts": [part],
-                }
-            )
-        session["last_event_ts"] = ts_ms
-
-    payload["agent"] = "coder56"
-    payload["run_id"] = run_id
-    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _atomic_write_json(api_path, payload)
-
-
 def _init_opencode_metrics() -> dict:
     return {
         "tool_calls": [],
@@ -211,8 +111,6 @@ def _handle_opencode_line(
     timeline_handle,
     execution_id: str,
     metrics: dict,
-    api_path: Optional[str] = None,
-    run_id: Optional[str] = None,
 ) -> None:
     line = line.strip()
     if not line:
@@ -247,15 +145,6 @@ def _handle_opencode_line(
     }
     timeline_handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
     timeline_handle.flush()
-
-    if api_path and run_id:
-        update_realtime_opencode_state(
-            api_path=api_path,
-            run_id=run_id,
-            session_id=execution_id,
-            status="running",
-            event=event,
-        )
 
 
 def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: str) -> dict:
@@ -311,6 +200,113 @@ def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: s
     }
 
 
+def _legacy_event_to_part(event: Dict[str, Any]) -> Dict[str, Any]:
+    event_type = event.get("type", "")
+    payload = event.get("part") if isinstance(event.get("part"), dict) else {}
+    if event_type == "step_start":
+        return {"type": "step-start", **payload}
+    if event_type == "step_finish":
+        return {"type": "step-finish", **payload}
+    if event_type == "tool_use":
+        return {"type": "tool", **payload}
+    if event_type == "text":
+        return {"type": "text", **payload}
+    if event_type:
+        return {"type": event_type, **payload}
+    return {"type": "unknown", "raw": event}
+
+
+def build_coder56_api_messages(
+    execution_id: str,
+    stdout_path: str,
+    mode: str,
+    goal_text: str,
+) -> List[Dict[str, Any]]:
+    """Build a db_admin/defender-style API message wrapper for coder56 output."""
+    session_id = execution_id[:8]
+    messages: List[Dict[str, Any]] = []
+    raw_lines: List[str] = []
+
+    if os.path.exists(stdout_path):
+        with open(stdout_path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    event = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    raw_lines.append(raw)
+                    continue
+
+                part = _legacy_event_to_part(event)
+                tokens = {}
+                if part.get("type") == "step-finish":
+                    tokens = part.get("tokens", {}) if isinstance(part.get("tokens"), dict) else {}
+                messages.append(
+                    {
+                        "info": {
+                            "sessionID": session_id,
+                            "role": "assistant",
+                            "tokens": tokens,
+                            "source": "coder56_legacy_jsonl",
+                            "mode": mode,
+                        },
+                        "parts": [part],
+                    }
+                )
+
+    if not messages and raw_lines:
+        messages.append(
+            {
+                "info": {
+                    "sessionID": session_id,
+                    "role": "assistant",
+                    "tokens": {},
+                    "source": "coder56_tui_text",
+                    "mode": mode,
+                },
+                "parts": [
+                    {
+                        "type": "text",
+                        "text": "\n".join(raw_lines)[-5000:],
+                    }
+                ],
+            }
+        )
+
+    return [
+        {
+            "session_id": session_id,
+            "session_num": 1,
+            "exec": execution_id[:8],
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "agent": "coder56",
+            "goal": goal_text,
+            "messages": messages,
+        }
+    ]
+
+
+def write_coder56_api_messages(
+    output_dir: str,
+    execution_id: str,
+    stdout_path: str,
+    mode: str,
+    goal_text: str,
+) -> str:
+    api_path = os.path.join(output_dir, "opencode_api_messages.json")
+    wrapped = build_coder56_api_messages(
+        execution_id=execution_id,
+        stdout_path=stdout_path,
+        mode=mode,
+        goal_text=goal_text,
+    )
+    with open(api_path, "w", encoding="utf-8") as handle:
+        json.dump(wrapped, handle, indent=2)
+    return api_path
+
+
 def main() -> int:
     args = parse_args()
     goal_text = " ".join(args.goal).strip()
@@ -338,15 +334,6 @@ def main() -> int:
         output_dir = os.path.join("outputs", run_id, "coder56")
         os.makedirs(output_dir, exist_ok=True)
         timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
-        api_path = os.path.join(output_dir, "opencode_api_messages.json")
-
-        update_realtime_opencode_state(
-            api_path=api_path,
-            run_id=run_id,
-            session_id=execution_id,
-            status="running",
-            event=None,
-        )
 
         write_timeline_entry(timeline_path, "INIT", "coder56 execution started", data={
             "goal": goal_text,
@@ -482,14 +469,7 @@ def main() -> int:
                         if stream_name == "stdout":
                             out_handle.write(line)
                             out_handle.flush()
-                            _handle_opencode_line(
-                                line,
-                                timeline_handle,
-                                execution_id,
-                                metrics,
-                                api_path=api_path,
-                                run_id=run_id,
-                            )
+                            _handle_opencode_line(line, timeline_handle, execution_id, metrics)
                         else:
                             err_handle.write(line)
                             err_handle.flush()
@@ -512,14 +492,6 @@ def main() -> int:
                 metrics["final_output"] = " ".join(metrics["text_outputs"])[-500:]
 
             duration = time.time() - start_time
-
-        update_realtime_opencode_state(
-            api_path=api_path,
-            run_id=run_id,
-            session_id=execution_id,
-            status="completed" if exit_code == 0 else "error",
-            event=None,
-        )
         write_timeline_entry(timeline_path, "EXEC", "coder56 execution completed", data={
             "exit_code": exit_code,
             "duration_seconds": round(duration, 2),
@@ -534,6 +506,24 @@ def main() -> int:
             "export_path": metrics.get("export_path"),
             "exec": execution_id[:8],
         })
+
+        try:
+            api_path = write_coder56_api_messages(
+                output_dir=output_dir,
+                execution_id=execution_id,
+                stdout_path=stdout_path,
+                mode=args.mode,
+                goal_text=goal_text,
+            )
+            write_timeline_entry(timeline_path, "LOG", "coder56 API messages saved", data={
+                "api_path": api_path,
+                "exec": execution_id[:8],
+            })
+        except Exception as exc:
+            write_timeline_entry(timeline_path, "ERROR", "coder56 api message save failed", data={
+                "error": str(exc),
+                "exec": execution_id[:8],
+            })
 
         if args.mode == "run" and exit_code != 0:
             write_timeline_entry(timeline_path, "ERROR", "coder56 execution failed", data={
@@ -557,7 +547,6 @@ def main() -> int:
         timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
         stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
         stderr_path = os.path.join(output_dir, "opencode_stderr.log")
-        api_path = os.path.join(output_dir, "opencode_api_messages.json")
         with open(stdout_path, "w", encoding="utf-8") as handle:
             handle.write(_coerce_text(exc.stdout))
         with open(stderr_path, "w", encoding="utf-8") as handle:
@@ -573,25 +562,16 @@ def main() -> int:
         except Exception:
             pass
         append_opencode_events(timeline_path, execution_id, exc.stdout or "")
-        for raw_line in (exc.stdout or "").splitlines():
-            try:
-                parsed = json.loads(raw_line)
-            except (json.JSONDecodeError, ValueError):
-                continue
-            update_realtime_opencode_state(
-                api_path=api_path,
-                run_id=run_id,
-                session_id=execution_id,
-                status="error",
-                event=parsed,
+        try:
+            write_coder56_api_messages(
+                output_dir=output_dir,
+                execution_id=execution_id,
+                stdout_path=stdout_path,
+                mode=args.mode,
+                goal_text=goal_text,
             )
-        update_realtime_opencode_state(
-            api_path=api_path,
-            run_id=run_id,
-            session_id=execution_id,
-            status="error",
-            event=None,
-        )
+        except Exception:
+            pass
         write_timeline_entry(timeline_path, "ERROR", "coder56 execution timed out", data={
             "timeout_seconds": args.timeout,
             "stdout_path": stdout_path,
@@ -605,14 +585,20 @@ def main() -> int:
         output_dir = os.path.join("outputs", run_id, "coder56")
         os.makedirs(output_dir, exist_ok=True)
         timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
-        api_path = os.path.join(output_dir, "opencode_api_messages.json")
-        update_realtime_opencode_state(
-            api_path=api_path,
-            run_id=run_id,
-            session_id=execution_id,
-            status="error",
-            event=None,
-        )
+        stdout_path = os.path.join(output_dir, "opencode_stdout.jsonl")
+        if not os.path.exists(stdout_path):
+            with open(stdout_path, "w", encoding="utf-8"):
+                pass
+        try:
+            write_coder56_api_messages(
+                output_dir=output_dir,
+                execution_id=execution_id,
+                stdout_path=stdout_path,
+                mode=args.mode,
+                goal_text=goal_text,
+            )
+        except Exception:
+            pass
         write_timeline_entry(timeline_path, "ERROR", "coder56 execution exception", data={
             "error": str(exc),
             "exec": execution_id[:8],

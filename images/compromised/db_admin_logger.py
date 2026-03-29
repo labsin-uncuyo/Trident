@@ -235,6 +235,7 @@ def abort_session(host: str, session_id: str) -> bool:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 def get_trident_base() -> str:
     """Get Trident base directory (Docker: /home/shared/Trident, Host: workspace root)."""
     # Check environment variable first (Docker containers set this)
@@ -257,6 +258,7 @@ def get_trident_base() -> str:
 
     # Last resort: use current working directory
     return os.getcwd()
+
 
 
 def resolve_run_id() -> str:
