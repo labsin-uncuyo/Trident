@@ -11,14 +11,16 @@ ln -sfn "${pcap_dir}" /pcaps
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
 
 # Ensure the router is the default gateway for lab traffic.
-lan_a_ip="172.30.0.1"
-lan_b_ip="172.31.0.1"
-egress_ip="172.32.0.1"
-host_a_ip="172.30.0.254"
-host_b_ip="172.31.0.254"
-host_c_ip="172.32.0.254"
-compromised_ip="172.30.0.10"
-server_ip="172.31.0.10"
+# IPs injected by IaC builder via docker-compose environment section.
+# Defaults preserve backwards-compatibility when running outside of IaC.
+lan_a_ip="${LAB_ROUTER_NET_A_IP:-172.30.0.1}"
+lan_b_ip="${LAB_ROUTER_NET_B_IP:-172.31.0.1}"
+egress_ip="${LAB_ROUTER_EGRESS_IP:-172.32.0.1}"
+host_a_ip="${NET_A_GATEWAY:-172.30.0.254}"
+host_b_ip="${NET_B_GATEWAY:-172.31.0.254}"
+host_c_ip="${EGRESS_GATEWAY:-172.32.0.254}"
+compromised_ip="${LAB_COMPROMISED_IP:-172.30.0.10}"
+server_ip="${LAB_SERVER_IP:-172.31.0.10}"
 
 # Start DNS forwarder on the router so client queries traverse it.
 dnsmasq --no-daemon \
@@ -115,6 +117,12 @@ else
 fi
 
 if [ -n "${egress_if}" ] && [ -n "${lan_a_if}" ] && [ -n "${lan_b_if}" ]; then
+    # Block forwarded traffic destined for Docker bridge gateway IPs (defense-in-depth).
+    for _host_ip in "${host_a_ip}" "${host_b_ip}" "${host_c_ip}"; do
+        if ! iptables-legacy -C FORWARD -d "${_host_ip}/32" -j DROP 2>/dev/null; then
+            iptables-legacy -I FORWARD 1 -d "${_host_ip}/32" -j DROP
+        fi
+    done
     if ! iptables-legacy -C FORWARD -i "${lan_a_if}" -d 172.32.0.0/24 -j DROP 2>/dev/null; then
         iptables-legacy -I FORWARD 1 -i "${lan_a_if}" -d 172.32.0.0/24 -j DROP
     fi

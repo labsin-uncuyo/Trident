@@ -1,0 +1,250 @@
+{
+  "networks": [
+    {
+      "name": "net_a",
+      "subnet": "172.30.0.0/24",
+      "gateway": "172.30.0.254",
+      "internal": true
+    },
+    {
+      "name": "net_b",
+      "subnet": "172.31.0.0/24",
+      "gateway": "172.31.0.254",
+      "internal": true
+    },
+    {
+      "name": "egress",
+      "subnet": "172.32.0.0/24",
+      "gateway": "172.32.0.254",
+      "internal": false
+    }
+  ],
+  "named_volumes": [
+    "opencode_data",
+    "postgres_data",
+    "slips_redis_data",
+    "slips_ti_data",
+    "auto_responder_ssh_keys"
+  ],
+  "nodes": [
+    {
+      "name": "lab_router",
+      "image": "lab/router:latest",
+      "networks": [
+        { "name": "net_a", "ipv4": "172.30.0.1", "mac_address": "02:42:ac:1e:00:01" },
+        { "name": "net_b", "ipv4": "172.31.0.1", "mac_address": "02:42:ac:1f:00:01" },
+        { "name": "egress", "ipv4": "172.32.0.1", "mac_address": "02:42:ac:20:00:01" }
+      ],
+      "compose": {
+        "build": "./images/router",
+        "profile": "core",
+        "privileged": true,
+        "restart": "unless-stopped",
+        "volumes": ["./outputs:/outputs"],
+        "environment": {
+          "RUN_ID": "${RUN_ID}"
+        },
+        "cap_add": ["NET_ADMIN", "NET_RAW"],
+        "healthcheck": {
+          "test": ["CMD-SHELL", "sysctl net.ipv4.ip_forward | grep -q ' = 1'"],
+          "interval": "5s",
+          "timeout": "3s",
+          "retries": 20
+        }
+      }
+    },
+    {
+      "name": "lab_compromised",
+      "image": "lab/compromised:latest",
+      "networks": [
+        { "name": "net_a", "ipv4": "172.30.0.10", "mac_address": "02:42:ac:1e:00:0a" }
+      ],
+      "compose": {
+        "build": "./images/compromised",
+        "profile": "core",
+        "init": true,
+        "restart": "unless-stopped",
+        "volumes": [
+          "./outputs:/outputs",
+          "./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro",
+          "auto_responder_ssh_keys:/root/.ssh_auto_responder:ro"
+        ],
+        "environment": {
+          "LAB_PASSWORD": "${LAB_PASSWORD}",
+          "RUN_ID": "${RUN_ID}",
+          "OPENCODE_API_KEY": "${OPENCODE_API_KEY}",
+          "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+          "OPENAI_BASE_URL": "${OPENAI_BASE_URL}",
+          "LLM_MODEL": "${LLM_MODEL}"
+        },
+        "cap_add": ["NET_ADMIN"],
+        "depends_on": {
+          "lab_server": { "condition": "service_healthy" },
+          "lab_router": { "condition": "service_healthy" }
+        },
+        "healthcheck": {
+          "test": ["CMD-SHELL", "ss -ltn | grep -q ':22'"],
+          "interval": "5s",
+          "timeout": "3s",
+          "retries": 20
+        }
+      }
+    },
+    {
+      "name": "lab_server",
+      "image": "lab/server:latest",
+      "networks": [
+        { "name": "net_b", "ipv4": "172.31.0.10", "mac_address": "02:42:ac:1f:00:0a" }
+      ],
+      "compose": {
+        "build": "./images/server",
+        "profile": "core",
+        "privileged": true,
+        "restart": "unless-stopped",
+        "volumes": [
+          "./outputs:/outputs",
+          "opencode_data:/root/.opencode",
+          "postgres_data:/var/lib/postgresql",
+          "./.env:/etc/default/lab-env:ro",
+          "auto_responder_ssh_keys:/root/.ssh_auto_responder:ro"
+        ],
+        "environment": {
+          "RUN_ID": "${RUN_ID}",
+          "OPENCODE_API_KEY": "${OPENCODE_API_KEY}",
+          "LAB_PASSWORD": "${LAB_PASSWORD}",
+          "LOGIN_USER": "${LOGIN_USER:-admin}",
+          "LOGIN_PASSWORD": "${LOGIN_PASSWORD:-admin}"
+        },
+        "cap_add": ["NET_ADMIN", "NET_RAW"],
+        "depends_on": {
+          "lab_router": { "condition": "service_healthy" }
+        },
+        "healthcheck": {
+          "test": ["CMD-SHELL", "curl -sf http://127.0.0.1:80 >/dev/null && pg_isready -q || exit 1"],
+          "interval": "5s",
+          "timeout": "3s",
+          "retries": 20
+        }
+      }
+    },
+    {
+      "name": "lab_dashboard",
+      "image": "lab/dashboard:latest",
+      "dual_homed": true,
+      "networks": [
+        { "name": "net_a", "ipv4": "172.30.0.20", "mac_address": "02:42:ac:1e:00:14" },
+        { "name": "net_b", "ipv4": "172.31.0.20", "mac_address": "02:42:ac:1f:00:14" }
+      ],
+      "compose": {
+        "build": "./images/dashboard",
+        "profile": "core",
+        "restart": "unless-stopped",
+        "ports": ["8080:8080"],
+        "volumes": [
+          "./outputs:/outputs:ro",
+          "/var/run/docker.sock:/var/run/docker.sock:ro"
+        ],
+        "depends_on": {
+          "lab_router": { "condition": "service_healthy" },
+          "lab_server": { "condition": "service_healthy" },
+          "lab_compromised": { "condition": "service_healthy" }
+        },
+        "healthcheck": {
+          "test": ["CMD", "curl", "-sf", "http://127.0.0.1:8080/api/health"],
+          "interval": "10s",
+          "timeout": "3s",
+          "retries": 5
+        }
+      }
+    },
+    {
+      "name": "lab_slips_defender",
+      "image": "lab/slips_defender:latest",
+      "dual_homed": true,
+      "networks": [
+        { "name": "net_a", "ipv4": "172.30.0.30" },
+        { "name": "net_b", "ipv4": "172.31.0.30" }
+      ],
+      "compose": {
+        "build": "./images/slips_defender",
+        "profile": "defender",
+        "restart": "unless-stopped",
+        "volumes": [
+          "./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset",
+          "./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output",
+          "./outputs:/outputs",
+          "./images/slips_defender:/opt/lab",
+          "./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml",
+          "./images/slips_defender/local.zeek:/StratosphereLinuxIPS/config/local.zeek",
+          "./images/slips_defender/__load__.zeek:/StratosphereLinuxIPS/__load__.zeek",
+          "slips_redis_data:/var/lib/redis",
+          "slips_ti_data:/StratosphereLinuxIPS/modules/threat_intelligence/remote_data_files",
+          "auto_responder_ssh_keys:/root/.ssh"
+        ],
+        "environment": {
+          "RUN_ID": "${RUN_ID}",
+          "DEFENDER_PORT": "${DEFENDER_PORT:-8000}",
+          "PLANNER_PORT": "${PLANNER_PORT:-1654}",
+          "PLANNER_URL": "${PLANNER_URL:-http://127.0.0.1:8000/plan}",
+          "OPENCODE_TIMEOUT": "${OPENCODE_TIMEOUT:-1200}",
+          "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+          "OPENAI_BASE_URL": "${OPENAI_BASE_URL}",
+          "LLM_MODEL": "${LLM_MODEL:-gpt-4o-mini}",
+          "LAB_PASSWORD": "${LAB_PASSWORD}",
+          "OPENCODE_API_KEY": "${OPENCODE_API_KEY}"
+        },
+        "cap_add": ["NET_ADMIN"],
+        "command": ["/bin/bash", "/opt/lab/slips_entrypoint.sh"],
+        "depends_on": {
+          "lab_router": { "condition": "service_healthy" }
+        },
+        "healthcheck": {
+          "test": ["CMD-SHELL", "curl -sf http://127.0.0.1:${DEFENDER_PORT:-8000}/health >/dev/null"],
+          "interval": "5s",
+          "timeout": "3s",
+          "retries": 30
+        }
+      }
+    }
+  ],
+  "router": {
+    "name": "lab_router",
+    "firewall": {
+      "default_forward_policy": "DROP",
+      "logging": true,
+      "rules": [
+        {
+          "name": "icmp_a_to_b",
+          "action": "ACCEPT",
+          "src": "172.30.0.0/24",
+          "dst": "172.31.0.0/24",
+          "proto": "icmp"
+        },
+        {
+          "name": "web_from_a",
+          "action": "ACCEPT",
+          "src": "172.30.0.0/24",
+          "dst": "172.31.0.10/32",
+          "proto": "tcp",
+          "dport": 80
+        },
+        {
+          "name": "tls_from_a",
+          "action": "ACCEPT",
+          "src": "172.30.0.0/24",
+          "dst": "172.31.0.10/32",
+          "proto": "tcp",
+          "dport": 443
+        },
+        {
+          "name": "established_back",
+          "action": "ACCEPT",
+          "src": "172.31.0.0/24",
+          "dst": "172.30.0.0/24",
+          "proto": "tcp",
+          "state": "RELATED,ESTABLISHED"
+        }
+      ]
+    }
+  }
+}

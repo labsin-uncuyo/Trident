@@ -97,15 +97,22 @@ runuser -u postgres -- psql -d labdb -c "CREATE TABLE IF NOT EXISTS events (id s
 # Start nginx early so healthcheck passes during database loading
 systemctl start nginx
 
-# Ensure hosts on net_a are reachable through router (do this BEFORE database loading)
-ip route replace blackhole 172.30.0.254/32 || true
-ip route replace blackhole 172.31.0.254/32 || true
-ip route replace 172.30.0.0/24 via 172.31.0.1 || true
-ip route replace default via 172.31.0.1 dev eth0 || true
+# Ensure hosts on net_a are reachable through router (do this BEFORE database loading).
+# IPs injected by IaC builder; defaults preserve standalone compatibility.
+: "${ROUTER_IP:=172.31.0.1}"
+: "${GATEWAY_IP:=172.31.0.254}"
+: "${NET_A_SUBNET:=172.30.0.0/24}"
+: "${NET_A_GATEWAY:=172.30.0.254}"
 
-# Add route for simulated exfiltration IP (for data exfiltration simulation)
-# Traffic to 137.184.126.86 will be routed through the router for DNAT
-ip route add 137.184.126.86 via 172.31.0.1 dev eth0 2>/dev/null || true
+ip route replace blackhole "${GATEWAY_IP}" || true
+ip route replace blackhole "${NET_A_GATEWAY}" || true
+ip route replace "${NET_A_SUBNET}" via "${ROUTER_IP}" || true
+ip route replace default via "${ROUTER_IP}" dev eth0 || true
+
+# Route simulated exfiltration target through router if EXFIL_IP is configured.
+if [ -n "${EXFIL_IP:-}" ]; then
+    ip route add "${EXFIL_IP}" via "${ROUTER_IP}" dev eth0 2>/dev/null || true
+fi
 
 # Load employee database if not already loaded (check if employee table has data)
 employee_count=$(runuser -u postgres -- psql -d labdb -tAc "SELECT COUNT(*) FROM employee;" 2>/dev/null || echo "0")
@@ -145,7 +152,7 @@ TCPDUMP_PID=$!
 trap 'kill "${TCPDUMP_PID}" >/dev/null 2>&1 || true; kill "${OPENCODE_PID}" >/dev/null 2>&1 || true' EXIT
 
 # Re-assert default route in case container networking reset it.
-ip route replace default via 172.31.0.1 dev eth0 || true
+ip route replace default via "${ROUTER_IP:-172.31.0.1}" dev eth0 || true
 
 # Start OpenCode HTTP server for remote API access (used by auto_responder)
 opencode_log="/var/log/opencode-serve.log"

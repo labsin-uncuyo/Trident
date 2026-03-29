@@ -5,8 +5,8 @@ outputs/
 *.pcap
 *.pcapng
 .env
-configs/aracne_lab/.env
 configs/**/.env
+docker-compose.yml
 
 # Python cache files
 __pycache__/
@@ -39,6 +39,9 @@ images/server/employees_data_large.sql
 exfil_experiment_output_*/
 flask_brute_experiment_output/
 photorec.se*
+experiments*
+
+scripts/db_admin_experiment*
 
 # Test scripts
 test_opencode_*.py
@@ -52,3 +55,5 @@ test_opencode_*.exp
 
 # External repositories
 external/
+
+CLAUDE.md

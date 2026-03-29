@@ -87,11 +87,17 @@ if [ -f /root/.ssh_auto_responder/id_rsa_auto_responder.pub ]; then
     fi
 fi
 
-# Ensure the compromised host routes traffic through the router
-ip route replace blackhole 172.30.0.254/32 || true
-ip route replace blackhole 172.31.0.254/32 || true
-ip route replace 172.31.0.0/24 via 172.30.0.1 || true
-ip route replace default via 172.30.0.1 dev eth0 || true
+# Ensure the compromised host routes traffic through the router.
+# IPs injected by IaC builder; defaults preserve standalone compatibility.
+: "${ROUTER_IP:=172.30.0.1}"
+: "${GATEWAY_IP:=172.30.0.254}"
+: "${NET_B_SUBNET:=172.31.0.0/24}"
+: "${NET_B_GATEWAY:=172.31.0.254}"
+
+ip route replace blackhole "${GATEWAY_IP}" || true
+ip route replace blackhole "${NET_B_GATEWAY}" || true
+ip route replace "${NET_B_SUBNET}" via "${ROUTER_IP}" || true
+ip route replace default via "${ROUTER_IP}" dev eth0 || true
 
 # Enable bash history for labuser to track commands
 echo 'HISTFILE=/home/labuser/.bash_history' >> /home/labuser/.bashrc
@@ -116,7 +122,7 @@ chmod 600 /home/labuser/.ssh/config
 /usr/sbin/sshd
 
 # Re-assert default route in case container networking reset it.
-ip route replace default via 172.30.0.1 dev eth0 || true
+ip route replace default via "${ROUTER_IP:-172.30.0.1}" dev eth0 || true
 
 # Start OpenCode HTTP server for remote API access (used by auto_responder)
 opencode_log="/var/log/opencode-serve.log"

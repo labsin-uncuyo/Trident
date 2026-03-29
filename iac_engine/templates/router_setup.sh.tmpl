@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+set -eu
+
+sysctl -w net.ipv4.ip_forward=1
+
+iptables -F FORWARD
+
+{{IPTABLES_RULES}}
+
+{{TCPDUMP_CMD}}
+
+{{SERVICES}}
+
+exec tail -f /dev/null

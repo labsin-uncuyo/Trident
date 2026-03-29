@@ -1,241 +1,340 @@
+version: "3.8"
 services:
-  router:
-    build: ./images/router
-    image: lab/router:latest
-    container_name: lab_router
+  lab_router:
+    build: "./images/router"
+    image: "lab/router:latest"
+    container_name: "lab_router"
     profiles:
-      - core
+      - "core"
     privileged: true
-    environment:
-      - RUN_ID=${RUN_ID}
-    volumes:
-      - ./outputs:/outputs
     networks:
-      lab_net_a:
-        ipv4_address: 172.30.0.1
-      lab_net_b:
-        ipv4_address: 172.31.0.1
-      lab_egress:
-        ipv4_address: 172.32.0.1
-    healthcheck:
-      test: ["CMD-SHELL", "sysctl net.ipv4.ip_forward | grep -q ' = 1'"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
-
-  slips_defender:
-    build: ./images/slips_defender
-    image: lab/slips_defender:latest
-    container_name: lab_slips_defender
-    profiles:
-      - defender
+      net_a:
+        ipv4_address: "172.30.0.1"
+        mac_address: "02:42:ac:1e:00:01"
+      net_b:
+        ipv4_address: "172.31.0.1"
+        mac_address: "02:42:ac:1f:00:01"
+      egress:
+        ipv4_address: "172.32.0.1"
+        mac_address: "02:42:ac:20:00:01"
     environment:
-      - RUN_ID=${RUN_ID}
-      - DEFENDER_PORT=${DEFENDER_PORT:-8000}
-      - PLANNER_PORT=${PLANNER_PORT:-1654}
-      - PLANNER_URL=${PLANNER_URL:-http://127.0.0.1:8000/plan}
-      - OPENCODE_TIMEOUT=${OPENCODE_TIMEOUT:-1200}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
-      - LAB_PASSWORD=${LAB_PASSWORD}
-      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      LAB_ROUTER_IP: "172.30.0.1"
+      LAB_ROUTER_NET_A_IP: "172.30.0.1"
+      LAB_ROUTER_NET_B_IP: "172.31.0.1"
+      LAB_ROUTER_EGRESS_IP: "172.32.0.1"
+      LAB_COMPROMISED_IP: "172.30.0.10"
+      LAB_SERVER_IP: "172.31.0.10"
+      LAB_DASHBOARD_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_A_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_B_IP: "172.31.0.20"
+      LAB_SLIPS_DEFENDER_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_A_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_B_IP: "172.31.0.30"
+      ROUTER_IP: "172.30.0.1"
+      GATEWAY_IP: "172.30.0.254"
+      NET_A_SUBNET: "172.30.0.0/24"
+      NET_A_GATEWAY: "172.30.0.254"
+      NET_B_SUBNET: "172.31.0.0/24"
+      NET_B_GATEWAY: "172.31.0.254"
+      EGRESS_SUBNET: "172.32.0.0/24"
+      EGRESS_GATEWAY: "172.32.0.254"
+      RUN_ID: "${RUN_ID}"
+    dns:
+      - "172.30.0.1"
     volumes:
-      - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
-      - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
-      - ./outputs:/outputs
-      - ./images/slips_defender:/opt/lab
-      - ./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml
-      - ./images/slips_defender/local.zeek:/StratosphereLinuxIPS/config/local.zeek
-      - ./images/slips_defender/__load__.zeek:/StratosphereLinuxIPS/__load__.zeek
-      - slips_redis_data:/var/lib/redis
-      - slips_ti_data:/StratosphereLinuxIPS/modules/threat_intelligence/remote_data_files
-      - auto_responder_ssh_keys:/root/.ssh
-    networks:
-      lab_net_a:
-        ipv4_address: 172.30.0.30
-      lab_net_b:
-        ipv4_address: 172.31.0.30
+      - "./outputs:/outputs"
     cap_add:
-      - NET_ADMIN
-    command: ["/bin/bash", "/opt/lab/slips_entrypoint.sh"]
-    restart: unless-stopped
-    depends_on:
-      router:
-        condition: service_healthy
+      - "NET_ADMIN"
+      - "NET_RAW"
+    restart: "unless-stopped"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:${DEFENDER_PORT:-8000}/health >/dev/null"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  compromised:
-    build: ./images/compromised
-    image: lab/compromised:latest
-    container_name: lab_compromised
+      test:
+        - "CMD-SHELL"
+        - "sysctl net.ipv4.ip_forward | grep -q ' = 1'"
+      interval: "5s"
+      timeout: "3s"
+      retries: 20
+  lab_compromised:
+    build: "./images/compromised"
+    image: "lab/compromised:latest"
+    container_name: "lab_compromised"
+    profiles:
+      - "core"
     init: true
-    profiles:
-      - core
-    environment:
-      - LAB_PASSWORD=${LAB_PASSWORD}
-      - RUN_ID=${RUN_ID}
-      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL}
-    volumes:
-      - ./outputs:/outputs
-      - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro
-      - auto_responder_ssh_keys:/root/.ssh_auto_responder:ro
     networks:
-      lab_net_a:
-        ipv4_address: 172.30.0.10
+      net_a:
+        ipv4_address: "172.30.0.10"
+        mac_address: "02:42:ac:1e:00:0a"
+    environment:
+      LAB_ROUTER_IP: "172.30.0.1"
+      LAB_ROUTER_NET_A_IP: "172.30.0.1"
+      LAB_ROUTER_NET_B_IP: "172.31.0.1"
+      LAB_ROUTER_EGRESS_IP: "172.32.0.1"
+      LAB_COMPROMISED_IP: "172.30.0.10"
+      LAB_SERVER_IP: "172.31.0.10"
+      LAB_DASHBOARD_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_A_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_B_IP: "172.31.0.20"
+      LAB_SLIPS_DEFENDER_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_A_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_B_IP: "172.31.0.30"
+      ROUTER_IP: "172.30.0.1"
+      GATEWAY_IP: "172.30.0.254"
+      NET_A_SUBNET: "172.30.0.0/24"
+      NET_A_GATEWAY: "172.30.0.254"
+      NET_B_SUBNET: "172.31.0.0/24"
+      NET_B_GATEWAY: "172.31.0.254"
+      EGRESS_SUBNET: "172.32.0.0/24"
+      EGRESS_GATEWAY: "172.32.0.254"
+      LAB_PASSWORD: "${LAB_PASSWORD}"
+      RUN_ID: "${RUN_ID}"
+      OPENCODE_API_KEY: "${OPENCODE_API_KEY}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+      LLM_MODEL: "${LLM_MODEL}"
     dns:
-      - 172.30.0.1
-    depends_on:
-      server:
-        condition: service_healthy
-      router:
-        condition: service_healthy
-    restart: unless-stopped
+      - "172.30.0.1"
+    volumes:
+      - "./outputs:/outputs"
+      - "./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro"
+      - "auto_responder_ssh_keys:/root/.ssh_auto_responder:ro"
     cap_add:
-      - NET_ADMIN
+      - "NET_ADMIN"
+    restart: "unless-stopped"
+    depends_on:
+      lab_server:
+        condition: "service_healthy"
+      lab_router:
+        condition: "service_healthy"
     healthcheck:
-      test: ["CMD-SHELL", "ss -ltn | grep -q ':22'"]
-      interval: 5s
-      timeout: 3s
+      test:
+        - "CMD-SHELL"
+        - "ss -ltn | grep -q ':22'"
+      interval: "5s"
+      timeout: "3s"
       retries: 20
-
- 
-
-  server:
-    build: ./images/server
-    image: lab/server:latest
-    container_name: lab_server
+  lab_server:
+    build: "./images/server"
+    image: "lab/server:latest"
+    container_name: "lab_server"
     profiles:
-      - core
+      - "core"
     privileged: true
-    environment:
-      - RUN_ID=${RUN_ID}
-      - OPENCODE_API_KEY=${OPENCODE_API_KEY}
-      - LAB_PASSWORD=${LAB_PASSWORD}
-      - LOGIN_USER=${LOGIN_USER:-admin}
-      - LOGIN_PASSWORD=${LOGIN_PASSWORD:-admin}
-    volumes:
-      - ./outputs:/outputs
-      - opencode_data:/root/.opencode
-      - postgres_data:/var/lib/postgresql
-      - ./.env:/etc/default/lab-env:ro
-      - auto_responder_ssh_keys:/root/.ssh_auto_responder:ro
     networks:
-      lab_net_b:
-        ipv4_address: 172.31.0.10
+      net_b:
+        ipv4_address: "172.31.0.10"
+        mac_address: "02:42:ac:1f:00:0a"
+    environment:
+      LAB_ROUTER_IP: "172.30.0.1"
+      LAB_ROUTER_NET_A_IP: "172.30.0.1"
+      LAB_ROUTER_NET_B_IP: "172.31.0.1"
+      LAB_ROUTER_EGRESS_IP: "172.32.0.1"
+      LAB_COMPROMISED_IP: "172.30.0.10"
+      LAB_SERVER_IP: "172.31.0.10"
+      LAB_DASHBOARD_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_A_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_B_IP: "172.31.0.20"
+      LAB_SLIPS_DEFENDER_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_A_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_B_IP: "172.31.0.30"
+      ROUTER_IP: "172.31.0.1"
+      GATEWAY_IP: "172.31.0.254"
+      NET_A_SUBNET: "172.30.0.0/24"
+      NET_A_GATEWAY: "172.30.0.254"
+      NET_B_SUBNET: "172.31.0.0/24"
+      NET_B_GATEWAY: "172.31.0.254"
+      EGRESS_SUBNET: "172.32.0.0/24"
+      EGRESS_GATEWAY: "172.32.0.254"
+      RUN_ID: "${RUN_ID}"
+      OPENCODE_API_KEY: "${OPENCODE_API_KEY}"
+      LAB_PASSWORD: "${LAB_PASSWORD}"
+      LOGIN_USER: "${LOGIN_USER:-admin}"
+      LOGIN_PASSWORD: "${LOGIN_PASSWORD:-admin}"
     dns:
-      - 172.31.0.1
-    depends_on:
-      router:
-        condition: service_healthy
-    restart: unless-stopped
+      - "172.31.0.1"
+    volumes:
+      - "./outputs:/outputs"
+      - "opencode_data:/root/.opencode"
+      - "postgres_data:/var/lib/postgresql"
+      - "./.env:/etc/default/lab-env:ro"
+      - "auto_responder_ssh_keys:/root/.ssh_auto_responder:ro"
     cap_add:
-      - NET_ADMIN
-      - NET_RAW
+      - "NET_ADMIN"
+      - "NET_RAW"
+    restart: "unless-stopped"
+    depends_on:
+      lab_router:
+        condition: "service_healthy"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:80 >/dev/null && pg_isready -q || exit 1"]
-      interval: 5s
-      timeout: 3s
+      test:
+        - "CMD-SHELL"
+        - "curl -sf http://127.0.0.1:80 >/dev/null && pg_isready -q || exit 1"
+      interval: "5s"
+      timeout: "3s"
       retries: 20
-
-  aracne_attacker:
-    build:
-      context: .
-      dockerfile: images/aracne/Dockerfile
-    image: lab/aracne:latest
-    container_name: lab_aracne_attacker
+  lab_dashboard:
+    build: "./images/dashboard"
+    image: "lab/dashboard:latest"
+    container_name: "lab_dashboard"
     profiles:
-      - attackers
-    env_file:
-      - ./configs/aracne_lab/.env
-    environment:
-      - RUN_ID=${RUN_ID}
-      - GOAL=${GOAL:-Create the file /home/labuser/aracne_was_here.txt containing 'aracne ok' and then read it back to confirm.}
-      - SSH_HOST=172.30.0.10
-      - SSH_PORT=22
-    volumes:
-      - ./outputs/${RUN_ID}/aracne:/logs
-      - ./configs/aracne_lab/config:/agent/config:ro
-      - ./configs/aracne_lab/.env:/agent/.env:ro
-      - ./configs/aracne_lab/start_lab.sh:/agent/start_lab.sh:ro
+      - "core"
     networks:
-      lab_net_b:
-        ipv4_address: 172.31.0.50
+      net_a:
+        ipv4_address: "172.30.0.20"
+        mac_address: "02:42:ac:1e:00:14"
+      net_b:
+        ipv4_address: "172.31.0.20"
+        mac_address: "02:42:ac:1f:00:14"
+    environment:
+      LAB_ROUTER_IP: "172.30.0.1"
+      LAB_ROUTER_NET_A_IP: "172.30.0.1"
+      LAB_ROUTER_NET_B_IP: "172.31.0.1"
+      LAB_ROUTER_EGRESS_IP: "172.32.0.1"
+      LAB_COMPROMISED_IP: "172.30.0.10"
+      LAB_SERVER_IP: "172.31.0.10"
+      LAB_DASHBOARD_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_A_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_B_IP: "172.31.0.20"
+      LAB_SLIPS_DEFENDER_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_A_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_B_IP: "172.31.0.30"
+      ROUTER_IP: "172.30.0.1"
+      GATEWAY_IP: "172.30.0.254"
+      NET_A_SUBNET: "172.30.0.0/24"
+      NET_A_GATEWAY: "172.30.0.254"
+      NET_B_SUBNET: "172.31.0.0/24"
+      NET_B_GATEWAY: "172.31.0.254"
+      EGRESS_SUBNET: "172.32.0.0/24"
+      EGRESS_GATEWAY: "172.32.0.254"
     dns:
-      - 172.31.0.1
-    cap_add:
-      - NET_ADMIN
-    depends_on:
-      compromised:
-        condition: service_healthy
-    entrypoint: ["/bin/bash", "/agent/start_lab.sh"]
-
-  dashboard:
-    build: ./images/dashboard
-    image: lab/dashboard:latest
-    container_name: lab_dashboard
-    profiles:
-      - core
+      - "172.30.0.1"
+    volumes:
+      - "./outputs:/outputs:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
     ports:
       - "8080:8080"
-    volumes:
-      - ./outputs:/outputs:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      lab_net_a:
-        ipv4_address: 172.30.0.20
-      lab_net_b:
-        ipv4_address: 172.31.0.20
+    restart: "unless-stopped"
     depends_on:
-      router:
-        condition: service_healthy
-      server:
-        condition: service_healthy
-      compromised:
-        condition: service_healthy
+      lab_router:
+        condition: "service_healthy"
+      lab_server:
+        condition: "service_healthy"
+      lab_compromised:
+        condition: "service_healthy"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/api/health"]
-      interval: 10s
-      timeout: 3s
+      test:
+        - "CMD"
+        - "curl"
+        - "-sf"
+        - "http://127.0.0.1:8080/api/health"
+      interval: "10s"
+      timeout: "3s"
       retries: 5
-    restart: unless-stopped
-
+  lab_slips_defender:
+    build: "./images/slips_defender"
+    image: "lab/slips_defender:latest"
+    container_name: "lab_slips_defender"
+    profiles:
+      - "defender"
+    networks:
+      net_a:
+        ipv4_address: "172.30.0.30"
+      net_b:
+        ipv4_address: "172.31.0.30"
+    environment:
+      LAB_ROUTER_IP: "172.30.0.1"
+      LAB_ROUTER_NET_A_IP: "172.30.0.1"
+      LAB_ROUTER_NET_B_IP: "172.31.0.1"
+      LAB_ROUTER_EGRESS_IP: "172.32.0.1"
+      LAB_COMPROMISED_IP: "172.30.0.10"
+      LAB_SERVER_IP: "172.31.0.10"
+      LAB_DASHBOARD_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_A_IP: "172.30.0.20"
+      LAB_DASHBOARD_NET_B_IP: "172.31.0.20"
+      LAB_SLIPS_DEFENDER_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_A_IP: "172.30.0.30"
+      LAB_SLIPS_DEFENDER_NET_B_IP: "172.31.0.30"
+      ROUTER_IP: "172.30.0.1"
+      GATEWAY_IP: "172.30.0.254"
+      NET_A_SUBNET: "172.30.0.0/24"
+      NET_A_GATEWAY: "172.30.0.254"
+      NET_B_SUBNET: "172.31.0.0/24"
+      NET_B_GATEWAY: "172.31.0.254"
+      EGRESS_SUBNET: "172.32.0.0/24"
+      EGRESS_GATEWAY: "172.32.0.254"
+      RUN_ID: "${RUN_ID}"
+      DEFENDER_PORT: "${DEFENDER_PORT:-8000}"
+      PLANNER_PORT: "${PLANNER_PORT:-1654}"
+      PLANNER_URL: "${PLANNER_URL:-http://127.0.0.1:8000/plan}"
+      OPENCODE_TIMEOUT: "${OPENCODE_TIMEOUT:-1200}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+      LLM_MODEL: "${LLM_MODEL:-gpt-4o-mini}"
+      LAB_PASSWORD: "${LAB_PASSWORD}"
+      OPENCODE_API_KEY: "${OPENCODE_API_KEY}"
+    dns:
+      - "172.30.0.1"
+    volumes:
+      - "./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset"
+      - "./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output"
+      - "./outputs:/outputs"
+      - "./images/slips_defender:/opt/lab"
+      - "./images/slips_defender/slips.yaml:/StratosphereLinuxIPS/config/slips.yaml"
+      - "./images/slips_defender/local.zeek:/StratosphereLinuxIPS/config/local.zeek"
+      - "./images/slips_defender/__load__.zeek:/StratosphereLinuxIPS/__load__.zeek"
+      - "slips_redis_data:/var/lib/redis"
+      - "slips_ti_data:/StratosphereLinuxIPS/modules/threat_intelligence/remote_data_files"
+      - "auto_responder_ssh_keys:/root/.ssh"
+    cap_add:
+      - "NET_ADMIN"
+    restart: "unless-stopped"
+    depends_on:
+      lab_router:
+        condition: "service_healthy"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "curl -sf http://127.0.0.1:${DEFENDER_PORT:-8000}/health >/dev/null"
+      interval: "5s"
+      timeout: "3s"
+      retries: 30
+    command:
+      - "/bin/bash"
+      - "/opt/lab/slips_entrypoint.sh"
+networks:
+  net_a:
+    name: "net_a"
+    driver: "bridge"
+    ipam:
+      config:
+        -
+          subnet: "172.30.0.0/24"
+          gateway: "172.30.0.254"
+    internal: true
+  net_b:
+    name: "net_b"
+    driver: "bridge"
+    ipam:
+      config:
+        -
+          subnet: "172.31.0.0/24"
+          gateway: "172.31.0.254"
+    internal: true
+  egress:
+    name: "egress"
+    driver: "bridge"
+    ipam:
+      config:
+        -
+          subnet: "172.32.0.0/24"
+          gateway: "172.32.0.254"
 volumes:
   opencode_data:
-  postgres_data:
-  slips_redis_data:
-  slips_ti_data:
-  auto_responder_ssh_keys:
 
-networks:
-  lab_net_a:
-    name: lab_net_a
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
-          gateway: 172.30.0.254
-  lab_net_b:
-    name: lab_net_b
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.31.0.0/24
-          gateway: 172.31.0.254
-  lab_egress:
-    name: lab_egress
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.32.0.0/24
-          gateway: 172.32.0.254
+  postgres_data:
+
+  slips_redis_data:
+
+  slips_ti_data:
+
+  auto_responder_ssh_keys:
