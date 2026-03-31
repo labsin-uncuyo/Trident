@@ -704,6 +704,11 @@ ul {
 .affiliations {
     margin-top: 3rem;
     text-align: center;
+    position: relative;
+    z-index: 2;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
 }
 
 .affiliation-links {
@@ -712,6 +717,13 @@ ul {
     justify-content: center;
     flex-wrap: wrap;
     margin-top: 1.5rem;
+    position: relative;
+    z-index: 2;
+}
+
+.page-end-spacer {
+    height: 160px;
+    width: 100%;
 }
 
 /* ============================================

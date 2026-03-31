@@ -81,52 +81,6 @@ function checkAffiliationsSection() {
     }
 }
 
-// Force the bottom content to appear once the Team section is reached
-let tailContentRevealed = false;
-function revealTailContent() {
-    if (tailContentRevealed) {
-        return;
-    }
-
-    tailContentRevealed = true;
-
-    const teamSection = document.querySelector('#team');
-    if (teamSection) {
-        teamSection.querySelectorAll('[data-aos]').forEach(el => {
-            el.classList.add('aos-animate');
-        });
-    }
-
-    const affiliationsEl = document.querySelector('.affiliations');
-    if (affiliationsEl) {
-        affiliationsEl.classList.add('aos-animate');
-    }
-
-    if (typeof AOS !== 'undefined') {
-        AOS.refresh();
-    }
-
-    const scrollTarget = document.scrollingElement || document.documentElement;
-    const bottom = scrollTarget.scrollHeight;
-    window.scrollTo({ top: bottom, behavior: 'smooth' });
-}
-
-const teamSection = document.querySelector('#team');
-if (teamSection) {
-    const teamObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                revealTailContent();
-                teamObserver.disconnect();
-            }
-        });
-    }, {
-        threshold: 0.25
-    });
-
-    teamObserver.observe(teamSection);
-}
-
 // Check affiliations section on scroll
 window.addEventListener('scroll', function() {
     checkAffiliationsSection();
