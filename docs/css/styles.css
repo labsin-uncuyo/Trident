@@ -52,6 +52,11 @@ body {
     overflow-x: hidden;
 }
 
+main#main-content {
+    display: block;
+    padding-bottom: 6rem;
+}
+
 /* Skip Link for Accessibility */
 .skip-link {
     position: absolute;
