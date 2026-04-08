@@ -38,6 +38,20 @@ DUPLICATE_DETECTION_WINDOW=300               # Dedup window (seconds)
 MAX_EXECUTION_RETRIES=3                      # Retry attempts
 ```
 
+### Langfuse tracing for full planner LLM input
+
+To capture the exact planner prompt/messages and model output in Langfuse, set:
+
+```bash
+LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=<your_public_key>
+LANGFUSE_SECRET_KEY=<your_secret_key>
+LANGFUSE_HOST=https://cloud.langfuse.com   # Optional for self-hosting
+LANGFUSE_TRACE_NAME=incident_planner        # Optional trace/run name
+```
+
+When configured, every `/plan` call is traced with full LLM input and output payloads.
+
 SSH targets:
 - **Server**: `172.31.0.10` (victim/protected systems)
 - **Compromised**: `172.30.0.10` (attacker/investigated systems)
