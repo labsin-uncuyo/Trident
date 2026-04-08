@@ -80,7 +80,7 @@ defend:
 
 not_defend:
 	@echo "[not_defend] Stopping defender components (containers stay present)"
-	$(COMPOSE) --profile defender stop slips_defender switch || true
+	$(COMPOSE) --profile defender stop slips_defender|| true
 
 clean:
 	$(COMPOSE) down --rmi all --volumes --remove-orphans

@@ -18,9 +18,9 @@ Compose: `docker-compose.yml`
 
 ## Networks and routing
 Three Docker bridge networks are created:
-- `lab_net_a` — 172.30.0.0/24 (gateway 172.30.0.254)
-- `lab_net_b` — 172.31.0.0/24 (gateway 172.31.0.254)
-- `lab_egress` — 172.32.0.0/24 (gateway 172.32.0.254, **router-only**)
+- `lab_net_a` -- 172.30.0.0/24 (gateway 172.30.0.254)
+- `lab_net_b` -- 172.31.0.0/24 (gateway 172.31.0.254)
+- `lab_egress` -- 172.32.0.0/24 (gateway 172.32.0.254, **router-only**)
 
 Note: Docker assigns the `.254` gateway to the bridge network itself. The lab containers then **override their default routes** to point at the router (`.1`) so all traffic is forced through `lab_router` and captured.
 
@@ -35,25 +35,39 @@ Default routes:
 
 Note: `lab_egress` is attached only to `lab_router`. Lab hosts do not have routes to `172.32.0.0/24`, and the router drops any attempts to access that subnet from the lab networks.
 
-Router forwarding and NAT:
-- Enables `net.ipv4.ip_forward=1`.
-- Installs iptables rules to allow forward between the two networks and to support host access via router IPs (DNAT/SNAT).
-- Adds a DNAT rule that maps `137.184.126.86:443` to `172.31.0.1:443` for simulated exfiltration capture.
+## Traffic routing
 
-Router entrypoint: `images/router/entrypoint.sh`
+`lab_compromised` and `lab_server` override their default routes on startup to point at `lab_router` (172.30.0.1 and 172.31.0.1 respectively). As a result, every packet between the two subnets crosses the router, where `tcpdump` captures it. There is no path between the hosts that bypasses the router.
 
-Host access points (via router DNAT rules):
-- SSH to compromised: `172.30.0.1:22` → `172.30.0.10:22`
-- HTTP to server: `172.31.0.1:80` → `172.31.0.10:80`
-- PostgreSQL to server: `172.31.0.1:5432` → `172.31.0.10:5432`
+The router enables `net.ipv4.ip_forward=1` and installs iptables rules to allow forwarding between the two lab networks.
 
-## Traffic capture (PCAPs)
-- **Router PCAPs (rotated)**: `tcpdump -G` rotates files every 30 seconds into `outputs/<RUN_ID>/pcaps/router_%Y-%m-%d_%H-%M-%S.pcap`.
-- **Server PCAP (continuous)**: `lab_server` runs `tcpdump` on `eth0` to `outputs/<RUN_ID>/pcaps/server.pcap`.
+### DNAT port forwards
 
-Router and server entrypoints:
-- `images/router/entrypoint.sh`
-- `images/server/entrypoint.sh`
+Host-accessible DNAT rules on the router let you reach lab services without entering the lab networks directly:
+
+| Host connects to | Reaches |
+|---|---|
+| 172.30.0.1:22 | lab_compromised:22 (SSH) |
+| 172.31.0.1:80 | lab_server:80 (HTTP) |
+| 172.31.0.1:5432 | lab_server:5432 (PostgreSQL) |
+
+Each DNAT rule has a corresponding SNAT rule so that reply packets are routed back through the router rather than directly to the Docker bridge gateway.
+
+### Exfiltration simulation
+
+The router also installs a DNAT rule that redirects traffic destined for `137.184.126.86:443` to itself (`172.31.0.1:443`), where a `netcat` listener captures incoming data to `/tmp/exfil/labdb_dump.sql`. This supports simulated data exfiltration scenarios without requiring real external infrastructure -- PCAPs will show connections to a seemingly public IP while the data is captured locally on the router.
+
+## PCAP capture
+
+Two capture modes run simultaneously:
+
+- **Router (rotated):** `tcpdump` on the LAN-A interface (`lan_a_if`), rotating every 30 seconds into `outputs/<RUN_ID>/pcaps/router_YYYY-MM-DD_HH-MM-SS.pcap`. Captures all cross-subnet traffic and DNS queries. The interface is used instead of `any` to produce standard Ethernet-linktype PCAPs compatible with Zeek and SLIPS. Rotation interval is controlled by `PCAP_ROTATE_SECS` in `images/router/entrypoint.sh` (default 30, not wired to `.env`).
+
+- **Server (continuous):** `tcpdump` on `eth0` into `outputs/<RUN_ID>/pcaps/server.pcap`. Captures client-server flows from the server's perspective. Grows for the entire run duration.
+
+## DNS
+
+The router runs `dnsmasq`, listening on both 172.30.0.1 and 172.31.0.1. Lab containers have their DNS set to the router's address on their respective subnet (via `dns:` in `docker-compose.yml`), so all DNS queries pass through the router and appear in the PCAPs. Queries are forwarded to public resolvers (1.1.1.1, 8.8.8.8).
 
 ## RUN_ID and outputs directory creation
 `make up` sets `RUN_ID` (or generates `logs_YYYYMMDD_HHMMSS`), writes it to `outputs/.current_run`, and creates the output tree:
@@ -70,7 +84,7 @@ Makefile: `Makefile`
 Agents are optional and can run after infra is up.
 
 - **Defender (SLIPS + auto-responder)**
-  - Runs in `lab_slips_defender` on **host network**.
+  - Runs in `lab_slips_defender` on `lab_net_a`, `lab_net_b`, and `lab_egress`.
   - Reads PCAPs from `outputs/<RUN_ID>/pcaps` and writes IDS outputs to `outputs/<RUN_ID>/slips`.
   - Starts via `make defend`.
   - Compose + entrypoint: `docker-compose.yml`, `images/slips_defender/slips_entrypoint.sh`.
@@ -111,13 +125,13 @@ Notes:
 - `lab_router` is **privileged** and uses iptables.
 - `lab_server` is **privileged** and uses `NET_ADMIN` + `NET_RAW`.
 - `lab_compromised` has `NET_ADMIN` and passwordless sudo for `labuser`.
-- `lab_slips_defender` runs with `network_mode: host` and `NET_ADMIN`.
+- `lab_slips_defender` runs with `NET_ADMIN` on dedicated network interfaces.
 - No explicit egress firewalling is configured; DNS forwarding in the router points to public resolvers (1.1.1.1, 8.8.8.8).
 
-Note: **privileged** containers run with effectively all Linux capabilities (kernel‑level networking, iptables, sysctl, raw sockets). Trident uses this so the router/server can forward traffic and capture PCAPs, but it also means these containers have elevated access on the host.
+Note: **privileged** containers run with effectively all Linux capabilities (kernel-level networking, iptables, sysctl, raw sockets). Trident uses this so the router/server can forward traffic and capture PCAPs, but it also means these containers have elevated access on the host.
 
 ## Known rough edges / failure modes
-- `make verify` assumes the defender is running; for infra-only, use the README’s manual verification steps instead.
+- `make verify` assumes the defender is running; for infra-only, use the README's manual verification steps instead.
 - `lab_net_a` / `lab_net_b` subnets can conflict with existing Docker networks; resolve by removing or changing overlapping networks.
 - Containers require privileged/capabilities; rootless Docker or locked-down environments may fail to start.
 - `lab_slips_defender` uses host networking; port `DEFENDER_PORT` must be free on the host.
