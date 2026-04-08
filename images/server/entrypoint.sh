@@ -6,6 +6,7 @@ set -euo pipefail
 : "${LOGIN_PASSWORD:=admin}"
 : "${DB_USER:=labuser}"
 : "${DB_PASSWORD:=labpass}"
+OPENCODE_PID=""
 
 export LOGIN_USER
 export LOGIN_PASSWORD
@@ -107,6 +108,23 @@ ip route replace default via 172.31.0.1 dev eth0 || true
 # Traffic to 137.184.126.86 will be routed through the router for DNAT
 ip route add 137.184.126.86 via 172.31.0.1 dev eth0 2>/dev/null || true
 
+# Start OpenCode HTTP server for remote API access (used by auto_responder).
+# Start it before large database loads so readiness checks do not time out.
+opencode_log="/var/log/opencode-serve.log"
+touch "${opencode_log}"
+echo "Starting OpenCode HTTP server on 0.0.0.0:4096..."
+cd /tmp && opencode serve --hostname 0.0.0.0 --port 4096 >>"${opencode_log}" 2>&1 &
+OPENCODE_PID=$!
+echo "✅ OpenCode serve started (PID ${OPENCODE_PID})"
+
+# Fail fast if OpenCode exits immediately so systemd can restart cleanly.
+sleep 2
+if ! kill -0 "${OPENCODE_PID}" >/dev/null 2>&1; then
+    echo "❌ OpenCode exited during startup. Recent logs:"
+    tail -n 80 "${opencode_log}" || true
+    exit 1
+fi
+
 # Load employee database if not already loaded (check if employee table has data)
 employee_count=$(runuser -u postgres -- psql -d labdb -tAc "SELECT COUNT(*) FROM employee;" 2>/dev/null || echo "0")
 if [ "$employee_count" -eq 0 ]; then
@@ -146,13 +164,5 @@ trap 'kill "${TCPDUMP_PID}" >/dev/null 2>&1 || true; kill "${OPENCODE_PID}" >/de
 
 # Re-assert default route in case container networking reset it.
 ip route replace default via 172.31.0.1 dev eth0 || true
-
-# Start OpenCode HTTP server for remote API access (used by auto_responder)
-opencode_log="/var/log/opencode-serve.log"
-touch "${opencode_log}"
-echo "Starting OpenCode HTTP server on 0.0.0.0:4096..."
-cd /tmp && opencode serve --hostname 0.0.0.0 --port 4096 >>"${opencode_log}" 2>&1 &
-OPENCODE_PID=$!
-echo "✅ OpenCode serve started (PID ${OPENCODE_PID})"
 
 tail -n0 -F /var/log/nginx/access.log /var/log/nginx/error.log "${pg_log}" "${capture_log}" "${login_log}" "${opencode_log}"

@@ -5,7 +5,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "e-INFRA CZ Chat API",
       "options": {
-        "baseURL": "https://llm.ai.e-infra.cz/v1",
+        "baseURL": "{env:OPENAI_BASE_URL}",
         "apiKey": "{env:OPENCODE_API_KEY}"
       },
       "models": {

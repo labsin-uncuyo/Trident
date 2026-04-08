@@ -30,19 +30,29 @@ services:
     container_name: lab_slips_defender
     profiles:
       - defender
+    ports:
+      - "${DEFENDER_PORT:-8000}:8000"
     environment:
       - RUN_ID=${RUN_ID}
       - DEFENDER_PORT=${DEFENDER_PORT:-8000}
       - PLANNER_PORT=${PLANNER_PORT:-1654}
-      - PLANNER_URL=${PLANNER_URL:-http://127.0.0.1:8000/plan}
+      - PLANNER_URL=${PLANNER_URL:-http://127.0.0.1:1654/plan}
+      - PLANNER_REQUEST_TIMEOUT=${PLANNER_REQUEST_TIMEOUT:-45}
+      - PLANNER_REQUEST_RETRIES=${PLANNER_REQUEST_RETRIES:-2}
       - OPENCODE_TIMEOUT=${OPENCODE_TIMEOUT:-1200}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-false}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST}
+      - LANGFUSE_TRACE_NAME=${LANGFUSE_TRACE_NAME:-incident_planner}
       - LAB_PASSWORD=${LAB_PASSWORD}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
-      - OPENCODE_SERVER_HOST=${OPENCODE_SERVER_HOST:-172.31.0.1}
-      - OPENCODE_COMPROMISED_HOST=${OPENCODE_COMPROMISED_HOST:-172.30.0.1}
+      - OPENCODE_SERVER_HOST=${OPENCODE_SERVER_HOST:-172.31.0.10}
+      - OPENCODE_COMPROMISED_HOST=${OPENCODE_COMPROMISED_HOST:-172.30.0.10}
+      - PLANNER_ONLY=${PLANNER_ONLY}
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
       - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
@@ -59,8 +69,11 @@ services:
         ipv4_address: 172.30.0.30
       lab_net_b:
         ipv4_address: 172.31.0.30
+      lab_egress:
     cap_add:
       - NET_ADMIN
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: ["/bin/bash", "/opt/lab/slips_entrypoint.sh"]
     restart: unless-stopped
     depends_on:
@@ -121,6 +134,7 @@ services:
     environment:
       - RUN_ID=${RUN_ID}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LAB_PASSWORD=${LAB_PASSWORD}
       - LOGIN_USER=${LOGIN_USER:-admin}
       - LOGIN_PASSWORD=${LOGIN_PASSWORD:-admin}
@@ -187,7 +201,7 @@ services:
     profiles:
       - core
     ports:
-      - "8080:8080"
+      - "8081:8080"
     volumes:
       - ./outputs:/outputs:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro

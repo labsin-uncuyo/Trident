@@ -74,7 +74,7 @@ defend:
 	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips ./outputs/$$RUN_ID_VALUE/aracne ./outputs/$$RUN_ID_VALUE/benign_agent; \
 	opts="--profile core --profile defender"; \
 	echo "[defend] Starting defender components"; \
-	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d --no-recreate --no-build router server compromised slips_defender; \
+	RUN_ID=$$RUN_ID_VALUE $(COMPOSE) $${opts} up -d --no-build router server compromised slips_defender; \
 	echo "[defend] Setting up SSH keys for auto_responder..."; \
 	./scripts/setup_ssh_keys_host.sh
 

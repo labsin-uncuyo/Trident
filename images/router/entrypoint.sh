@@ -192,10 +192,9 @@ echo "✓ Data exfiltration listener started on port 443 (fake IP: 137.184.126.8
 file_log=/var/log/router-capture.log
 touch "${file_log}"
 
-# Rotate captures to keep SLIPS runs small and fast
-# Capture on all interfaces using 'any' to capture all traffic
-# including DNS TXT queries from compromised container AND cross-network traffic
-tcpdump -U -s 0 -i any \
+# Rotate captures to keep SLIPS runs small and fast.
+# Capture on LAN interface to produce Ethernet-linktype PCAPs (more reliable for Zeek/SLIPS than SLL2 from -i any).
+tcpdump -U -s 0 -i "${lan_a_if}" \
   -G "${PCAP_ROTATE_SECS}" \
   -w "${pcap_dir}/router_%Y-%m-%d_%H-%M-%S.pcap" \
   -Z root \

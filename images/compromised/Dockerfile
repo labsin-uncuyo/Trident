@@ -39,7 +39,7 @@ RUN apt-get update \
        # PostgreSQL client for remote database access
        postgresql-client \
        # Additional utilities
-       wget zip tar \
+       wget zip tar jq \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -s /bin/bash labuser \
     && mkdir -p /var/run/sshd \
