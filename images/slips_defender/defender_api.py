@@ -22,10 +22,9 @@ ALERT_FILE = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
 _LOCK = threading.Lock()
 
 # LLM Configuration
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://llm.ai.e-infra.cz/v1")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL", "https://llm.ai.e-infra.cz/v1")
 LLM_API_KEY = os.getenv("OPENCODE_API_KEY", "")
-PLANNER_MODEL = "gpt-oss-120b"  # Hardcoded for /plan endpoint only
-# Note: LLM_MODEL env var is used by OpenCode execution (should remain qwen3-coder)
+PLANNER_MODEL = "gpt-oss-120b"  # Hardcoded planner model
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))
 
 app = FastAPI()
@@ -112,7 +111,10 @@ Format:
 - You are a DEFENDER. Protect systems, contain threats, preserve evidence.
 - Preserve logs for forensics - don't destroy evidence.
 - Prioritize containment when threat is active.
-- Consider both immediate containment and longer-term remediation."""
+- Consider both immediate containment and longer-term remediation.
+
+# Workflow Context
+Your incident response plan will drive the entire remediation process. The execution agent does not have access to the original alert and will rely solely on the information you provide. Ensure your analysis contains all relevant details from the alert needed to understand and resolve the incident."""
 
     user_message = f"""# Security Alert
 

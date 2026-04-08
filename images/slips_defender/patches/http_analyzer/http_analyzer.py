@@ -78,6 +78,13 @@ class HTTPAnalyzer(AsyncModule):
             "/wp-login.php", "/user", "/login.php", "/auth.php"
         }
 
+    def subscribe_to_channels(self):
+        return {
+            "new_http": self.c1,
+            "new_weird": self.c2,
+            "new_flow": self.c3,
+        }
+
     def read_configuration(self):
         conf = ConfigParser()
         self.pastebin_downloads_threshold = (

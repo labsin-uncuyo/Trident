@@ -11,10 +11,11 @@ from pathlib import Path
 DATASET_DIR = Path("/StratosphereLinuxIPS/dataset")
 OUTPUT_DIR = Path("/StratosphereLinuxIPS/output")
 RUN_ID = os.getenv("RUN_ID", "run_local")
-# Fixed cadence and behavior: no active stream snapshots, 5s poll, 60s per-PCAP timeout.
+# Fixed cadence and behavior: no active stream snapshots, 5s poll, configurable per-PCAP timeout.
 POLL_INTERVAL = 5.0
 PROCESS_ACTIVE = False
-PROCESS_TIMEOUT = 60.0
+PROCESS_TIMEOUT = float(os.getenv("SLIPS_PROCESS_TIMEOUT", "240"))
+ACTIVE_SNAPSHOT_COOLDOWN = float(os.getenv("SLIPS_ACTIVE_SNAPSHOT_COOLDOWN", "30"))
 SKIP_ACTIVE = {"router.pcap", "router_stream.pcap", "switch_stream.pcap"}
 SKIP_ACTIVE.add("server.pcap")
 SKIP_PREFIXES = ("router_stream", "switch_stream", "server_stream")
@@ -61,12 +62,53 @@ def _eligible(path: Path) -> tuple[bool, str]:
 def _process(path: Path) -> None:
     print(f"[slips-watch] processing {path.name}", flush=True)
     _write_sentinel(path, "queued")
+    process_path = path
+    converted_path: Path | None = None
+
+    # Normalize SLL/SLL2 captures (e.g., tcpdump -i any) to Ethernet pcap so
+    # downstream parsers in Slips/Zeek can consume them reliably.
+    try:
+        capinfo = subprocess.run(
+            ["capinfos", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if "Linux cooked" in capinfo.stdout:
+            converted_path = path.with_name(f"{path.stem}.ether{path.suffix}")
+            conv = subprocess.run(
+                ["editcap", "-F", "pcap", "-T", "ether", str(path), str(converted_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if conv.returncode == 0 and converted_path.exists() and converted_path.stat().st_size > 0:
+                print(
+                    f"[slips-watch] normalized {path.name} -> {converted_path.name} "
+                    f"(SLL/SLL2 to Ethernet)",
+                    flush=True,
+                )
+                process_path = converted_path
+            else:
+                print(
+                    f"[slips-watch] warning: editcap normalization failed for {path.name}: "
+                    f"{(conv.stderr or conv.stdout).strip()}",
+                    flush=True,
+                )
+    except Exception as exc:
+        print(f"[slips-watch] warning: capture normalization check failed for {path.name}: {exc}", flush=True)
+
     subprocess.run(
-        ["python3", "/StratosphereLinuxIPS/slips.py", "-f", f"dataset/{path.name}"],
+        ["python3", "/StratosphereLinuxIPS/slips.py", "-f", f"dataset/{process_path.name}"],
         cwd="/StratosphereLinuxIPS",
         timeout=PROCESS_TIMEOUT,
         check=True,
     )
+    if converted_path and converted_path.exists():
+        try:
+            converted_path.unlink()
+        except OSError:
+            pass
     _write_sentinel(path, "completed")
 
 

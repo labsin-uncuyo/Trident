@@ -28,11 +28,16 @@ RUN_ID = os.getenv("RUN_ID", "run_local")
 ALERT_FILE = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
 PROCESSED_FILE = Path("/outputs") / RUN_ID / "processed_alerts.json"
 PLANNER_URL = os.getenv("PLANNER_URL", "http://127.0.0.1:1654/plan")
+PLANNER_REQUEST_TIMEOUT = float(os.getenv("PLANNER_REQUEST_TIMEOUT", "45"))
+PLANNER_REQUEST_RETRIES = int(os.getenv("PLANNER_REQUEST_RETRIES", "2"))
 OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "600"))  # 10 minutes
 POLL_INTERVAL = float(os.getenv("AUTO_RESPONDER_INTERVAL", "5"))
 MAX_EXECUTION_RETRIES = int(os.getenv("MAX_EXECUTION_RETRIES", "3"))
 DUPLICATE_DETECTION_WINDOW = int(os.getenv("DUPLICATE_DETECTION_WINDOW", "300"))  # 5 minutes
 RETRY_DELAYS = [1, 5, 10]  # Seconds to wait between retries (1s, 5s, 10s)
+
+# Planner-only mode: skip OpenCode execution
+PLANNER_ONLY = os.getenv("PLANNER_ONLY", "").lower() in ("true", "1", "yes", "on")
 
 # OpenCode Server API configuration
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
@@ -60,10 +65,12 @@ class AutoResponder:
         # creating a brand-new one.
         self.active_sessions: Dict[str, str] = {}
 
-        self.log("INIT", "AutoResponder started (OpenCode Server API mode)", extra_data={
+        self.log("INIT", f"AutoResponder started (OpenCode Server API mode, planner-only: {PLANNER_ONLY})", extra_data={
             "config": {
                 "alert_file": str(ALERT_FILE),
                 "planner_url": PLANNER_URL,
+                "planner_request_timeout": PLANNER_REQUEST_TIMEOUT,
+                "planner_request_retries": PLANNER_REQUEST_RETRIES,
                 "poll_interval": POLL_INTERVAL,
                 "opencode_timeout": OPENCODE_TIMEOUT,
                 "server_ip": SERVER_IP,
@@ -73,11 +80,15 @@ class AutoResponder:
                 "opencode_server_port": OPENCODE_SERVER_PORT,
                 "duplicate_window": DUPLICATE_DETECTION_WINDOW,
                 "retry_delays": RETRY_DELAYS,
-                "mode": "opencode_server_api"
+                "mode": "opencode_server_api",
+                "planner_only": PLANNER_ONLY
             }
         })
 
-        print(f"[auto_responder] ✓ OpenCode Server API mode ENABLED")
+        if PLANNER_ONLY:
+            print(f"[auto_responder] ✓ PLANNER-ONLY mode ENABLED (OpenCode execution disabled)")
+        else:
+            print(f"[auto_responder] ✓ OpenCode Server API mode ENABLED")
         print(f"[auto_responder]   - Server: http://{OPENCODE_SERVER_HOST}:{OPENCODE_SERVER_PORT}")
         print(f"[auto_responder]   - Compromised: http://{OPENCODE_COMPROMISED_HOST}:{OPENCODE_SERVER_PORT}")
         print(f"[auto_responder]   - Retry delays: {RETRY_DELAYS}s (for model errors)")
@@ -413,6 +424,8 @@ class AutoResponder:
             "confidence: 1.0",
             "threat level: high",
             "threat_level: high",
+            "high entropy",
+            "entropy: 5",  # DNS TXT with entropy >= 5 is suspicious
             "vertical port scan",
             "horizontal port scan",
             "denial of service",
@@ -453,14 +466,51 @@ class AutoResponder:
         return formatted
 
     def call_planner(self, alert_text: str) -> Optional[Dict]:
-        try:
-            payload = {"alert": alert_text}
-            response = requests.post(PLANNER_URL, json=payload, timeout=30)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            print(f"[auto_responder] Planner request failed: {e}")
-            return None
+        payload = {"alert": alert_text}
+        
+        # Log the exact alert being sent to planner
+        print(f"[AUTO_RESPONDER_TO_PLANNER_START]", flush=True)
+        print(f"Alert text length: {len(alert_text)}", flush=True)
+        print(f"Alert contains base64 marker: {'VUc5' in alert_text or 'base64' in alert_text.lower()}", flush=True)
+        print(f"[ALERT_TO_PLANNER]", flush=True)
+        print(alert_text, flush=True)
+        print(f"[ALERT_TO_PLANNER_END]", flush=True)
+        
+        last_error = None
+        max_attempts = max(1, PLANNER_REQUEST_RETRIES + 1)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = requests.post(PLANNER_URL, json=payload, timeout=PLANNER_REQUEST_TIMEOUT)
+                response.raise_for_status()
+                result = response.json()
+                print(f"[PLANNER_RESPONSE_RECEIVED]", flush=True)
+                if "plans" in result and result["plans"]:
+                    for idx, plan in enumerate(result["plans"]):
+                        print(f"[PLAN_{idx}_PREVIEW]", flush=True)
+                        print(plan.get("plan", "")[:500], flush=True)
+                        print(f"[PLAN_{idx}_PREVIEW_END]", flush=True)
+                print(f"[AUTO_RESPONDER_TO_PLANNER_END]", flush=True)
+                return result
+            except Exception as e:
+                last_error = e
+                if attempt < max_attempts:
+                    retry_delay = min(5, attempt * 2)
+                    print(
+                        f"[auto_responder] Planner request attempt {attempt}/{max_attempts} failed: {e}. "
+                        f"Retrying in {retry_delay}s...",
+                        flush=True,
+                    )
+                    time.sleep(retry_delay)
+                    continue
+                break
+
+        print(
+            f"[auto_responder] Planner request failed after {max_attempts} attempts "
+            f"(timeout={PLANNER_REQUEST_TIMEOUT}s): {last_error}",
+            flush=True,
+        )
+        return None
 
     def determine_target_info(self, executor_ip: str) -> Optional[tuple]:
         if executor_ip.startswith("172.31.0."):
@@ -1165,8 +1215,33 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
         return False
 
     def execute_multiple_plans_async(self, plans_list: List[Dict], alert: Dict, alert_hash: str = None, base_execution_id: str = None) -> None:
-        """Execute multiple plans in background threads (truly non-blocking)."""
+        """Execute multiple plans in background threads (truly non-blocking).
+
+        In PLANNER_ONLY mode, logs plans without executing via OpenCode.
+        """
         import concurrent.futures
+
+        # Planner-only mode: log plans and skip OpenCode execution
+        if PLANNER_ONLY:
+            for i, plan_data in enumerate(plans_list):
+                executor_ip = plan_data.get("executor_host_ip", "")
+                plan = plan_data.get("plan", "")
+
+                target_info = self.determine_target_info(executor_ip)
+                target_name = target_info[1] if target_info else "unknown"
+                target_ip = target_info[0] if target_info else "unknown"
+
+                ip_safe = executor_ip.replace('.', '_')
+                ip_execution_id = f"{base_execution_id}_{ip_safe}"
+
+                self.log("PLAN_ONLY", f"Skipped OpenCode execution for {executor_ip} (planner-only mode)",
+                         target_name, alert_hash, ip_execution_id, extra_data={
+                    "executor_ip": executor_ip,
+                    "ip_index": i,
+                    "total_plans": len(plans_list),
+                    "plan_preview": plan if plan else ""
+                })
+            return
 
         def execute_single_plan(plan_data: Dict, ip_index: int):
             executor_ip = plan_data.get("executor_host_ip", "")
@@ -1284,10 +1359,12 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
             self.execute_multiple_plans_async(plans_list, alert, alert_hash, base_execution_id)
             total_duration = time.time() - start_time
 
-            self.log("DONE", f"Started execution in {total_duration:.1f}s (plan: {plan_duration:.1f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
+            status_msg = "planner_only_skipped" if PLANNER_ONLY else "started_in_background"
+            self.log("DONE", f"{'Plans logged (planner-only mode)' if PLANNER_ONLY else f'Started execution'} in {total_duration:.1f}s (plan: {plan_duration:.1f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
                 "total_duration": total_duration,
                 "plan_duration": plan_duration,
-                "status": "started_in_background"
+                "status": status_msg,
+                "planner_only": PLANNER_ONLY
             })
 
             return True
