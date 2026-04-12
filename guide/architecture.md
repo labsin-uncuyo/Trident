@@ -20,7 +20,7 @@ Compose: `docker-compose.yml`
 Three Docker bridge networks are created:
 - `lab_net_a` -- 172.30.0.0/24 (gateway 172.30.0.254)
 - `lab_net_b` -- 172.31.0.0/24 (gateway 172.31.0.254)
-- `lab_egress` -- 172.32.0.0/24 (gateway 172.32.0.254, **router-only**)
+- `lab_egress` -- 172.32.0.0/24 (gateway 172.32.0.254)
 
 Note: Docker assigns the `.254` gateway to the bridge network itself. The lab containers then **override their default routes** to point at the router (`.1`) so all traffic is forced through `lab_router` and captured.
 
@@ -33,7 +33,7 @@ Default routes:
 - `lab_compromised` forces default via `172.30.0.1` and adds a route to `172.31.0.0/24` through the router. `images/compromised/entrypoint.sh`
 - `lab_server` forces default via `172.31.0.1` and routes `172.30.0.0/24` through the router. `images/server/entrypoint.sh`
 
-Note: `lab_egress` is attached only to `lab_router`. Lab hosts do not have routes to `172.32.0.0/24`, and the router drops any attempts to access that subnet from the lab networks.
+`lab_egress` provides internet connectivity through the host. Only `lab_router` and `lab_slips_defender` are attached to it. Lab hosts (`lab_compromised`, `lab_server`) have no attachment to `lab_egress` and no routes into that subnet — they cannot reach the internet directly. The router's iptables rules additionally block forwarding from the lab subnets into the egress interface, so even traffic routed through the router cannot reach the internet unless explicitly permitted.
 
 ## Traffic routing
 
@@ -75,7 +75,7 @@ The router runs `dnsmasq`, listening on both 172.30.0.1 and 172.31.0.1. Lab cont
 outputs/<RUN_ID>/
 ├── pcaps/
 ├── slips/
-├── aracne/
+├── coder56/
 └── benign_agent/
 ```
 Makefile: `Makefile`
@@ -88,12 +88,6 @@ Agents are optional and can run after infra is up.
   - Reads PCAPs from `outputs/<RUN_ID>/pcaps` and writes IDS outputs to `outputs/<RUN_ID>/slips`.
   - Starts via `make defend`.
   - Compose + entrypoint: `docker-compose.yml`, `images/slips_defender/slips_entrypoint.sh`.
-
-- **Attacker (ARACNE)**
-  - Runs in `lab_aracne_attacker` on `lab_net_b` and SSHs to `lab_compromised`.
-  - Goal text passed via `GOAL=...` (used by `make aracne "..."`).
-  - Writes logs to `outputs/<RUN_ID>/aracne/`.
-  - Compose + config: `docker-compose.yml`, `configs/aracne_lab/`.
 
 - **Attacker (coder56)**
   - Host-side runner that execs OpenCode inside `lab_compromised`.

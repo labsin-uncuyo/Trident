@@ -1,11 +1,23 @@
 # Trident
 
-A Docker-based cyber range for evaluating autonomous AI attack and defense agents in a controlled network environment.
+A minimal Docker-based cyber range for benchmarking autonomous LLM attack and defense agents — with deterministic full-traffic capture, reproducible per-run artifacts, and a live monitoring dashboard.
 
 ---
 
 > **WARNING — Lab-only environment.**
 > Trident runs privileged containers with `NET_ADMIN` capabilities, ships with default credentials, and has no egress firewall. **Never point agents at real systems or expose the lab to production networks.**
+
+---
+
+## Why Trident?
+
+Evaluating autonomous LLM agents in adversarial network scenarios is hard with existing tooling. Most cyber ranges expose vulnerable services for human testers but give you no structured way to run attacker and defender agents simultaneously, capture all traffic deterministically, or compare results across reproducible runs. Heavier simulation environments require hypervisors and are too complex for quick iteration. None of them produce structured experiment artifacts suited for downstream analysis or ML pipelines.
+
+Trident is purpose-built around three gaps:
+
+- **Agent-first design.** Attacker (coder56), defender (SLIPS + auto-responder), and benign traffic agents are first-class components. The lab is designed to run all three simultaneously and observe emergent interactions.
+- **Deterministic full-traffic observability.** All traffic between the compromised host and the server is forced through a single router — every packet is captured without taps, span ports, or instrumentation gaps. The IDS reads the same PCAPs the researcher does.
+- **Reproducible experiment output.** Every run is scoped to a `RUN_ID` and produces structured JSONL timelines, rotating PCAP archives, and IDS alert logs in a consistent layout — ready for automated analysis or dashboard replay.
 
 ---
 
@@ -17,7 +29,6 @@ A Docker-based cyber range for evaluating autonomous AI attack and defense agent
 | `lab_server` | 172.31.0.10 | nginx + PostgreSQL + SSH + Flask login app; captures continuous server-side PCAP |
 | `lab_compromised` | 172.30.0.10 | SSH-accessible client host; agent execution target |
 | `lab_slips_defender` | 172.30.0.30, 172.31.0.30 | SLIPS IDS reads router PCAPs and generates alerts; auto-responder executes remediation over SSH |
-| `lab_aracne_attacker` | 172.31.0.50 | ARACNE goal-driven attacker; SSHes into `lab_compromised` |
 | `lab_dashboard` | 172.30.0.20, 172.31.0.20 | FastAPI + React dashboard at http://localhost:8081 |
 
 The core idea: a compromised host and a protected server sit on separate subnets, connected only through a router. All traffic is forced through the router for deterministic PCAP capture — there is no path between hosts that bypasses it.
@@ -41,8 +52,8 @@ For routing details, PCAP capture mechanics, and network topology, see [`guide/a
 ### Setup
 
 ```bash
-# Clone with submodules
-git clone --recurse-submodules https://github.com/labsin-uncuyo/Trident.git
+# Clone the repository
+git clone https://github.com/labsin-uncuyo/Trident.git
 cd Trident
 
 # Configure environment — set at least LAB_PASSWORD and OPENCODE_API_KEY
@@ -86,19 +97,13 @@ make dashboard
 # → http://localhost:8081
 ```
 
-The lab supports attacker agents (coder56, ARACNE), a defender agent (SLIPS + auto-responder), and a benign traffic baseline. See [`guide/agents.md`](guide/agents.md) for full details on each agent.
+The lab supports an attacker agent (coder56), a defender agent (SLIPS + auto-responder), and a benign traffic baseline. See [`guide/agents.md`](guide/agents.md) for full details on each agent.
 
 ---
 
 ## Configuration
 
 Copy `.env.example` to `.env` and configure your API keys and credentials. See [`guide/credentials.md`](guide/credentials.md) for all variables and default credentials.
-
-ARACNE has its own env file:
-
-```bash
-cp configs/aracne_lab/.env.example configs/aracne_lab/.env
-```
 
 ---
 
@@ -112,7 +117,6 @@ outputs/
 └── <RUN_ID>/
     ├── pcaps/            # router rotating PCAPs + server.pcap
     ├── slips/            # SLIPS IDS alerts, logs, defender NDJSON
-    ├── aracne/           # ARACNE agent logs and context snapshots
     ├── coder56/          # coder56 timeline, stdout JSONL, stderr logs
     └── benign_agent/     # benign agent logs and timeline
 ```

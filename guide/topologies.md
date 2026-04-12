@@ -45,7 +45,6 @@ Containers that need to route through the lab router override their default rout
 | lab_slips_defender     | lab_net_a    | 172.30.0.30   | IDS visibility into compromised side |
 | lab_slips_defender     | lab_net_b    | 172.31.0.30   | IDS visibility into server side    |
 | lab_slips_defender     | lab_egress   | DHCP          | Outbound access for threat intel   |
-| lab_aracne_attacker    | lab_net_b    | 172.31.0.50   | DNS set to 172.31.0.1              |
 | lab_dashboard          | dashboard_net| DHCP          | Exposed on host port 8081          |
 
 ## Compose profiles
@@ -54,7 +53,6 @@ Not every container starts by default. Containers are grouped into profiles:
 
 - **core** (`make up`): router, server, compromised, dashboard.
 - **defender** (`make defend`): slips_defender. Runs after core is healthy.
-- **attackers** (`make aracne`): aracne_attacker. Depends on compromised being healthy.
 
 ## Subnet conflict note
 

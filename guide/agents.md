@@ -1,9 +1,17 @@
 # Agents
 
 Agents are optional components that generate, detect, or monitor network
-activity inside the lab.  The core infrastructure (`make up`) works on its own
-for pure traffic capture -- you only start agents when you need automated
+activity inside the lab. The core infrastructure (`make up`) works on its own
+for pure traffic capture — you only start agents when you need automated
 attack simulation, defense, or benign background noise.
+
+The typical experiment runs three agent types simultaneously:
+
+- **Attacker** (coder56) — executes commands on the compromised host to probe and exploit the server.
+- **Defender** (SLIPS + auto-responder) — reads router PCAPs in near-real-time, detects threats, and SSHes into lab hosts to apply remediation.
+- **Benign** (db_admin) — generates realistic background traffic (SQL queries, web requests, sleep cycles) to give the IDS a mixed-signal environment and test for false positives.
+
+Running all three together is the design intent: the interesting research questions are about how the defender distinguishes attack from benign traffic, whether the attacker can detect and evade active defenses, and what emergent interactions arise when both agents reason about the same network simultaneously.
 
 ## IPs used in the lab
 
@@ -13,7 +21,6 @@ attack simulation, defense, or benign background noise.
 | `lab_router` | 172.30.0.1 / 172.31.0.1 | lab_net_a + lab_net_b |
 | `lab_server` | 172.31.0.10 | lab_net_b |
 | `lab_slips_defender` | 172.30.0.30 / 172.31.0.30 | lab_net_a + lab_net_b |
-| `lab_aracne_attacker` | 172.31.0.50 | lab_net_b |
 | `lab_dashboard` | (dashboard_net) | lab_dashboard_net |
 
 ---
@@ -115,58 +122,6 @@ To stop it, kill the PID or the underlying `docker exec` process.
   value appropriate to your goal complexity.
 - Start benign traffic before coder56 to avoid OpenCode session race
   conditions on the compromised host.
-
----
-
-## ARACNE (attacker)
-
-Goal-driven offensive agent with a planner/interpreter architecture. It SSHes
-from its own container into `lab_compromised` to execute attack steps.
-
-### Where it runs
-
-`lab_aracne_attacker` container at 172.31.0.50 on `lab_net_b`. Connects via
-SSH to `lab_compromised` (172.30.0.10).
-
-### Start / stop
-
-```bash
-make aracne "Scan 172.31.0.0/24 and attempt SSH brute-force on any hosts found"
-```
-
-The container exits when the goal is complete (or fails). To abort early,
-stop it with `docker stop lab_aracne_attacker`.
-
-### Output files (`outputs/<RUN_ID>/aracne/`)
-
-| File | Content |
-|---|---|
-| `agent.log` | Main agent log: planner decisions, interpreter outputs, tool calls |
-| `context.log` | Planning context snapshots at each step |
-| `experiments/` | Per-step structured data from the interpreter |
-
-### Prerequisites / env vars
-
-ARACNE configuration lives in `configs/aracne_lab/.env`. If the file does not
-exist, `make aracne` auto-generates it via `scripts/prepare_aracne_env.sh`
-with defaults from your shell environment. See `configs/aracne_lab/README.md`
-for provider options (OpenAI, CESNET, Ollama).
-
-Key variables in `configs/aracne_lab/.env`:
-
-| Variable | Default | Notes |
-|---|---|---|
-| `OPENAI_API_KEY` | -- | Required (or use an alternative provider) |
-| `SSH_PASSWORD` | adminadmin | Must match `LAB_PASSWORD` |
-| `SSH_HOST` | 127.0.0.1 | Overridden to 172.30.0.10 by compose |
-| `SSH_PORT` | 2223 | Overridden to 22 by compose |
-
-### Gotchas
-
-- The ARACNE container depends on `lab_compromised` being healthy. The make
-  target ensures core infrastructure is running before starting the attacker.
-- `configs/aracne_lab/.env` is generated once and then left unchanged. Edit
-  it manually to switch LLM providers or update API keys.
 
 ---
 
@@ -287,9 +242,6 @@ make benign
 
 # 5) In another terminal, launch an attacker
 make coder56 "Enumerate services on 172.31.0.10 and attempt credential stuffing"
-
-# 6) Or use ARACNE for a structured attack
-make aracne "Find and exfiltrate database credentials from the server"
 ```
 
 All agent artifacts are grouped under `outputs/<RUN_ID>/` for reproducibility

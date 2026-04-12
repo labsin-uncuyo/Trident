@@ -1,3 +1,21 @@
+# Experiment Analysis
+
+Each Trident run produces a self-contained artifact set under `outputs/<RUN_ID>/`. This guide explains what the artifacts contain and what research questions they support.
+
+## What you can measure
+
+| Question | Artifacts to use |
+|---|---|
+| Did the attacker succeed? What did it do? | `coder56/auto_responder_timeline.jsonl`, `coder56/opencode_stdout_*.jsonl` |
+| Did the defender detect the attack? How quickly? | `slips/alerts.json`, `slips/defender_alerts.ndjson` |
+| Did the defender take the right action? | `slips/defender_alerts.ndjson`, `slips/watcher_events/` |
+| Were there false positives on benign traffic? | `slips/alerts.json` cross-referenced with `benign_agent/` timelines |
+| What traffic did the attacker generate? | `pcaps/router_*.pcap` (full cross-subnet view) |
+| What did the server actually receive? | `pcaps/server.pcap` (server-side only) |
+| What did each agent reason about at each step? | `coder56/opencode_stdout_*.jsonl` |
+
+---
+
 ## Output formats
 
 Each experiment run produces artifacts under `outputs/<RUN_ID>/`. This section documents what each output file and folder contains.
@@ -19,14 +37,6 @@ PCAPs can be opened directly in Wireshark for manual inspection, or fed to SLIPS
 | `alerts.log` | Human-readable SLIPS alert output. Same data as `alerts.json` but formatted for quick terminal review. |
 | `defender_alerts.ndjson` | Each line is one SLIPS alert as processed by the auto-responder. Includes the original alert plus any action taken. |
 | `watcher_events/` | Records which PCAP files triggered auto-responder invocations. Useful for correlating defender actions to specific capture windows. |
-
-### aracne/
-
-| File | Description |
-|---|---|
-| `agent.log` | Main agent log: planner decisions, interpreter outputs, tool calls. This is the primary record of what the ARACNE attacker did and why. |
-| `context.log` | Planning context snapshots at each step. Shows the information the planner had available when making each decision. |
-| `experiments/` | Per-step structured data from the interpreter. Contains raw command outputs and intermediate results. |
 
 ### coder56/
 
