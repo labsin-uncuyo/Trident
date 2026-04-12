@@ -41,6 +41,7 @@ RUN apt-get update \
        # Additional utilities
        wget zip tar jq \
     && rm -rf /var/lib/apt/lists/* \
+    && pip3 install --no-cache-dir requests \
     && useradd -m -s /bin/bash labuser \
     && mkdir -p /var/run/sshd \
     && ssh-keygen -A

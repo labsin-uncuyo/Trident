@@ -427,6 +427,7 @@ def main() -> int:
             metrics = _init_opencode_metrics()
             deadline = time.time() + args.timeout
             timed_out = False
+            last_api_save = time.time()
 
             selector = selectors.DefaultSelector()
             if proc.stdout:
@@ -448,6 +449,20 @@ def main() -> int:
 
                     if proc.poll() is not None and stdout_done and stderr_done:
                         break
+
+                    # ── Save API messages every 2 seconds for real-time dashboard ──
+                    if now - last_api_save >= 2.0:
+                        try:
+                            write_coder56_api_messages(
+                                output_dir=output_dir,
+                                execution_id=execution_id,
+                                stdout_path=stdout_path,
+                                mode=args.mode,
+                                goal_text=goal_text,
+                            )
+                        except Exception:
+                            pass  # Silently fail if file isn't ready yet
+                        last_api_save = now
 
                     timeout = min(1.0, max(0.0, deadline - now))
                     events = selector.select(timeout)

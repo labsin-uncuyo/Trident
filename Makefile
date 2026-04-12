@@ -31,7 +31,7 @@ dashboard:
 	$(COMPOSE) --profile core build dashboard
 	RUN_ID=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo none) $(COMPOSE) --profile core up -d --no-recreate --no-build router server compromised
 	RUN_ID=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo none) $(COMPOSE) --profile core up -d --force-recreate --build dashboard
-	@echo "✓ Dashboard running at http://localhost:8080"
+	@echo "✓ Dashboard running at http://localhost:8888"
 
 ssh_keys:
 	@echo "Setting up SSH keys for auto_responder..."
@@ -92,9 +92,17 @@ coder56:
 		exit 1; \
 	fi; \
 	RUN_ID_VALUE=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo "manual"); \
+	echo "[coder56] Starting with RUN_ID=$$RUN_ID_VALUE"; \
+	echo "[coder56] Goal: $$goal"; \
 	mkdir -p ./outputs/$$RUN_ID_VALUE/coder56; \
-	nohup $(PYTHON) ./scripts/attacker_opencode_interactive.py $$goal > /dev/null 2>&1 & \
-	echo "[coder56] Started in background (PID=$$!)"
+	export RUN_ID=$$RUN_ID_VALUE; \
+	docker run --rm \
+		--network lab_net_a \
+		-e RUN_ID=$$RUN_ID_VALUE \
+		-v "$$(pwd)":/workspace \
+		-w /workspace \
+		lab/dashboard:latest \
+		sh -lc "python3 /workspace/scripts/coder56_opencode_client.py \"$$goal\""
 
 # Usage:
 #   make benign                          # default goal, no time limit

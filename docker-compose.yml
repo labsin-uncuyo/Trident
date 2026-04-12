@@ -41,6 +41,7 @@ services:
       - PLANNER_REQUEST_RETRIES=${PLANNER_REQUEST_RETRIES:-2}
       - OPENCODE_TIMEOUT=${OPENCODE_TIMEOUT:-1200}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL_CONTAINER=${OPENAI_BASE_URL_CONTAINER}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-false}
@@ -74,6 +75,7 @@ services:
       - NET_ADMIN
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "host-internal:${HOST_INTERNAL_IP:-host-gateway}"
     command: ["/bin/bash", "/opt/lab/slips_entrypoint.sh"]
     restart: unless-stopped
     depends_on:
@@ -103,6 +105,7 @@ services:
       - ./outputs:/outputs
       - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro
       - auto_responder_ssh_keys:/root/.ssh_auto_responder:ro
+      - ./scripts:/scripts:ro
     networks:
       lab_net_a:
         ipv4_address: 172.30.0.10
@@ -201,7 +204,7 @@ services:
     profiles:
       - core
     ports:
-      - "8081:8080"
+      - "8888:8080"
     volumes:
       - ./outputs:/outputs:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro

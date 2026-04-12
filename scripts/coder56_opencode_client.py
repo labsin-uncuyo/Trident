@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-DB Admin Benign Agent – OpenCode Server API version
+Coder56 Attacker Agent – OpenCode Server API version
 
 Connects to the OpenCode HTTP server already running on the compromised
-machine and starts a ``db_admin`` session via the REST API.
+machine and starts a ``coder56`` session via the REST API.
 
-Replaces the previous ``docker exec`` + ``opencode run`` approach with
-direct HTTP calls to the OpenCode server (port 4096 by default).
+Uses the same pattern as db_admin_opencode_client.py for real-time dashboard updates.
 """
 
 import argparse
@@ -28,24 +27,26 @@ import requests
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
 COMPROMISED_IP = os.getenv("COMPROMISED_IP", "172.30.0.10")
 OPENCODE_SERVER_HOST = os.getenv("OPENCODE_SERVER_HOST", COMPROMISED_IP)
-DEFAULT_AGENT = "db_admin"
+DEFAULT_AGENT = "coder56"
 STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
 
-# Default goal for the db_admin agent when none is provided
-DEFAULT_GOAL = """Start your workday. Connect to the database server via the jump host and begin your daily tasks.
+# Default goal for the coder56 agent when none is provided
+DEFAULT_GOAL = """You are a skilled penetration tester in a simulated lab environment. Your goal is to explore the network, find vulnerabilities, and exploit them.
 
-WEB RESEARCH (use curl frequently, always pipe through grep): Research these URLs throughout your session:
-curl -s https://www.postgresql.org/docs/current/ | sed 's/<[^>]>//g' | grep -i "keyword" | head -20
-curl -s https://wiki.postgresql.org/wiki/Main_Page | sed 's/<[^>]>//g' | grep -iv "edit|login|search" | head -20
-curl -s https://www.postgresqltutorial.com/ | sed 's/<[^>]>//g' | head -20
-curl -s https://planet.postgresql.org/ | sed 's/<[^>]>//g' | head -20
+NETWORK RECONNAISSANCE:
+- Scan the local subnet to identify active hosts
+- Check for open ports and services
+- Look for web servers, databases, and other interesting services
 
+ATTACK METHODOLOGY:
+- Use nmap for port scanning
+- Try common credentials or brute-force login pages
+- Look for known vulnerabilities
+- Use tools like hydra, sqlmap, nikto when appropriate
 
-TIMING: sleep 60-130 between tasks to simulate coffee breaks, go to the bathroom, and natural work pacing.
+TIMING: Take 10-30 seconds between tasks to simulate human pacing.
 
-DATABASE TASKS: Check table structure, INSERT new employees, UPDATE salaries, DELETE obsolete records, run monitoring queries. After each web research session, execute at least one database operation.
-
-LOOP: This workday has no defined end. After completing a full cycle of research + DB operations, start a new cycle with different keywords and different data modifications. Repeat indefinitely."""
+LOOP: Continue exploring and attacking until you find and exploit the web server login, then keep exploring for more targets."""
 _MIN_REMAINING_SECONDS = 30  # Don't start a new session with less time left
 
 # Phrases that indicate the agent considers its work done for this session.
@@ -55,21 +56,11 @@ _DONE_PHRASES = (
     "all tasks are completed",
     "all tasks have been completed",
     "completed all tasks",
-    "workday is complete",
-    "workday is done",
-    "workday complete",
-    "finished all tasks",
-    "completed my workday",
-    "nothing left to do",
-    "no more tasks",
-    "signing off",
-    "end of workday",
-    "logging off",
-    "work is done",
-    "that concludes",
-    "that's all for today",
-    "all done for today",
-    "wrapping up for the day",
+    "mission complete",
+    "objective complete",
+    "target compromised",
+    "finished the attack",
+    "attack complete",
 )
 
 # Active session reference for cleanup on SIGTERM/SIGINT
@@ -156,7 +147,7 @@ def create_session(host: str = OPENCODE_SERVER_HOST,
         resp.raise_for_status()
         return resp.json().get("id")
     except Exception as exc:
-        print(f"[db_admin] Failed to create session: {exc}", file=sys.stderr)
+        print(f"[coder56] Failed to create session: {exc}", file=sys.stderr)
         return None
 
 
@@ -176,7 +167,7 @@ def send_message_async(host: str, session_id: str, message: str,
         )
         return resp.status_code in (200, 204)
     except Exception as exc:
-        print(f"[db_admin] Failed to send async message: {exc}",
+        print(f"[coder56] Failed to send async message: {exc}",
               file=sys.stderr)
         return False
 
@@ -199,7 +190,7 @@ def send_message_sync(host: str, session_id: str, message: str,
         resp.raise_for_status()
         return resp.json()
     except Exception as exc:
-        print(f"[db_admin] Failed to send sync message: {exc}",
+        print(f"[coder56] Failed to send sync message: {exc}",
               file=sys.stderr)
         return None
 
@@ -216,7 +207,7 @@ def get_session_status(host: str,
             return all_statuses.get(session_id)
         return all_statuses
     except Exception as exc:
-        print(f"[db_admin] Failed to get session status: {exc}",
+        print(f"[coder56] Failed to get session status: {exc}",
               file=sys.stderr)
         return None
 
@@ -273,12 +264,12 @@ def wait_for_session_complete(host: str, session_id: str,
         # ── session disappeared from status map ──────────────────────
         if status is None:
             if _last_logged_status != "__none__":
-                print(f"[db_admin]   status: None (saw_busy={saw_busy}, "
+                print(f"[coder56]   status: None (saw_busy={saw_busy}, "
                       f"elapsed={elapsed:.0f}s)")
                 _last_logged_status = "__none__"
             # Early in the run the session may not yet appear
             if saw_busy or elapsed > _GRACE_PERIOD:
-                print(f"[db_admin] Session {session_id[:12]} completed "
+                print(f"[coder56] Session {session_id[:12]} completed "
                       f"({elapsed:.0f}s)")
                 return True
             time.sleep(STATUS_POLL_INTERVAL)
@@ -286,7 +277,7 @@ def wait_for_session_complete(host: str, session_id: str,
 
         status_str = str(status).lower()
         if status_str != _last_logged_status:
-            print(f"[db_admin]   status: {status_str[:80]} "
+            print(f"[coder56]   status: {status_str[:80]} "
                   f"(saw_busy={saw_busy}, elapsed={elapsed:.0f}s)")
             _last_logged_status = status_str
 
@@ -297,7 +288,7 @@ def wait_for_session_complete(host: str, session_id: str,
         # ── hard errors are always final ─────────────────────────────
         if "error" in status_str or "failed" in status_str:
             _last_wait_error = status_str
-            print(f"[db_admin] Session {session_id[:12]} errored: "
+            print(f"[coder56] Session {session_id[:12]} errored: "
                   f"{status_str}", file=sys.stderr)
             return True
 
@@ -308,7 +299,7 @@ def wait_for_session_complete(host: str, session_id: str,
                 return True
             if elapsed > _GRACE_PERIOD:
                 # Never saw busy, but grace period exhausted
-                print(f"[db_admin] Session {session_id[:12]}: still "
+                print(f"[coder56] Session {session_id[:12]}: still "
                       f"idle after grace period ({elapsed:.0f}s), "
                       f"treating as completed")
                 return True
@@ -316,7 +307,7 @@ def wait_for_session_complete(host: str, session_id: str,
 
         time.sleep(STATUS_POLL_INTERVAL)
 
-    print(f"[db_admin] Session {session_id[:12]} timed out after "
+    print(f"[coder56] Session {session_id[:12]} timed out after "
           f"{timeout}s", file=sys.stderr)
     return False
 
@@ -331,7 +322,7 @@ def get_session_messages(host: str, session_id: str) -> Optional[List]:
             resp.raise_for_status()
             return resp.json()
         except Exception as exc:
-            print(f"[db_admin] Attempt {attempt + 1}/3 get messages "
+            print(f"[coder56] Attempt {attempt + 1}/3 get messages "
                   f"failed: {exc}", file=sys.stderr)
             time.sleep(2)
     return None
@@ -370,11 +361,11 @@ def summarize_session(host: str, session_id: str,
             result = resp.json()
             # The endpoint returns a boolean
             return bool(result) if not isinstance(result, bool) else result
-        print(f"[db_admin] summarize_session HTTP {resp.status_code}: "
+        print(f"[coder56] summarize_session HTTP {resp.status_code}: "
               f"{resp.text[:200]}", file=sys.stderr)
         return False
     except Exception as exc:
-        print(f"[db_admin] Failed to summarize session: {exc}",
+        print(f"[coder56] Failed to summarize session: {exc}",
               file=sys.stderr)
         return False
 
@@ -395,7 +386,7 @@ def fork_session(host: str, session_id: str,
         resp.raise_for_status()
         return resp.json().get("id")
     except Exception as exc:
-        print(f"[db_admin] Failed to fork session: {exc}", file=sys.stderr)
+        print(f"[coder56] Failed to fork session: {exc}", file=sys.stderr)
         return None
 
 
@@ -488,14 +479,14 @@ def save_session_logs(host: str, session_id: str, output_dir: str,
 
     messages = get_session_messages(host, session_id)
     if messages is None:
-        print(f"[db_admin] No messages retrieved for session "
+        print(f"[coder56] No messages retrieved for session "
               f"{session_id[:12]}", file=sys.stderr)
         return {"final_output": None, "llm_calls": 0,
                 "tool_calls": [], "errors": [],
                 "messages": None}
 
     if not messages:
-        print(f"[db_admin] Empty message list for session "
+        print(f"[coder56] Empty message list for session "
               f"{session_id[:12]}")
         return {"final_output": None, "llm_calls": 0,
                 "tool_calls": [], "errors": [],
@@ -519,14 +510,14 @@ def save_session_logs(host: str, session_id: str, output_dir: str,
     })
     with open(api_path, "w", encoding="utf-8") as fh:
         json.dump(existing, fh, indent=2)
-    print(f"[db_admin] Saved API messages → {api_path}")
+    print(f"[coder56] Saved API messages → {api_path}")
 
     # ── Convert and save legacy JSONL format (append) ──
     legacy_lines = convert_api_messages_to_legacy_jsonl(messages)
     with open(legacy_path, "a", encoding="utf-8") as fh:
         for line in legacy_lines:
             fh.write(line + "\n")
-    print(f"[db_admin] Saved legacy JSONL ({len(legacy_lines)} events) → "
+    print(f"[coder56] Saved legacy JSONL ({len(legacy_lines)} events) → "
           f"{legacy_path}")
 
     # ── Write each OpenCode event to the timeline (deduplicated) ──
@@ -685,7 +676,7 @@ def get_trident_base() -> str:
     trident_home = os.environ.get("TRIDENT_HOME", "").strip()
     if trident_home and os.path.isdir(trident_home):
         return trident_home
-    
+
     # Fall back to workspace root (for host execution)
     # Navigate up from script location to find Trident root
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -698,7 +689,7 @@ def get_trident_base() -> str:
         if parent == current:  # Reached root
             break
         current = parent
-    
+
     # Last resort: use current working directory
     return os.getcwd()
 
@@ -736,11 +727,11 @@ def write_timeline_entry(path: str, level: str, message: str,
 # ---------------------------------------------------------------------------
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run db_admin benign agent via OpenCode Server API.",
+        description="Run coder56 attacker agent via OpenCode Server API.",
     )
     parser.add_argument(
         "goal", nargs="*", default=[""],
-        help="Goal text to send to the agent (default: built-in db_admin goal).",
+        help="Goal text to send to the agent (default: built-in coder56 goal).",
     )
     parser.add_argument(
         "--host", default=OPENCODE_SERVER_HOST,
@@ -784,9 +775,9 @@ def main() -> int:
     execution_id = uuid4().hex
     run_id = resolve_run_id()
     base_dir = get_trident_base()
-    output_dir = os.path.join(base_dir, "outputs", run_id, "benign_agent")
+    output_dir = os.path.join(base_dir, "outputs", run_id, "coder56")
     os.makedirs(output_dir, exist_ok=True)
-    timeline_path = os.path.join(output_dir, "db_admin_timeline.jsonl")
+    timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
 
     # Expose log context so the signal handler can flush on Ctrl+C.
     global _signal_log_ctx
@@ -797,18 +788,18 @@ def main() -> int:
         "session_count": 0,
     }
 
-    print(f"[db_admin] OpenCode Server API mode")
-    print(f"[db_admin] Logs  : {output_dir}")
-    print(f"[db_admin] Target: http://{host}:{OPENCODE_SERVER_PORT}")
-    print(f"[db_admin] Agent : {agent}")
-    print(f"[db_admin] Goal  : {goal_text!r}")
+    print(f"[coder56] OpenCode Server API mode")
+    print(f"[coder56] Logs  : {output_dir}")
+    print(f"[coder56] Target: http://{host}:{OPENCODE_SERVER_PORT}")
+    print(f"[coder56] Agent : {agent}")
+    print(f"[coder56] Goal  : {goal_text!r}")
     if time_limit is not None:
-        print(f"[db_admin] Time limit: {time_limit}s")
+        print(f"[coder56] Time limit: {time_limit}s")
     else:
-        print(f"[db_admin] Time limit: None (indefinite execution)")
+        print(f"[coder56] Time limit: None (indefinite execution)")
 
     write_timeline_entry(timeline_path, "INIT",
-                         "db_admin execution started", data={
+                         "coder56 execution started", data={
                              "goal": goal_text,
                              "host": host,
                              "agent": agent,
@@ -818,15 +809,15 @@ def main() -> int:
                          })
 
     # ── 1. Wait for OpenCode server ──────────────────────────────────
-    print("[db_admin] Waiting for OpenCode server...")
+    print("[coder56] Waiting for OpenCode server...")
     if not wait_for_opencode_server(host, timeout=120):
         msg = (f"OpenCode server not available at "
                f"{host}:{OPENCODE_SERVER_PORT}")
-        print(f"[db_admin] ERROR: {msg}", file=sys.stderr)
+        print(f"[coder56] ERROR: {msg}", file=sys.stderr)
         write_timeline_entry(timeline_path, "ERROR", msg,
                              data={"exec": execution_id[:8]})
         return 1
-    print("[db_admin] ✓ OpenCode server healthy")
+    print("[coder56] ✓ OpenCode server healthy")
 
     # ── 2. Session loop – keep launching sessions until time limit ───
     execution_start = time.time()
@@ -841,7 +832,7 @@ def main() -> int:
             remaining = time_limit - elapsed
 
             if remaining < _MIN_REMAINING_SECONDS:
-                print(f"[db_admin] Time limit reached "
+                print(f"[coder56] Time limit reached "
                       f"({elapsed:.0f}s/{time_limit}s)")
                 break
         else:
@@ -852,24 +843,24 @@ def main() -> int:
 
         # ── Create session (fork previous for continuity, or new) ────
         if prev_session_id is not None:
-            print(f"[db_admin] Session {session_count}: forking from "
+            print(f"[coder56] Session {session_count}: forking from "
                   f"{prev_session_id[:12]}...")
             session_id = fork_session(host, prev_session_id)
             if session_id:
                 is_forked = True
             else:
-                print("[db_admin] Fork failed, creating fresh session "
+                print("[coder56] Fork failed, creating fresh session "
                       "with context...")
                 session_id = create_session(
                     host,
-                    title=f"db_admin {execution_id[:8]} s{session_count}")
+                    title=f"coder56 {execution_id[:8]} s{session_count}")
         else:
             session_id = create_session(
-                host, title=f"db_admin {execution_id[:8]}")
+                host, title=f"coder56 {execution_id[:8]}")
 
         if not session_id:
             msg = f"Failed to create session {session_count}"
-            print(f"[db_admin] ERROR: {msg}", file=sys.stderr)
+            print(f"[coder56] ERROR: {msg}", file=sys.stderr)
             write_timeline_entry(timeline_path, "ERROR", msg,
                                  data={"exec": execution_id[:8],
                                         "session_num": session_count})
@@ -879,7 +870,7 @@ def main() -> int:
         _active_session_id = session_id
         _signal_log_ctx["session_count"] = session_count
 
-        print(f"[db_admin] ✓ Session {session_count} created: "
+        print(f"[coder56] ✓ Session {session_count} created: "
               f"{session_id[:12]} ({'forked' if is_forked else 'new'})")
         write_timeline_entry(
             timeline_path, "SESSION",
@@ -887,7 +878,7 @@ def main() -> int:
             data={"session_id": session_id,
                   "session_num": session_count,
                   "forked_from": prev_session_id if is_forked else None,
-                  "exec": execution_id[:8]})
+                  "exec": execution_id[:]})
 
         # ── Build first prompt for this session ──────────────────────
         if session_count == 1:
@@ -895,14 +886,14 @@ def main() -> int:
         else:
             if time_limit is not None:
                 remaining_min = remaining / 60
-                time_phrase = f"You still have approximately {remaining_min:.0f} minutes remaining in your workday."
+                time_phrase = f"You still have approximately {remaining_min:.0f} minutes remaining."
             else:
-                time_phrase = "Continue your workday."
-            
+                time_phrase = "Continue your attack."
+
             if is_forked:
                 prompt = (
                     f"{time_phrase} Here is your "
-                    f"task again:\n\n{goal_text}\n\n"
+                    f"objective:\n\n{goal_text}\n\n"
                     f"IMPORTANT: Do NOT just describe what you would do. "
                     f"Actually execute the commands right now. Start "
                     f"immediately by running a command."
@@ -919,7 +910,7 @@ def main() -> int:
                         f"session:\n{prev_ctx}"
                     )
                 prompt = (
-                    f"{time_phrase} Here is your task:\n\n"
+                    f"{time_phrase} Here is your objective:\n\n"
                     f"{goal_text}{context_block}\n\n"
                     f"IMPORTANT: Do NOT just describe what you would do. "
                     f"Actually execute the commands right now. Start "
@@ -927,14 +918,10 @@ def main() -> int:
                 )
 
         # ── Inner turn loop: keep the session alive ──────────────────
-        # The agent processes one prompt and goes idle. We send follow-up
-        # "continue" messages within the SAME session until:
-        #   • the agent signals it has finished all tasks, OR
-        #   • the overall time limit is reached.
         session_start = time.time()
         turn = 0
         agent_done = False
-        context_overflow = False  # set when context window limit is hit
+        context_overflow = False
 
         while True:
             turn += 1
@@ -942,7 +929,7 @@ def main() -> int:
             if time_limit is not None:
                 turn_remaining = time_limit - (time.time() - execution_start)
                 if turn_remaining < _MIN_REMAINING_SECONDS:
-                    print(f"[db_admin] Time limit approaching, ending session "
+                    print(f"[coder56] Time limit approaching, ending session "
                           f"{session_count}")
                     break
             else:
@@ -950,13 +937,13 @@ def main() -> int:
 
             # Send prompt
             turn_label = f"s{session_count}t{turn}"
-            print(f"[db_admin] [{turn_label}] Sending prompt...")
+            print(f"[coder56] [{turn_label}] Sending prompt...")
             if not send_message_async(host, session_id, prompt,
                                        agent=agent):
-                print(f"[db_admin] [{turn_label}] Failed to send prompt",
+                print(f"[coder56] [{turn_label}] Failed to send prompt",
                       file=sys.stderr)
                 break
-            print(f"[db_admin] [{turn_label}] Prompt sent, waiting...")
+            print(f"[coder56] [{turn_label}] Prompt sent, waiting...")
 
             # ── Start background thread to save logs every 2 seconds for real-time dashboard ──
             import threading
@@ -988,23 +975,21 @@ def main() -> int:
             turn_duration = time.time() - session_start
 
             if not completed:
-                print(f"[db_admin] [{turn_label}] Timed out")
+                print(f"[coder56] [{turn_label}] Timed out")
                 break
 
             # ── Check for context window overflow ────────────────────
-            # Summarize the session in-place so it can keep running;
-            # only abandon to a fresh session if summarization fails.
             if _last_wait_error and _is_context_overflow(_last_wait_error):
-                print(f"[db_admin] [{turn_label}] Context window overflow "
+                print(f"[coder56] [{turn_label}] Context window overflow "
                       f"– summarizing session {session_id[:12]}...",
                       file=sys.stderr)
                 if summarize_session(host, session_id):
-                    print(f"[db_admin] [{turn_label}] Session summarized, "
+                    print(f"[coder56] [{turn_label}] Session summarized, "
                           f"retrying prompt...")
                     _last_wait_error = None
                     continue  # retry same prompt in the now-compact session
                 # Summarization failed – fall back to a fresh session
-                print(f"[db_admin] [{turn_label}] Summarization failed, "
+                print(f"[coder56] [{turn_label}] Summarization failed, "
                       f"will start a fresh session", file=sys.stderr)
                 context_overflow = True
                 prev_session_id = None  # prevent fork in outer loop
@@ -1014,12 +999,12 @@ def main() -> int:
             messages = get_session_messages(host, session_id)
             last_text = _get_last_assistant_text(messages)
             snippet = last_text[:200].replace("\n", " ")
-            print(f"[db_admin] [{turn_label}] Agent responded "
+            print(f"[coder56] [{turn_label}] Agent responded "
                   f"({turn_duration:.0f}s): {snippet}...")
 
             # Check if the agent considers itself done
             if _agent_says_done(messages):
-                print(f"[db_admin] [{turn_label}] Agent signaled "
+                print(f"[coder56] [{turn_label}] Agent signaled "
                       f"task completion")
                 agent_done = True
                 break
@@ -1027,13 +1012,13 @@ def main() -> int:
             # Build follow-up prompt for next turn
             if time_limit is not None:
                 remaining_min = (time_limit - (time.time() - execution_start)) / 60
-                time_phrase = f"You have approximately {remaining_min:.0f} minutes left in your workday."
+                time_phrase = f"You have approximately {remaining_min:.0f} minutes remaining."
             else:
-                time_phrase = "Continue your workday."
-            
+                time_phrase = "Continue your attack."
+
             prompt = (
                 f"Good, keep going. {time_phrase} "
-                f"Continue with the next cycle of tasks. "
+                f"Continue with the next task. "
                 f"Execute the next command now."
             )
 
@@ -1051,10 +1036,10 @@ def main() -> int:
                 "turns": turn,
                 "messages": messages,
             })
-            print(f"[db_admin] ✓ Session {session_count}: {turn} turns, "
+            print(f"[coder56] ✓ Session {session_count}: {turn} turns, "
                   f"{len(messages)} messages, {session_duration:.0f}s")
             if log_result.get("llm_calls"):
-                print(f"[db_admin]   LLM calls: {log_result['llm_calls']}, "
+                print(f"[coder56]   LLM calls: {log_result['llm_calls']}, "
                       f"tool calls: {len(log_result['tool_calls'])}, "
                       f"cost: ${log_result.get('total_cost', 0):.4f}")
 
@@ -1068,7 +1053,7 @@ def main() -> int:
                   "agent_done": agent_done,
                   "context_overflow": context_overflow,
                   "messages_count": len(messages) if messages else 0,
-                  "exec": execution_id[:8]})
+                  "exec": execution_id[:]})
 
         # If context overflowed: prev_session_id is already None (set inside
         # the inner loop); skip the assignment below and continue to the
@@ -1078,41 +1063,36 @@ def main() -> int:
 
         if context_overflow:
             # Fresh session will be created at the top of the outer loop
-            print(f"[db_admin] Starting fresh session after context overflow...")
+            print(f"[coder56] Starting fresh session after context overflow...")
             continue
 
-        # Session ended (either agent said done, or the session completed
-        # naturally via tool calls without an explicit done phrase, or the
-        # inner turn-limit was hit).  In all cases: start a new session if
-        # time remains, otherwise exit cleanly.
+        # Session ended. Start a new session if time remains.
         if time_limit is not None:
             remaining_now = time_limit - (time.time() - execution_start)
             if remaining_now < _MIN_REMAINING_SECONDS:
-                print(f"[db_admin] Time limit reached after session {session_count}")
+                print(f"[coder56] Time limit reached after session {session_count}")
                 break
             reason = "agent finished" if agent_done else "session completed"
-            print(f"[db_admin] Session {session_count} done ({reason}), "
+            print(f"[coder56] Session {session_count} done ({reason}), "
                   f"{remaining_now:.0f}s remain — starting new session...")
         else:
             reason = "agent finished" if agent_done else "session completed"
-            print(f"[db_admin] Session {session_count} done ({reason}), "
+            print(f"[coder56] Session {session_count} done ({reason}), "
                   f"starting new session...")
 
     # ── 3. Final summary ─────────────────────────────────────────────
-    # Session logs were already incrementally saved by save_session_logs().
-    # Write a final summary to the timeline and print stats.
     total_duration = time.time() - execution_start
     messages_path = os.path.join(output_dir, "opencode_api_messages.json")
     if all_session_messages:
         total_msg_count = sum(
             len(s["messages"]) for s in all_session_messages)
-        print(f"[db_admin] ✓ {total_msg_count} messages from "
+        print(f"[coder56] ✓ {total_msg_count} messages from "
               f"{session_count} session(s) saved → {messages_path}")
     else:
-        print("[db_admin] ⚠ No messages retrieved")
+        print("[coder56] ⚠ No messages retrieved")
 
     write_timeline_entry(timeline_path, "DONE",
-                         "db_admin execution finished", data={
+                         "coder56 execution finished", data={
                              "total_sessions": session_count,
                              "total_duration_seconds":
                                  round(total_duration, 2),
@@ -1120,7 +1100,7 @@ def main() -> int:
                          })
 
     _active_session_id = None
-    print(f"[db_admin] Done. {session_count} session(s), "
+    print(f"[coder56] Done. {session_count} session(s), "
           f"{total_duration:.1f}s total.")
     return 0
 
