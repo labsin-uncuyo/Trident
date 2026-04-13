@@ -29,7 +29,7 @@ Trident is purpose-built around three gaps:
 | `lab_server` | 172.31.0.10 | nginx + PostgreSQL + SSH + Flask login app; captures continuous server-side PCAP |
 | `lab_compromised` | 172.30.0.10 | SSH-accessible client host; agent execution target |
 | `lab_slips_defender` | 172.30.0.30, 172.31.0.30 | SLIPS IDS reads router PCAPs and generates alerts; auto-responder executes remediation over SSH |
-| `lab_dashboard` | 172.30.0.20, 172.31.0.20 | FastAPI + React dashboard at http://localhost:8081 |
+| `lab_dashboard` | (dashboard_net) | FastAPI + React dashboard at http://localhost:8888 |
 
 The core idea: a compromised host and a protected server sit on separate subnets, connected only through a router. All traffic is forced through the router for deterministic PCAP capture — there is no path between hosts that bypasses it.
 
@@ -94,7 +94,7 @@ make coder56 "Scan 172.31.0.0/24 for open ports and attempt to brute-force SSH o
 
 # Open the monitoring dashboard
 make dashboard
-# → http://localhost:8081
+# → http://localhost:8888
 ```
 
 The lab supports an attacker agent (coder56), a defender agent (SLIPS + auto-responder), and a benign traffic baseline. See [`guide/agents.md`](guide/agents.md) for full details on each agent.

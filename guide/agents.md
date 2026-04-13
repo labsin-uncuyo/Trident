@@ -177,8 +177,8 @@ container state, and replaying agent timelines.
 
 ### Where it runs
 
-`lab_dashboard` container on `lab_dashboard_net`. Exposed on host port 8081,
-serving at `http://localhost:8081`.
+`lab_dashboard` container on `lab_dashboard_net`. Exposed on host port 8888,
+serving at `http://localhost:8888`.
 
 ### Start / stop
 
@@ -203,8 +203,8 @@ No agent-specific env vars are required. The dashboard mounts:
 
 ### Gotchas
 
-- The compose file maps container port 8080 to host port **8081**
-  (`"8081:8080"`). Access the dashboard at `http://localhost:8081`.
+- The compose file maps container port 8080 to host port **8888**
+  (`"8888:8080"`). Access the dashboard at `http://localhost:8888`.
 - The Docker socket mount is read-only; the dashboard cannot modify
   containers.
 - The dashboard depends on all three core containers (router, server,

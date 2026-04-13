@@ -90,9 +90,9 @@ Agents are optional and can run after infra is up.
   - Compose + entrypoint: `docker-compose.yml`, `images/slips_defender/slips_entrypoint.sh`.
 
 - **Attacker (coder56)**
-  - Host-side runner that execs OpenCode inside `lab_compromised`.
+  - Host-side runner that calls the OpenCode HTTP server on `lab_compromised` via REST.
   - Logs to `outputs/<RUN_ID>/coder56/`.
-  - Runner: `scripts/attacker_opencode_interactive.py`.
+  - Runner: `scripts/coder56_opencode_client.py`.
 
 - **Benign (db_admin)**
   - Host-side runner that execs OpenCode inside `lab_compromised`.
