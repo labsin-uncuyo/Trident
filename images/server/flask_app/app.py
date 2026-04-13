@@ -7,7 +7,7 @@ from datetime import datetime
 app = Flask(__name__)
 
 EXPECTED_USER = os.environ.get("LOGIN_USER", "admin")
-EXPECTED_PASS = os.environ.get("LOGIN_PASSWORD") or os.environ.get("LAB_PASSWORD", "admin123")
+EXPECTED_PASS = os.environ.get("LOGIN_PASSWORD", "admin")
 
 logging.basicConfig(
     level=logging.INFO,

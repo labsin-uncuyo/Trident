@@ -26,8 +26,9 @@ import requests
 # Configuration
 # ---------------------------------------------------------------------------
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
-COMPROMISED_IP = os.getenv("COMPROMISED_IP", "172.30.0.10")
-OPENCODE_SERVER_HOST = os.getenv("OPENCODE_SERVER_HOST", COMPROMISED_IP)
+# Runs inside the compromised container (baked into the image at /opt/).
+# OpenCode server is on localhost:4096 of the same container.
+OPENCODE_SERVER_HOST = "127.0.0.1"
 DEFAULT_AGENT = "db_admin"
 STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
 

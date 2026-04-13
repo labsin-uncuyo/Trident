@@ -22,7 +22,7 @@ ALERT_FILE = Path("/outputs") / RUN_ID / "slips" / "defender_alerts.ndjson"
 _LOCK = threading.Lock()
 
 # LLM Configuration
-LLM_BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL", "https://llm.ai.e-infra.cz/v1")
+LLM_BASE_URL = os.getenv("LLM_URL", "https://llm.ai.e-infra.cz/v1")
 LLM_API_KEY = os.getenv("OPENCODE_API_KEY", "")
 PLANNER_MODEL = "gpt-oss-120b"  # Hardcoded planner model
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))

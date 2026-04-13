@@ -30,7 +30,7 @@ PROCESSED_FILE = Path("/outputs") / RUN_ID / "processed_alerts.json"
 PLANNER_URL = os.getenv("PLANNER_URL", "http://127.0.0.1:1654/plan")
 PLANNER_REQUEST_TIMEOUT = float(os.getenv("PLANNER_REQUEST_TIMEOUT", "45"))
 PLANNER_REQUEST_RETRIES = int(os.getenv("PLANNER_REQUEST_RETRIES", "2"))
-OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "600"))  # 10 minutes
+OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "1200"))
 POLL_INTERVAL = float(os.getenv("AUTO_RESPONDER_INTERVAL", "5"))
 MAX_EXECUTION_RETRIES = int(os.getenv("MAX_EXECUTION_RETRIES", "3"))
 DUPLICATE_DETECTION_WINDOW = int(os.getenv("DUPLICATE_DETECTION_WINDOW", "300"))  # 5 minutes
@@ -42,11 +42,9 @@ PLANNER_ONLY = os.getenv("PLANNER_ONLY", "").lower() in ("true", "1", "yes", "on
 # OpenCode Server API configuration
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
 
-# Network topology
-SERVER_IP = "172.31.0.10"
-COMPROMISED_IP = "172.30.0.10"
-OPENCODE_SERVER_HOST = os.getenv("OPENCODE_SERVER_HOST", SERVER_IP)
-OPENCODE_COMPROMISED_HOST = os.getenv("OPENCODE_COMPROMISED_HOST", COMPROMISED_IP)
+# Network topology (fixed IPs, not configurable via env)
+OPENCODE_SERVER_HOST = "172.31.0.10"
+OPENCODE_COMPROMISED_HOST = "172.30.0.10"
 
 # OpenCode status polling
 OPENCODE_STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
@@ -73,8 +71,6 @@ class AutoResponder:
                 "planner_request_retries": PLANNER_REQUEST_RETRIES,
                 "poll_interval": POLL_INTERVAL,
                 "opencode_timeout": OPENCODE_TIMEOUT,
-                "server_ip": SERVER_IP,
-                "compromised_ip": COMPROMISED_IP,
                 "opencode_server_host": OPENCODE_SERVER_HOST,
                 "opencode_compromised_host": OPENCODE_COMPROMISED_HOST,
                 "opencode_server_port": OPENCODE_SERVER_PORT,
@@ -518,7 +514,7 @@ class AutoResponder:
         elif executor_ip.startswith("172.30.0."):
             return OPENCODE_COMPROMISED_HOST, "compromised"
         else:
-            return SERVER_IP, "server"
+            return OPENCODE_SERVER_HOST, "server"
 
     # ──────────────────────────────────────────────────────────────────
     # OpenCode Server API methods
@@ -636,7 +632,7 @@ class AutoResponder:
         if timeout is None:
             timeout = OPENCODE_TIMEOUT
         start = time.time()
-        machine_name = "server" if target_ip == SERVER_IP else "compromised"
+        machine_name = "server" if target_ip == OPENCODE_SERVER_HOST else "compromised"
 
         while time.time() - start < timeout:
             status = self.get_session_status(target_ip, session_id)

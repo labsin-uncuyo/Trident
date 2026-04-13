@@ -25,11 +25,9 @@ class PlanResponse(BaseModel):
 
 def _build_planner() -> IncidentPlanner:
     cfg = PlannerConfig()
-    # Ensure compatibility env vars are present before instantiation
-    # Use OPENAI_BASE_URL_CONTAINER if set (for container-accessible LLM endpoint), otherwise fall back
-    base_url = os.getenv("OPENAI_BASE_URL_CONTAINER") or cfg.openai_base_url
+    base_url = cfg.openai_base_url
     if base_url:
-        os.environ.setdefault("OPENAI_BASE_URL", base_url)
+        os.environ.setdefault("LLM_URL", base_url)
     if cfg.openai_api_key:
         os.environ.setdefault("OPENAI_API_KEY", cfg.openai_api_key)
     return IncidentPlanner(cfg)

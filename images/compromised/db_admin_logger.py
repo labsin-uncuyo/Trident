@@ -26,7 +26,7 @@ import requests
 # Configuration
 # ---------------------------------------------------------------------------
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
-COMPROMISED_IP = os.getenv("COMPROMISED_IP", "172.30.0.10")
+COMPROMISED_IP = "172.30.0.10"  # fixed lab IP, not configurable via env
 DEFAULT_AGENT = "db_admin"
 STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
 
@@ -314,8 +314,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--timeout", type=int,
-        default=int(os.environ.get("OPENCODE_TIMEOUT", "86400")),
-        help="Max seconds to wait for execution (default: 86400).",
+        default=int(os.environ.get("OPENCODE_TIMEOUT", "1200")),
+        help="Max seconds to wait for execution (default: 1200).",
     )
     # Kept for backward-compatibility with callers that still pass these.
     parser.add_argument("--container", default=None,

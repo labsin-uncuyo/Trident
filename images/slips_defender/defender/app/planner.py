@@ -26,14 +26,14 @@ def _is_truthy(value: Optional[str], default: bool = False) -> bool:
 
 @dataclass
 class PlannerConfig:
-    model: str = os.getenv("LLM_MODEL", "gpt-oss-120b")
+    model: str = os.getenv("LLM_MODEL", "")
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
     max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1200"))
     # OpenAI-compatible endpoint values
-    openai_base_url: Optional[str] = os.getenv("OPENAI_BASE_URL")
+    openai_base_url: Optional[str] = os.getenv("LLM_URL")
     openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
     # Optional Langfuse tracing
-    langfuse_enabled: bool = _is_truthy(os.getenv("LANGFUSE_ENABLED"), default=True)
+    langfuse_enabled: bool = _is_truthy(os.getenv("LANGFUSE_ENABLED"), default=False)
     langfuse_public_key: Optional[str] = os.getenv("LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: Optional[str] = os.getenv("LANGFUSE_SECRET_KEY")
     langfuse_host: Optional[str] = os.getenv("LANGFUSE_HOST")
@@ -55,7 +55,7 @@ class IncidentPlanner:
 
         # Ensure environment variables are set for OpenAI-compatible clients
         if self.config.openai_base_url:
-            os.environ.setdefault("OPENAI_BASE_URL", self.config.openai_base_url)
+            os.environ.setdefault("LLM_URL", self.config.openai_base_url)
         if self.config.openai_api_key:
             os.environ.setdefault("OPENAI_API_KEY", self.config.openai_api_key)
 
@@ -64,7 +64,7 @@ class IncidentPlanner:
             model=self.config.model,
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
-            # ChatOpenAI reads OPENAI_BASE_URL and OPENAI_API_KEY from env; base_url can also be passed explicitly
+            # ChatOpenAI reads LLM_URL and OPENAI_API_KEY from env; base_url can also be passed explicitly
             base_url=self.config.openai_base_url,
             api_key=self.config.openai_api_key,
                     )

@@ -74,6 +74,8 @@ RUN ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+COPY db_admin_opencode_client.py /opt/db_admin_opencode_client.py
+
 EXPOSE 22
 
 # --------------------------------------------------------------------

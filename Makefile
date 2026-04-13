@@ -7,8 +7,8 @@ RUN_ID_FILE := ./outputs/.current_run
 .PHONY: build up down clean ssh_keys aracne defend not_defend coder56 benign dashboard
 
 build:
-	@echo "Building all compose services (including defender/benign/attacker)..."
-	$(COMPOSE) build --pull --no-cache
+	@echo "Building all compose services..."
+	$(COMPOSE) --profile core --profile defender build --pull --no-cache
 
 up:
 	@RUN_ID_VALUE=$${RUN_ID:-logs_$$(date +%Y%m%d_%H%M%S)}; \
@@ -95,14 +95,11 @@ coder56:
 	echo "[coder56] Starting with RUN_ID=$$RUN_ID_VALUE"; \
 	echo "[coder56] Goal: $$goal"; \
 	mkdir -p ./outputs/$$RUN_ID_VALUE/coder56; \
-	export RUN_ID=$$RUN_ID_VALUE; \
-	docker run --rm \
-		--network lab_net_a \
+	docker exec \
 		-e RUN_ID=$$RUN_ID_VALUE \
-		-v "$$(pwd)":/workspace \
-		-w /workspace \
-		lab/dashboard:latest \
-		sh -lc "python3 /workspace/scripts/coder56_opencode_client.py \"$$goal\""
+		-e TRIDENT_HOME=/ \
+		lab_compromised \
+		sh -c "python3 /scripts/coder56_opencode_client.py \"$$goal\""
 
 # Usage:
 #   make benign                          # default goal, no time limit
@@ -130,21 +127,18 @@ benign:
 		echo "[benign] Time limit: None (run until manually stopped)"; \
 	fi; \
 	mkdir -p ./outputs/$$RUN_ID_VALUE/benign_agent; \
-	export RUN_ID=$$RUN_ID_VALUE; \
-	cmd="python /workspace/images/compromised/db_admin_opencode_client.py"; \
+	cmd="python3 /opt/db_admin_opencode_client.py"; \
 	if [ -n "$(GOAL)" ]; then \
 		cmd="$$cmd \"$(GOAL)\""; \
 	fi; \
 	if [ -n "$(TIME_LIMIT)" ]; then \
 		cmd="$$cmd --time-limit $(TIME_LIMIT)"; \
 	fi; \
-	docker run --rm \
-		--network lab_net_a \
+	docker exec \
 		-e RUN_ID=$$RUN_ID_VALUE \
-		-v "$$(pwd)":/workspace \
-		-w /workspace \
-		lab/dashboard:latest \
-		sh -lc "$$cmd"
+		-e TRIDENT_HOME=/ \
+		lab_compromised \
+		sh -c "$$cmd"
 
 .PHONY: benign-run
 benign-run:

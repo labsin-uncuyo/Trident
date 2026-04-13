@@ -1,10 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-: "${LAB_PASSWORD:?LAB_PASSWORD must be set}"
+: "${SSH_COMPROMISED_PASS:?SSH_COMPROMISED_PASS must be set}"
+: "${SSH_COMPROMISED_USER:=labuser}"
 : "${RUN_ID:=run_local}"
 
-printf 'labuser:%s\n' "${LAB_PASSWORD}" | chpasswd
+printf '%s:%s\n' "${SSH_COMPROMISED_USER}" "${SSH_COMPROMISED_PASS}" | chpasswd
 
 mkdir -p /etc/sudoers.d
 echo "labuser ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/labuser
