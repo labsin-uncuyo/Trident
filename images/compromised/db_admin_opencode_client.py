@@ -46,7 +46,8 @@ TIMING: sleep 60-130 between tasks to simulate coffee breaks, go to the bathroom
 
 DATABASE TASKS: Check table structure, INSERT new employees, UPDATE salaries, DELETE obsolete records, run monitoring queries. After each web research session, execute at least one database operation.
 
-LOOP: This workday has no defined end. After completing a full cycle of research + DB operations, start a new cycle with different keywords and different data modifications. Repeat indefinitely."""
+LOOP: This workday has no defined end. After completing a full cycle of research + DB operations, start a new cycle with different keywords and different data modifications. Repeat indefinitely.
+To conect use: PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb"""
 _MIN_REMAINING_SECONDS = 30  # Don't start a new session with less time left
 
 # Phrases that indicate the agent considers its work done for this session.
