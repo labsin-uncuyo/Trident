@@ -83,7 +83,7 @@ not_defend:
 	$(COMPOSE) --profile defender stop slips_defender|| true
 
 clean:
-	$(COMPOSE) down --rmi all --volumes --remove-orphans
+	$(COMPOSE) --profile core --profile defender --profile attackers down --rmi all --volumes --remove-orphans
 
 coder56:
 	@goal="$(filter-out $@,$(MAKECMDGOALS))"; \
