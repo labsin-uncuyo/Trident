@@ -84,6 +84,7 @@ not_defend:
 
 clean:
 	$(COMPOSE) --profile core --profile defender --profile attackers down --rmi all --volumes --remove-orphans
+	docker image prune -f
 
 coder56:
 	@goal="$(filter-out $@,$(MAKECMDGOALS))"; \
