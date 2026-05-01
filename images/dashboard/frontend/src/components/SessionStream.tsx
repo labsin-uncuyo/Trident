@@ -1,6 +1,6 @@
 import type { MessagePart, SessionMessage } from '@/types';
-import { ChevronDown, ChevronRight, Terminal, MessageSquare, Wrench } from 'lucide-react';
-import { useState } from 'react';
+import { ChevronDown, ChevronRight, Terminal, MessageSquare, Wrench, Maximize2, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 const TEXT_PREVIEW_LENGTH = 300;
 
@@ -119,7 +119,116 @@ interface Props {
   sessionId?: string;
 }
 
+/** Fullscreen modal for viewing a single message */
+function MessageFullscreenModal({ message, onClose }: { message: SessionMessage; onClose: () => void }) {
+  // Handle Escape key to close
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className="relative h-full w-full max-w-5xl overflow-auto p-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Close button - larger, always visible */}
+        <button
+          onClick={onClose}
+          className="fixed top-6 right-6 z-50 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/90 border-2 border-white/20 text-white shadow-2xl backdrop-blur-sm transition-all hover:bg-red-500 hover:scale-105 active:scale-95"
+          aria-label="Close fullscreen"
+        >
+          <X size={32} strokeWidth={3} />
+        </button>
+
+        {/* Message content */}
+        <div className="rounded-xl border border-white/10 bg-black/60 backdrop-blur-xl p-8 shadow-2xl ring-1 ring-white/5">
+          {/* Message header */}
+          <div className="mb-6 flex items-center gap-4 border-b border-white/10 pb-5">
+            <span className={`badge ${message.info?.role === 'assistant' ? 'badge-info' : 'badge-muted'} text-sm px-4 py-1.5`}>
+              {message.info?.role || 'unknown'}
+            </span>
+            {message.info?.tokens && (
+              <span className="text-sm text-white/60">
+                {message.info.tokens.input}↓ {message.info.tokens.output}↑ tokens
+              </span>
+            )}
+            {message.info?.time?.created && (
+              <span className="ml-auto text-sm text-white/50">
+                {new Date(message.info.time.created).toLocaleString()}
+              </span>
+            )}
+          </div>
+
+          {/* Message parts */}
+          <div className="space-y-6">
+            {(Array.isArray(message.parts) ? message.parts : []).map((part, pIdx) => {
+              // Cast to access tool-specific properties
+              const toolPart = part as any;
+              return (
+                <div key={pIdx}>
+                  {part.type === 'text' ? (
+                    <div>
+                      <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-wider text-white/40">
+                        <MessageSquare size={16} className="text-blue-400" />
+                        Text
+                      </div>
+                      <pre className="whitespace-pre-wrap break-words text-base text-white/90 font-mono leading-relaxed">
+                        {typeof part.text === 'string' ? part.text : JSON.stringify(part.text)}
+                      </pre>
+                    </div>
+                  ) : part.type === 'tool' ? (
+                    <div className="rounded-xl border border-white/10 bg-black/40">
+                      <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10">
+                        <Wrench size={16} className="text-amber-400 flex-shrink-0" />
+                        <span className="font-mono font-medium text-amber-400 text-sm">
+                          {part.tool || 'unknown_tool'}
+                        </span>
+                      </div>
+                      <div className="space-y-5 p-5">
+                        {toolPart.state && (
+                          <>
+                            {typeof toolPart.state.input === 'object' && Object.keys(toolPart.state.input).length > 0 && (
+                              <div>
+                                <span className="text-xs uppercase tracking-wider text-white/40 mb-3 block">Input</span>
+                                <pre className="terminal-output text-base text-yellow-300 rounded-lg bg-black/30 p-4">
+                                  {JSON.stringify(toolPart.state.input, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                            {toolPart.state.output && (
+                              <div>
+                                <span className="text-xs uppercase tracking-wider text-white/40 mb-3 block">Output</span>
+                                <pre className="terminal-output text-base rounded-lg bg-black/30 p-4">
+                                  {typeof toolPart.state.output === 'string' ? toolPart.state.output : JSON.stringify(toolPart.state.output, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SessionStream({ messages, sessionId }: Props) {
+  const [maximizedMessage, setMaximizedMessage] = useState<SessionMessage | null>(null);
+
   if (messages.length === 0) {
     return (
       <div className="flex items-center justify-center py-8 text-sm text-trident-muted">
@@ -130,31 +239,51 @@ export function SessionStream({ messages, sessionId }: Props) {
   }
 
   return (
-    <div className="space-y-2">
-      {messages.map((msg, idx) => (
-        <div key={idx} className="rounded-lg border border-trident-border bg-trident-surface/50 p-3">
-          <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-trident-muted">
-            <span className={`badge ${msg.info?.role === 'assistant' ? 'badge-info' : 'badge-muted'}`}>
-              {msg.info?.role || 'unknown'}
-            </span>
-            {msg.info?.tokens && (
-              <span>
-                {msg.info.tokens.input}↓ {msg.info.tokens.output}↑ tokens
+    <>
+      <div className="space-y-2">
+        {messages.map((msg, idx) => (
+          <div key={idx} className="group relative rounded-lg border border-trident-border bg-trident-surface/50 p-3">
+            <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-trident-muted">
+              <span className={`badge ${msg.info?.role === 'assistant' ? 'badge-info' : 'badge-muted'}`}>
+                {msg.info?.role || 'unknown'}
               </span>
-            )}
-            {msg.info?.time?.created && (
-              <span className="ml-auto">
-                {new Date(msg.info.time.created).toLocaleTimeString()}
-              </span>
-            )}
+              {msg.info?.tokens && (
+                <span>
+                  {msg.info.tokens.input}↓ {msg.info.tokens.output}↑ tokens
+                </span>
+              )}
+              {msg.info?.time?.created && (
+                <span className="ml-auto">
+                  {new Date(msg.info.time.created).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            <div className="space-y-1">
+              {(Array.isArray(msg.parts) ? msg.parts : []).map((part, pIdx) => (
+                <PartRenderer key={pIdx} part={part} />
+              ))}
+            </div>
+
+            {/* Maximize button - appears on hover */}
+            <button
+              onClick={() => setMaximizedMessage(msg)}
+              className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded bg-trident-surface border border-trident-border text-trident-muted opacity-0 transition-all hover:border-trident-accent hover:text-trident-accent group-hover:opacity-100"
+              aria-label="Maximize message"
+              title="Maximize message"
+            >
+              <Maximize2 size={14} />
+            </button>
           </div>
-          <div className="space-y-1">
-            {(Array.isArray(msg.parts) ? msg.parts : []).map((part, pIdx) => (
-              <PartRenderer key={pIdx} part={part} />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+
+      {/* Fullscreen modal */}
+      {maximizedMessage && (
+        <MessageFullscreenModal
+          message={maximizedMessage}
+          onClose={() => setMaximizedMessage(null)}
+        />
+      )}
+    </>
   );
 }

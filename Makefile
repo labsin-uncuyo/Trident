@@ -26,12 +26,45 @@ down:
 	$(COMPOSE) --profile core --profile attackers --profile defender down --volumes
 	@rm -f $(RUN_ID_FILE)
 
+DASHBOARD_BUILD_MARKER := .dashboard_build_marker
+
+# Frontend files that trigger a rebuild
+FRONTEND_FILES := $(shell find images/dashboard/frontend/src -type f -name '*.tsx' -o -name '*.ts' 2>/dev/null)
+FRONTEND_CONFIG := $(shell ls images/dashboard/frontend/package.json images/dashboard/frontend/vite.config.ts images/dashboard/frontend/tsconfig.json 2>/dev/null)
+
 dashboard:
-	@echo "Building and starting dashboard..."
-	$(COMPOSE) --profile core build dashboard
-	RUN_ID=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo none) $(COMPOSE) --profile core up -d --no-recreate --no-build router server compromised
-	RUN_ID=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo none) $(COMPOSE) --profile core up -d --force-recreate --build dashboard
-	@echo "✓ Dashboard running at http://localhost:8888"
+	@echo "Starting dashboard..."
+	@RUN_ID=$$(cat $(RUN_ID_FILE) 2>/dev/null || echo none); \
+	needs_build=0; \
+	 marker_content=""; \
+	if [ -f $(DASHBOARD_BUILD_MARKER) ]; then \
+		current_content=$$(find images/dashboard/frontend/src images/dashboard/frontend/package.json images/dashboard/frontend/vite.config.ts images/dashboard/frontend/tsconfig.json -type f -exec stat -c "%Y %n" {} \; 2>/dev/null | sort | md5sum | cut -d' ' -f1); \
+		stored_content=$$(cat $(DASHBOARD_BUILD_MARKER) 2>/dev/null); \
+		if [ "$$current_content" != "$$stored_content" ]; then \
+			echo "Frontend files changed, rebuilding..."; \
+			needs_build=1; \
+		fi; \
+	else \
+		echo "No build marker found, building..."; \
+		needs_build=1; \
+	fi; \
+	if [ $$needs_build -eq 1 ]; then \
+		echo "Building dashboard image..."; \
+		$(COMPOSE) --profile core build dashboard; \
+		find images/dashboard/frontend/src images/dashboard/frontend/package.json images/dashboard/frontend/vite.config.ts images/dashboard/frontend/tsconfig.json -type f -exec stat -c "%Y %n" {} \; 2>/dev/null | sort | md5sum | cut -d' ' -f1 > $(DASHBOARD_BUILD_MARKER); \
+		echo "✓ Build complete"; \
+	else \
+		echo "✓ Using cached dashboard image (no frontend changes)"; \
+	fi; \
+	echo "Starting containers..."; \
+	$(COMPOSE) --profile core up -d --no-recreate --no-build router server compromised 2>/dev/null || true; \
+	if [ $$needs_build -eq 1 ]; then \
+		RUN_ID=$$RUN_ID $(COMPOSE) --profile core up -d --force-recreate dashboard; \
+	else \
+		RUN_ID=$$RUN_ID $(COMPOSE) --profile core up -d --no-recreate dashboard 2>/dev/null || \
+		RUN_ID=$$RUN_ID $(COMPOSE) --profile core up -d dashboard; \
+	fi; \
+	echo "✓ Dashboard running at http://localhost:8888"
 
 ssh_keys:
 	@echo "Setting up SSH keys for auto_responder..."
