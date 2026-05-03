@@ -168,3 +168,87 @@ export interface WsTimelineMessage {
   agent: string;
   data: TimelineEntry;
 }
+
+/* ── Replay ─────────────────────────────────────────────────────── */
+
+export interface ReplayEvent {
+  timestamp_ms: number;
+  source_type: 'timeline' | 'opencode' | 'alert';
+  source_file: string;
+  ts?: string;
+  level?: string;
+  msg?: string;
+  data?: Record<string, unknown>;
+  info?: {
+    sessionID?: string;
+    role?: string;
+    time?: { created?: number; completed?: number };
+    tokens?: { input?: number; output?: number; reasoning?: number };
+    timestamp?: number;
+  };
+  parts?: MessagePart[];
+  session_id?: string;
+  [key: string]: unknown;
+}
+
+export interface ReplayState {
+  replayId: string | null;
+  path: string | null;
+  positionMs: number;
+  durationMs: number;
+  startTimeMs: number;
+  endTimeMs: number;
+  eventCount: number;
+  isPlaying: boolean;
+  speed: number;
+  events: ReplayEvent[];
+  error: string | null;
+}
+
+export interface ReplayMetadata {
+  replay_id: string;
+  path: string;
+  start_time_ms: number;
+  end_time_ms: number;
+  duration_ms: number;
+  event_count: number;
+  initial_events?: ReplayEvent[];
+}
+
+export interface ReplayRunInfo {
+  run_id: string;
+  path: string;
+  is_current: boolean;
+  created: string;
+}
+
+export interface WsReplayStateMessage {
+  type: 'state';
+  replay_id: string;
+  position_ms: number;
+  playing: boolean;
+  speed: number;
+  duration_ms: number;
+  start_time_ms?: number;
+  end_time_ms?: number;
+}
+
+export interface WsReplayEventsMessage {
+  type: 'events';
+  events: ReplayEvent[];
+}
+
+export interface WsReplayPlaybackCompleteMessage {
+  type: 'playback_complete';
+}
+
+export interface WsReplayErrorMessage {
+  type: 'error';
+  message: string;
+}
+
+export type WsReplayMessage =
+  | WsReplayStateMessage
+  | WsReplayEventsMessage
+  | WsReplayPlaybackCompleteMessage
+  | WsReplayErrorMessage;

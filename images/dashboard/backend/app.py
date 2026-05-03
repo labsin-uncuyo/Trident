@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.models import HealthResponse, ServiceHealth
-from backend.routers import alerts, containers, opencode, pcaps, runs, timeline, topology
+from backend.routers import alerts, containers, opencode, pcaps, replay, runs, timeline, topology
 from backend.services.opencode_client import close_all, load_all_agent_states
 
 logging.basicConfig(
@@ -58,6 +58,7 @@ app.include_router(alerts.router)
 app.include_router(runs.router)
 app.include_router(pcaps.router)
 app.include_router(timeline.router)
+app.include_router(replay.router)
 
 
 # ── Health endpoint ──────────────────────────────────────────────────

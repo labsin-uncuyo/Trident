@@ -1,10 +1,11 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Cpu, ArrowRight, Radio, MessageSquare } from 'lucide-react';
+import { Cpu, ArrowRight, Radio, MessageSquare, Play } from 'lucide-react';
 import { useOpenCodeStream } from '@/hooks/useOpenCodeStream';
 import { useTimelineStream } from '@/hooks/useTimelineStream';
 import { SessionStream } from '@/components/SessionStream';
 import { api } from '@/api';
+import { useReplayContext } from '@/contexts/ReplayContext';
 import type { SessionsMap, SessionMessage, TimelineEntry } from '@/types';
 
 const LEVEL_STYLES: Record<string, string> = {
@@ -107,7 +108,7 @@ const TIMELINE_AGENTS: Array<{ key: string; label: string; desc: string; color: 
   },
 ];
 
-function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySession, sessionSources }: {
+function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySession, sessionSources, timelineMessages, timelineStream }: {
   agentKey: string;
   label: string;
   desc: string;
@@ -115,8 +116,10 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
   host: string;
   messagesBySession: Record<string, SessionMessage[]>;
   sessionSources: Record<string, string>;
+  timelineMessages: Record<string, SessionMessage[]>;
+  timelineStream: ReturnType<typeof useTimelineStream>;
 }) {
-  const { entries, connected } = useTimelineStream(agentKey);
+  const { entries, connected } = timelineStream;
   const recent = entries.slice(-200);
   const lastEntry = recent[recent.length - 1];
 
@@ -146,42 +149,10 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
     return ids;
   }, [entries, sessionSources, agentKey]);
 
-  // Reconstruct messages from timeline OPENCODE entries grouped by messageID.
-  // This is used as a fallback when the API session has already ended and returns no data.
-  const timelineMessages = useMemo((): Record<string, SessionMessage[]> => {
-    // Group parts by (sessionID → messageID → ordered parts)
-    const bySession: Record<string, Map<string, { ts: number; parts: any[] }>> = {};
-    for (const e of entries) {
-      if (e.level !== 'OPENCODE') continue;
-      const d = e.data as any;
-      const part = d?.part;
-      if (!part) continue;
-      const sid = d?.sessionID ?? d?.session_id;
-      const mid = part?.messageID;
-      if (!sid || !mid) continue;
-      if (!bySession[sid]) bySession[sid] = new Map();
-      const msgMap = bySession[sid];
-      if (!msgMap.has(mid)) msgMap.set(mid, { ts: d?.timestamp ?? 0, parts: [] });
-      msgMap.get(mid)!.parts.push(part);
-    }
-    // Convert to SessionMessage[]
-    const result: Record<string, SessionMessage[]> = {};
-    for (const [sid, msgMap] of Object.entries(bySession)) {
-      const msgs: SessionMessage[] = Array.from(msgMap.values())
-        .sort((a, b) => a.ts - b.ts)
-        .map(({ parts }) => ({
-          info: { role: 'assistant' as const },
-          parts,
-        }));
-      if (msgs.length > 0) result[sid] = msgs;
-    }
-    return result;
-  }, [entries]);
-
   // For any session ID not in the shared messagesBySession, try the API first
   useEffect(() => {
     for (const sid of sessionIds) {
-      if (!messagesBySession[sid] && !fetchedRef.current.has(sid)) {
+      if (!messagesBySession[sid] && !timelineMessages[sid] && !fetchedRef.current.has(sid)) {
         fetchedRef.current.add(sid);
         (api.openCodeMessages(sid) as Promise<any>)
           .then((msgs: any) => {
@@ -193,17 +164,17 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
           .catch(() => {});
       }
     }
-  }, [sessionIds, messagesBySession]);
+  }, [sessionIds, messagesBySession, timelineMessages]);
 
-  // Collect all OpenCode messages: shared stream > API fetch > timeline reconstruction
+  // Collect all OpenCode messages: shared stream > timeline reconstruction > API fetch
   const ocMessages = useMemo(() => {
     const msgs: SessionMessage[] = [];
     for (const sid of sessionIds) {
-      const sm = messagesBySession[sid] ?? extraMessages[sid] ?? timelineMessages[sid];
+      const sm = messagesBySession[sid] ?? timelineMessages[sid] ?? extraMessages[sid];
       if (sm) msgs.push(...sm);
     }
     return msgs;
-  }, [sessionIds, messagesBySession, extraMessages, timelineMessages]);
+  }, [sessionIds, messagesBySession, timelineMessages, extraMessages]);
 
   const msgCount = ocMessages.length;
 
@@ -302,7 +273,7 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
   );
 }
 
-function HostPanel({ host, stream }: { host: string; stream: ReturnType<typeof useOpenCodeStream> }) {
+function HostPanel({ host, stream, timelineMessages }: { host: string; stream: ReturnType<typeof useOpenCodeStream>; timelineMessages: Record<string, SessionMessage[]> }) {
   const { sessions, messagesBySession, connected } = stream;
 
   const sessionEntries = Object.entries(sessions);
@@ -397,22 +368,64 @@ function HostPanel({ host, stream }: { host: string; stream: ReturnType<typeof u
 }
 
 export function AgentsPage() {
+  const { replay } = useReplayContext();
+
+  // Gather all timeline streams from all agents
+  const coder56Stream = useTimelineStream('coder56');
+  const dbAdminStream = useTimelineStream('db_admin');
+  const socServerStream = useTimelineStream('soc_god_server');
+  const socCompromisedStream = useTimelineStream('soc_god_compromised');
+
+  // Combine all timeline entries once for shared message reconstruction
+  const allTimelineEntries = useMemo(() => [
+    ...coder56Stream.entries,
+    ...dbAdminStream.entries,
+    ...socServerStream.entries,
+    ...socCompromisedStream.entries,
+  ], [coder56Stream.entries, dbAdminStream.entries, socServerStream.entries, socCompromisedStream.entries]);
+
   // Hostless OpenCode stream shared across all panels
-  const openCodeStream = useOpenCodeStream();
+  const openCodeStream = useOpenCodeStream(undefined, allTimelineEntries);
+  const { timelineMessages } = openCodeStream;
 
   const streamByHost: Record<string, ReturnType<typeof useOpenCodeStream>> = {
     compromised: openCodeStream,
     server: openCodeStream,
   };
 
+  const isReplayActive = openCodeStream.isReplayActive;
+
+  // Map agent key to its stream for passing to panels
+  const timelineStreamsByAgent: Record<string, ReturnType<typeof useTimelineStream>> = {
+    coder56: coder56Stream,
+    db_admin: dbAdminStream,
+    soc_god_server: socServerStream,
+    soc_god_compromised: socCompromisedStream,
+  };
+
   return (
     <div className="flex h-full flex-col gap-6 overflow-auto">
+      {/* ── Header with replay indicator ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-heading text-2xl font-bold text-white">Agents</h2>
+          <p className="text-sm text-trident-muted">
+            {isReplayActive
+              ? `Replaying data from ${replay.replayId}`
+              : 'Live event timeline from auto-responder agents'
+            }
+          </p>
+        </div>
+        {isReplayActive && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-trident-accent/20 border border-trident-accent/50">
+            <Play size={14} className="text-trident-accent" />
+            <span className="text-sm font-medium text-trident-accent">Replay Active</span>
+          </div>
+        )}
+      </div>
+
       {/* ── Timeline agents (coder56, db_admin) ── */}
       <div>
-        <h2 className="font-heading text-2xl font-bold text-white">Agents</h2>
-        <p className="mb-4 text-sm text-trident-muted">
-          Live event timeline from auto-responder agents
-        </p>
         <div className="grid grid-cols-2 gap-6">
           {TIMELINE_AGENTS.map((a) => (
             <TimelineAgentPanel
@@ -424,6 +437,8 @@ export function AgentsPage() {
               host={a.host}
               messagesBySession={streamByHost[a.host]?.messagesBySession ?? {}}
               sessionSources={streamByHost[a.host]?.sessionSources ?? {}}
+              timelineMessages={timelineMessages}
+              timelineStream={timelineStreamsByAgent[a.key]}
             />
           ))}
         </div>
@@ -437,7 +452,7 @@ export function AgentsPage() {
         </p>
         <div className="grid grid-cols-2 gap-6">
           {HOSTS.map((host) => (
-            <HostPanel key={host} host={host} stream={streamByHost[host]} />
+            <HostPanel key={host} host={host} stream={streamByHost[host]} timelineMessages={timelineMessages} />
           ))}
         </div>
       </div>

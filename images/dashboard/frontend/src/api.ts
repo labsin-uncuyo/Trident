@@ -43,4 +43,18 @@ export const api = {
   timelineAgents: () => api.get('/timeline/agents'),
   timeline: (agent: string, runId?: string) =>
     api.get(`/timeline/${agent}${runId ? `?run_id=${runId}` : ''}`),
+
+  /** Replay */
+  replayLoad: (path?: string, runId?: string) =>
+    fetch('/api/replay/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...(path ? { path } : {}),
+        ...(runId ? { run_id: runId } : {}),
+      }),
+    }).then((r) => r.json()),
+  replayRuns: () => api.get<{ runs: Array<{ run_id: string; path: string; is_current: boolean; created: string }> }>('/replay/runs'),
+  replayEvents: (replayId: string, startMs?: number, endMs?: number) =>
+    api.get(`/replay/${replayId}/events${startMs !== undefined ? `?start_ms=${startMs}` : ''}${endMs !== undefined ? `&end_ms=${endMs}` : ''}`),
 };
