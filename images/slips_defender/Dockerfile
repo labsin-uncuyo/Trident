@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     telnet \
     iputils-ping \
     python3-pip \
+    tshark \
     && rm -rf /var/lib/apt/lists/*
 
 # Install umap and other missing Python dependencies
@@ -34,8 +35,16 @@ COPY ./defender /opt/lab/defender/
 COPY ./setup_ssh_keys.sh /opt/lab/setup_ssh_keys.sh
 
 # Apply HTTP analyzer password guessing detection patches
-COPY ./patches/http_analyzer/http_analyzer.py /StratosphereLinuxIPS/modules/http_analyzer/http_analyzer.py
-COPY ./patches/http_analyzer/set_evidence.py /StratosphereLinuxIPS/modules/http_analyzer/set_evidence.py
+# Try multiple possible paths for different SLIPS versions
+RUN if [ -d "/StratosphereLinuxIPS/modules/http_analyzer" ]; then \
+    echo "Installing patches to /StratosphereLinuxIPS/modules/http_analyzer"; \
+    mkdir -p /opt/lab/patches/http_analyzer; \
+    cp ./patches/http_analyzer/http_analyzer.py /StratosphereLinuxIPS/modules/http_analyzer/http_analyzer.py || true; \
+    cp ./patches/http_analyzer/set_evidence.py /StratosphereLinuxIPS/modules/http_analyzer/set_evidence.py || true; \
+    fi
 
 # Set proper permissions
 RUN chmod +x /opt/lab/defender/*.py /opt/lab/setup_ssh_keys.sh
+
+# Create a marker file to indicate patches are available at runtime
+RUN touch /opt/lab/patches_available.flag

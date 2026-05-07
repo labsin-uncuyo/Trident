@@ -8,8 +8,23 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-DATASET_DIR = Path("/StratosphereLinuxIPS/dataset")
-OUTPUT_DIR = Path("/StratosphereLinuxIPS/output")
+# Dynamic SLIPS path detection to handle different versions
+def _find_slips_base() -> Path:
+    """Find the SLIPS installation directory across different versions."""
+    candidates = [
+        Path("/StratosphereLinuxIPS"),
+        Path("/opt/slips"),
+        Path("/usr/local/slips"),
+    ]
+    for candidate in candidates:
+        if candidate.exists() and (candidate / "slips.py").exists():
+            return candidate
+    # Default to original path if none found
+    return Path("/StratosphereLinuxIPS")
+
+SLIPS_BASE = _find_slips_base()
+DATASET_DIR = SLIPS_BASE / "dataset"
+OUTPUT_DIR = SLIPS_BASE / "output"
 RUN_ID = os.getenv("RUN_ID", "run_local")
 # Fixed cadence and behavior: no active stream snapshots, 5s poll, configurable per-PCAP timeout.
 POLL_INTERVAL = 5.0
@@ -19,6 +34,8 @@ ACTIVE_SNAPSHOT_COOLDOWN = float(os.getenv("SLIPS_ACTIVE_SNAPSHOT_COOLDOWN", "30
 SKIP_ACTIVE = {"router.pcap", "router_stream.pcap", "switch_stream.pcap"}
 SKIP_ACTIVE.add("server.pcap")
 SKIP_PREFIXES = ("router_stream", "switch_stream", "server_stream")
+
+print(f"[slips-watch] Detected SLIPS base directory: {SLIPS_BASE}", flush=True)
 
 
 def _write_sentinel(path: Path, note: str) -> None:
@@ -99,8 +116,8 @@ def _process(path: Path) -> None:
         print(f"[slips-watch] warning: capture normalization check failed for {path.name}: {exc}", flush=True)
 
     subprocess.run(
-        ["python3", "/StratosphereLinuxIPS/slips.py", "-f", f"dataset/{process_path.name}"],
-        cwd="/StratosphereLinuxIPS",
+        ["python3", str(SLIPS_BASE / "slips.py"), "-f", f"dataset/{process_path.name}"],
+        cwd=str(SLIPS_BASE),
         timeout=PROCESS_TIMEOUT,
         check=True,
     )

@@ -8,8 +8,23 @@ from typing import Dict
 
 import requests
 
+# Dynamic SLIPS path detection to handle different versions
+def _find_slips_base() -> Path:
+    """Find the SLIPS installation directory across different versions."""
+    candidates = [
+        Path("/StratosphereLinuxIPS"),
+        Path("/opt/slips"),
+        Path("/usr/local/slips"),
+    ]
+    for candidate in candidates:
+        if candidate.exists() and (candidate / "slips.py").exists():
+            return candidate
+    # Default to original path if none found
+    return Path("/StratosphereLinuxIPS")
+
+SLIPS_BASE = _find_slips_base()
 RUN_ID = os.getenv("RUN_ID", "run_local")
-OUTPUT_ROOT = Path(os.getenv("SLIPS_OUTPUT_DIR", "/StratosphereLinuxIPS/output"))
+OUTPUT_ROOT = Path(os.getenv("SLIPS_OUTPUT_DIR", str(SLIPS_BASE / "output")))
 DEFENDER_URL = os.getenv("DEFENDER_URL", "http://127.0.0.1:8000/alerts")
 POLL_INTERVAL = float(os.getenv("SLIPS_ALERT_INTERVAL", "2"))
 
