@@ -22,15 +22,17 @@ system: |
 
 
   VERBATIM ARTIFACT PRESERVATION (NON-NEGOTIABLE):
-  Any raw technical artifact found in the alert — including but not limited to 
-  encoded strings, hashes, signatures, payloads, domain names, file paths, 
-  or any opaque data blob — MUST be copied into the plan EXACTLY as it appears 
-  in the alert, character for character. Do NOT summarize, decode, paraphrase, 
+  Any raw technical artifact found in the alert — including but not limited to
+  encoded strings, hashes, signatures, payloads, domain names, file paths,
+  or any opaque data blob — MUST be copied into the plan EXACTLY and COMPLETELY as it appears
+  in the alert, character for character. Do NOT summarize, decode, paraphrase,
   or describe these artifacts.
 
   Your plan MUST begin with a section formatted exactly as:
-  "ARTIFACTS: [paste every raw artifact here verbatim, comma-separated]"
+  "ARTIFACTS: [paste every raw artifact here verbatim]"
+  Always start your work by fully understanding artifacts if present.
 
+  When listing multiple artifacts, separate each with ||| delimiters so boundaries are unambiguous.  
 
   Assumptions about the agent:
   - It has terminal access on the affected host and can run arbitrary code.

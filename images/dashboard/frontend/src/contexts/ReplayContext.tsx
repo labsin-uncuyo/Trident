@@ -52,10 +52,12 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingPlayRef = useRef<{ speed: number } | null>(null);
+  const activeReplayIdRef = useRef<string | null>(null);
 
   const loadReplay = useCallback(async (path: string, runId?: string) => {
     setIsLoading(true);
     setError(null);
+    activeReplayIdRef.current = null;
 
     // Stop any existing replay
     if (wsRef.current) {
@@ -79,6 +81,7 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
       }
 
       const metadata = (await response.json()) as ReplayMetadata;
+      activeReplayIdRef.current = metadata.replay_id;
 
       setReplay({
         replayId: metadata.replay_id,
@@ -138,6 +141,15 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
           const msg = JSON.parse(event.data);
           console.log('[ReplayContext] WebSocket message:', msg.type, msg);
 
+          const msgReplayId = msg.replay_id as string | undefined;
+          if (msgReplayId && activeReplayIdRef.current && msgReplayId !== activeReplayIdRef.current) {
+            console.log('[ReplayContext] Ignoring message for replay:', msgReplayId);
+            return;
+          }
+          if (msgReplayId && !activeReplayIdRef.current) {
+            return;
+          }
+
           switch (msg.type) {
             case 'state':
               console.log('[ReplayContext] State update:', msg.position_ms, 'playing:', msg.playing);
@@ -183,6 +195,7 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMsg);
       setReplay(DEFAULT_REPLAY_STATE);
+      activeReplayIdRef.current = null;
     } finally {
       setIsLoading(false);
     }
@@ -242,6 +255,7 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
       wsRef.current = null;
     }
     pendingPlayRef.current = null;
+    activeReplayIdRef.current = null;
     setReplay(DEFAULT_REPLAY_STATE);
     setError(null);
   }, []);

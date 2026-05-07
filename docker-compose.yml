@@ -8,6 +8,8 @@ services:
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
+      - PCAP_ROTATE_SECS=${PCAP_ROTATE_SECS:-30}
+      - DNS_ONLY_DEFENSE=${DNS_ONLY_DEFENSE:-}
     volumes:
       - ./outputs:/outputs
     networks:
@@ -51,6 +53,7 @@ services:
       - SSH_COMPROMISED_PASS=${SSH_COMPROMISED_PASS}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
       - PLANNER_ONLY=${PLANNER_ONLY:-}
+      - DNS_ONLY_DEFENSE=${DNS_ONLY_DEFENSE:-}
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
       - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
@@ -99,6 +102,9 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LLM_URL=${LLM_URL}
       - LLM_MODEL=${LLM_MODEL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host-internal:${HOST_INTERNAL_IP:-host-gateway}"
     volumes:
       - ./outputs:/outputs
       - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro

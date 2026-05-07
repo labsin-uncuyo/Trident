@@ -465,14 +465,19 @@ def convert_api_messages_to_legacy_jsonl(messages: List[Dict]) -> List[str]:
 
 def save_session_logs(host: str, session_id: str, output_dir: str,
                       timeline_path: str, execution_id: str,
-                      session_num: int) -> Dict:
+                      session_num: int,
+                      skip_api_save: bool = False) -> Dict:
     """Fetch session messages and save in both API and legacy JSONL formats.
 
     Saves (per session, appending to execution-level files):
-      - opencode_api_messages.json  : Full API response (JSON array)
+      - opencode_api_messages.json  : Full API response (JSON array) [skipped if skip_api_save=True]
       - opencode_stdout.jsonl       : Legacy JSONL format (one event per line)
 
     Also writes each OpenCode event to the timeline.
+
+    Args:
+        skip_api_save: If True, only update timeline (for live logging), don't append to API file.
+
     Returns dict with parsed metrics.
     """
     api_path = os.path.join(output_dir, "opencode_api_messages.json")
@@ -494,24 +499,26 @@ def save_session_logs(host: str, session_id: str, output_dir: str,
                 "messages": messages}
 
     # ── Save API format (load existing, append, rewrite) ──
-    existing: List = []
-    if os.path.exists(api_path):
-        try:
-            with open(api_path, "r", encoding="utf-8") as fh:
-                existing = json.load(fh)
-        except (json.JSONDecodeError, OSError):
-            existing = []
+    # Skip this for live logging to avoid duplicates
+    if not skip_api_save:
+        existing: List = []
+        if os.path.exists(api_path):
+            try:
+                with open(api_path, "r", encoding="utf-8") as fh:
+                    existing = json.load(fh)
+            except (json.JSONDecodeError, OSError):
+                existing = []
 
-    existing.append({
-        "session_id": session_id,
-        "session_num": session_num,
-        "exec": execution_id[:8],
-        "saved_at": datetime.now(timezone.utc).isoformat(),
-        "messages": messages,
-    })
-    with open(api_path, "w", encoding="utf-8") as fh:
-        json.dump(existing, fh, indent=2)
-    print(f"[coder56] Saved API messages → {api_path}")
+        existing.append({
+            "session_id": session_id,
+            "session_num": session_num,
+            "exec": execution_id[:8],
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "messages": messages,
+        })
+        with open(api_path, "w", encoding="utf-8") as fh:
+            json.dump(existing, fh, indent=2)
+        print(f"[coder56] Saved API messages → {api_path}")
 
     # ── Convert and save legacy JSONL format (append) ──
     legacy_lines = convert_api_messages_to_legacy_jsonl(messages)
@@ -952,9 +959,10 @@ def main() -> int:
             def _live_log_saver():
                 while not _stop_live_logging.is_set():
                     try:
+                        # Only update timeline, don't append to API file (avoid duplicates)
                         save_session_logs(
                             host, session_id, output_dir, timeline_path,
-                            execution_id, session_count)
+                            execution_id, session_count, skip_api_save=True)
                     except Exception:
                         pass  # Silently fail if session isn't ready yet
                     _stop_live_logging.wait(2.0)  # Save every 2 seconds

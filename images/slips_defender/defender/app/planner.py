@@ -53,13 +53,33 @@ class IncidentPlanner:
         self.config = config or PlannerConfig()
         self.prompts_path = prompts_path or os.getenv("PROMPTS_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts.yaml"))
 
+        # Log configuration for debugging
+        import sys
+        print(f"\n[PLANNER_INIT] Initializing IncidentPlanner with config:", file=sys.stderr, flush=True)
+        print(f"  model: {self.config.model}", file=sys.stderr, flush=True)
+        print(f"  temperature: {self.config.temperature}", file=sys.stderr, flush=True)
+        print(f"  max_tokens: {self.config.max_tokens}", file=sys.stderr, flush=True)
+        print(f"  openai_base_url: {self.config.openai_base_url}", file=sys.stderr, flush=True)
+        print(f"  openai_api_key: {self.config.openai_api_key[:10]}..." if self.config.openai_api_key else "  openai_api_key: None", file=sys.stderr, flush=True)
+        print(f"  prompts_path: {self.prompts_path}", file=sys.stderr, flush=True)
+        print(f"  langfuse_enabled: {self.config.langfuse_enabled}", file=sys.stderr, flush=True)
+        print(f"[PLANNER_INIT] End of config\n", file=sys.stderr, flush=True)
+
         # Ensure environment variables are set for OpenAI-compatible clients
         if self.config.openai_base_url:
             os.environ.setdefault("LLM_URL", self.config.openai_base_url)
         if self.config.openai_api_key:
             os.environ.setdefault("OPENAI_API_KEY", self.config.openai_api_key)
 
+        # Verify env vars are set
+        print(f"[PLANNER_INIT] Environment check:", file=sys.stderr, flush=True)
+        print(f"  LLM_URL: {os.getenv('LLM_URL')}", file=sys.stderr, flush=True)
+        print(f"  OPENAI_API_KEY: {os.getenv('OPENAI_API_KEY', 'None')[:10]}..." if os.getenv('OPENAI_API_KEY') else "  OPENAI_API_KEY: None", file=sys.stderr, flush=True)
+        print(f"[PLANNER_INIT] End of env check\n", file=sys.stderr, flush=True)
+
         # Build the model
+        # NOTE: timeout is set to 30s to accommodate gpt-oss-120b cold starts (4-5s) and network conditions
+        # LangChain's default timeout is 10s which can cause empty responses on slow LLM responses
         self.llm = ChatOpenAI(
             model=self.config.model,
             temperature=self.config.temperature,
@@ -67,7 +87,10 @@ class IncidentPlanner:
             # ChatOpenAI reads LLM_URL and OPENAI_API_KEY from env; base_url can also be passed explicitly
             base_url=self.config.openai_base_url,
             api_key=self.config.openai_api_key,
-                    )
+            timeout=30.0,
+            # Enable verbose mode for debugging LangChain internals
+            verbose=False,
+        )
 
         # Load prompts from YAML (one-shot prompt)
         sys_tmpl, human_tmpl = self._load_prompts(self.prompts_path)
@@ -138,19 +161,33 @@ class IncidentPlanner:
                     max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
                     base_url=self.config.openai_base_url,
                     api_key=self.config.openai_api_key,
+                    timeout=30.0,
                                 )
                 result_message = llm.invoke(formatted_messages, config=invoke_config)
                 result_text = self._extract_result_text(result_message)
             else:
                 result_text = self.chain.invoke({"alert": alert}, config=invoke_config)
-            
+
             if langfuse_generation is not None:
                 langfuse_generation.update(output=result_text)
-            
+
             log_msg(f"[LLM_OUTPUT_START]")
+            log_msg(f"Raw result type: {type(result_text)}")
+            log_msg(f"Raw result length: {len(result_text)}")
+            log_msg(f"Raw result (first 1000 chars): {result_text[:1000]}")
             log_msg(result_text)
             log_msg(f"[LLM_OUTPUT_END]")
             log_msg(f"[PLANNER_LLM_INPUT_END]")
+        except Exception as e:
+            # Log any exception that occurs during LLM invocation
+            import traceback
+            log_msg(f"[LLM_INVOCATION_EXCEPTION]")
+            log_msg(f"Exception type: {type(e).__name__}")
+            log_msg(f"Exception message: {e}")
+            log_msg(f"Traceback: {traceback.format_exc()}")
+            log_msg(f"[LLM_INVOCATION_EXCEPTION_END]")
+            # Re-raise to be handled by caller
+            raise
         finally:
             if langfuse_generation is not None:
                 langfuse_generation.end()
@@ -159,25 +196,87 @@ class IncidentPlanner:
         # Parse strict JSON: {"executor_host_ip": "...", "plan": "..."}
         executor_host_ip: str = ""
         plan_text: str = ""
+        parse_error = None
+        parse_details = {}
+
         try:
             import json
             # be resilient to any leading/trailing text
             start = result_text.find("{")
             end = result_text.rfind("}")
-            obj = json.loads(result_text[start:end + 1] if start != -1 and end != -1 and end > start else result_text)
-            executor_host_ip = str(obj.get("executor_host_ip", "") or "")
-            plan_text = str(obj.get("plan", "") or "")
-        except Exception:
+
+            parse_details = {
+                "result_length": len(result_text),
+                "first_bracket_pos": start,
+                "last_bracket_pos": end,
+                "has_opening_brace": start != -1,
+                "has_closing_brace": end != -1,
+                "bracket_order_valid": end > start if start != -1 and end != -1 else False,
+            }
+
+            json_str_to_parse = result_text[start:end + 1] if start != -1 and end != -1 and end > start else result_text
+            parse_details["json_extracted_length"] = len(json_str_to_parse)
+            parse_details["json_extracted_preview"] = json_str_to_parse[:200] if json_str_to_parse else ""
+
+            obj = json.loads(json_str_to_parse)
+            parse_details["json_keys"] = list(obj.keys())
+            parse_details["has_executor_host_ip"] = "executor_host_ip" in obj
+            parse_details["has_plan"] = "plan" in obj
+
+            raw_executor_ip = obj.get("executor_host_ip", "")
+            raw_plan = obj.get("plan", "")
+
+            parse_details["raw_executor_host_ip"] = str(raw_executor_ip) if raw_executor_ip else ""
+            parse_details["raw_plan_length"] = len(str(raw_plan)) if raw_plan else 0
+            parse_details["raw_plan_preview"] = str(raw_plan)[:100] if raw_plan else ""
+
+            executor_host_ip = str(raw_executor_ip or "")
+            plan_text = str(raw_plan or "")
+
+            parse_details["final_executor_host_ip"] = executor_host_ip
+            parse_details["final_plan_length"] = len(plan_text)
+
+        except json.JSONDecodeError as e:
+            parse_error = f"JSON decode error: {e}"
+            parse_details["json_error"] = str(e)
+            parse_details["json_error_pos"] = e.pos if hasattr(e, 'pos') else None
+            # Fallback: return whole text as plan
+            plan_text = result_text
+        except Exception as e:
+            parse_error = f"Parse error: {type(e).__name__}: {e}"
+            parse_details["exception_type"] = type(e).__name__
+            parse_details["exception_msg"] = str(e)
             # Fallback: return whole text as plan
             plan_text = result_text
 
-        return {
+        # Log parse results
+        log_msg(f"[PLAN_PARSE_START]")
+        if parse_error:
+            log_msg(f"Parse error occurred: {parse_error}")
+        log_msg(f"Parse details: {parse_details}")
+        log_msg(f"Final executor_host_ip: '{executor_host_ip}'")
+        log_msg(f"Final plan length: {len(plan_text)}")
+        log_msg(f"Final plan preview: {plan_text[:200]}")
+        log_msg(f"[PLAN_PARSE_END]")
+
+        response = {
             "executor_host_ip": executor_host_ip,
             "plan": plan_text,
             "model": self.config.model,
             "request_id": request_id,
             "created": datetime.now(timezone.utc).isoformat(),
         }
+
+        # Add debug info if parsing failed
+        if parse_error or (not executor_host_ip and not plan_text):
+            response["_debug"] = {
+                "parse_error": parse_error,
+                "parse_details": parse_details,
+                "original_result_length": len(result_text),
+                "original_result_preview": result_text[:500],
+            }
+
+        return response
 
     @staticmethod
     def _load_prompts(path: str) -> tuple[str, str]:

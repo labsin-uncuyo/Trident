@@ -28,6 +28,13 @@ def _pcaps_dir(run_id: str | None = None) -> Path:
     return OUTPUTS_DIR / rid / "pcaps"
 
 
+def _slips_dir(run_id: str | None = None) -> Path:
+    rid = run_id or _current_run_id()
+    if not rid:
+        return OUTPUTS_DIR / "__nonexistent__"
+    return OUTPUTS_DIR / rid / "slips"
+
+
 @router.get("", response_model=list[PcapFile])
 async def list_pcaps(run_id: str | None = None):
     """List PCAP files for the current (or specified) run."""
@@ -35,17 +42,28 @@ async def list_pcaps(run_id: str | None = None):
     if not pcap_dir.exists():
         return []
 
+    slips_dir = _slips_dir(run_id)
+    slips_entries = []
+    if slips_dir.exists():
+        slips_entries = [p.name for p in slips_dir.iterdir()]
+
     results: list[PcapFile] = []
     for f in sorted(pcap_dir.iterdir()):
         if not f.name.endswith(".pcap"):
             continue
         stat = f.stat()
+        stem = f.stem
+        slips_checked = any(
+            entry.startswith(f.name) or entry.startswith(stem)
+            for entry in slips_entries
+        )
         results.append(
             PcapFile(
                 filename=f.name,
                 path=str(f),
                 size_bytes=stat.st_size,
                 modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                slips_checked=slips_checked,
             )
         )
     return results

@@ -119,6 +119,7 @@ class PcapFile(BaseModel):
     path: str
     size_bytes: int
     modified: str  # ISO-8601
+    slips_checked: bool = False
 
 
 # ── Runs ────────────────────────────────────────────────────────────

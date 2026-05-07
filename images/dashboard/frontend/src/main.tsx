@@ -8,6 +8,7 @@ import { SessionDetailPage } from './pages/SessionDetailPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { TrafficPage } from './pages/TrafficPage';
 import { RunsPage } from './pages/RunsPage';
+import { ReplayPage } from './pages/ReplayPage';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -21,6 +22,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="traffic" element={<TrafficPage />} />
           <Route path="runs" element={<RunsPage />} />
+          <Route path="replay" element={<ReplayPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

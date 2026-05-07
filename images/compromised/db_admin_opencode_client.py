@@ -33,7 +33,8 @@ DEFAULT_AGENT = "db_admin"
 STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
 
 # Default goal for the db_admin agent when none is provided
-DEFAULT_GOAL = """Start your workday. Connect to the database server via the jump host and begin your daily tasks.
+DEFAULT_GOAL = """
+Start your workday. Connect to the database server via the jump host and begin your daily tasks.
 
 WEB RESEARCH (use curl frequently, always pipe through grep): Research these URLs throughout your session:
 curl -s https://www.postgresql.org/docs/current/ | sed 's/<[^>]>//g' | grep -i "keyword" | head -20
@@ -47,7 +48,22 @@ TIMING: sleep 60-130 between tasks to simulate coffee breaks, go to the bathroom
 DATABASE TASKS: Check table structure, INSERT new employees, UPDATE salaries, DELETE obsolete records, run monitoring queries. After each web research session, execute at least one database operation.
 
 LOOP: This workday has no defined end. After completing a full cycle of research + DB operations, start a new cycle with different keywords and different data modifications. Repeat indefinitely.
-To conect use: PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb"""
+
+To use postgres, connect via PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb
+
+
+
+Examples:
+  # List all databases
+  PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb -c "\l"
+  # List all tables
+  PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb -c "\dt"
+  # List all schemas
+  PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb -c "\dn"
+  # Count rows in employee table
+  PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb -c "SELECT COUNT(*) FROM employee;"
+  # List all columns in employee table
+  PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb -c "SELECT column_name FROM information_schema.columns WHERE table_name = 'employee';"""
 _MIN_REMAINING_SECONDS = 30  # Don't start a new session with less time left
 
 # Phrases that indicate the agent considers its work done for this session.
@@ -475,14 +491,19 @@ def convert_api_messages_to_legacy_jsonl(messages: List[Dict]) -> List[str]:
 
 def save_session_logs(host: str, session_id: str, output_dir: str,
                       timeline_path: str, execution_id: str,
-                      session_num: int) -> Dict:
+                      session_num: int,
+                      skip_api_save: bool = False) -> Dict:
     """Fetch session messages and save in both API and legacy JSONL formats.
 
     Saves (per session, appending to execution-level files):
-      - opencode_api_messages.json  : Full API response (JSON array)
+      - opencode_api_messages.json  : Full API response (JSON array) [skipped if skip_api_save=True]
       - opencode_stdout.jsonl       : Legacy JSONL format (one event per line)
 
     Also writes each OpenCode event to the timeline.
+
+    Args:
+        skip_api_save: If True, only update timeline (for live logging), don't append to API file.
+
     Returns dict with parsed metrics.
     """
     api_path = os.path.join(output_dir, "opencode_api_messages.json")
@@ -504,24 +525,26 @@ def save_session_logs(host: str, session_id: str, output_dir: str,
                 "messages": messages}
 
     # ── Save API format (load existing, append, rewrite) ──
-    existing: List = []
-    if os.path.exists(api_path):
-        try:
-            with open(api_path, "r", encoding="utf-8") as fh:
-                existing = json.load(fh)
-        except (json.JSONDecodeError, OSError):
-            existing = []
+    # Skip this for live logging to avoid duplicates
+    if not skip_api_save:
+        existing: List = []
+        if os.path.exists(api_path):
+            try:
+                with open(api_path, "r", encoding="utf-8") as fh:
+                    existing = json.load(fh)
+            except (json.JSONDecodeError, OSError):
+                existing = []
 
-    existing.append({
-        "session_id": session_id,
-        "session_num": session_num,
-        "exec": execution_id[:8],
-        "saved_at": datetime.now(timezone.utc).isoformat(),
-        "messages": messages,
-    })
-    with open(api_path, "w", encoding="utf-8") as fh:
-        json.dump(existing, fh, indent=2)
-    print(f"[db_admin] Saved API messages → {api_path}")
+        existing.append({
+            "session_id": session_id,
+            "session_num": session_num,
+            "exec": execution_id[:8],
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "messages": messages,
+        })
+        with open(api_path, "w", encoding="utf-8") as fh:
+            json.dump(existing, fh, indent=2)
+        print(f"[db_admin] Saved API messages → {api_path}")
 
     # ── Convert and save legacy JSONL format (append) ──
     legacy_lines = convert_api_messages_to_legacy_jsonl(messages)
@@ -966,9 +989,10 @@ def main() -> int:
             def _live_log_saver():
                 while not _stop_live_logging.is_set():
                     try:
+                        # Only update timeline, don't append to API file (avoid duplicates)
                         save_session_logs(
                             host, session_id, output_dir, timeline_path,
-                            execution_id, session_count)
+                            execution_id, session_count, skip_api_save=True)
                     except Exception:
                         pass  # Silently fail if session isn't ready yet
                     _stop_live_logging.wait(2.0)  # Save every 2 seconds

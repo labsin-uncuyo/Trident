@@ -1,0 +1,1012 @@
+ [useTimelineStream] db_admin: Converting 1412 events, startTimeMs=1777661042729, positionMs=1777661821869, windowEndMs=1777661881869, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661821869
+ [useTimelineStream] soc_god_server: Converting 1412 events, startTimeMs=1777661042729, positionMs=1777661821869, windowEndMs=1777661881869, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 275 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661821869
+ [useTimelineStream] soc_god_compromised: Converting 1412 events, startTimeMs=1777661042729, positionMs=1777661821869, windowEndMs=1777661881869, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 329 entries
+ [useOpenCodeStream] host=undefined, events=1412, startTimeMs=1777661042729, positionMs=1777661821869, windowEndMs=1777661881869
+ [useOpenCodeStream] host=undefined stats: opencode=314, filtered=0, stepFiltered=150, totalMessages=108
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=231
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=265
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661821869
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661821869
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661821869
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661821869
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661832069 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] coder56: Converting 1412 events, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] db_admin: Converting 1412 events, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] soc_god_server: Converting 1412 events, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 275 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] soc_god_compromised: Converting 1412 events, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 329 entries
+ [useOpenCodeStream] host=undefined, events=1412, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069
+ [useOpenCodeStream] host=undefined stats: opencode=314, filtered=0, stepFiltered=150, totalMessages=108
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=231
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=265
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1412, startTimeMs=1777661042729, positionMs=1777661832069
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 31 events
+ [ReplayContext] Total events after update: 1443
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] coder56: Converting 1443 events, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] db_admin: Converting 1443 events, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] soc_god_server: Converting 1443 events, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 279 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] soc_god_compromised: Converting 1443 events, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 333 entries
+ [useOpenCodeStream] host=undefined, events=1443, startTimeMs=1777661042729, positionMs=1777661832069, windowEndMs=1777661892069
+ [useOpenCodeStream] host=undefined stats: opencode=315, filtered=0, stepFiltered=150, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=235
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=269
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661832069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661832069
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661842069 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] coder56: Converting 1443 events, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] db_admin: Converting 1443 events, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] soc_god_server: Converting 1443 events, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 279 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] soc_god_compromised: Converting 1443 events, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 333 entries
+ [useOpenCodeStream] host=undefined, events=1443, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069
+ [useOpenCodeStream] host=undefined stats: opencode=315, filtered=0, stepFiltered=150, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=235
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=269
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1443, startTimeMs=1777661042729, positionMs=1777661842069
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 20 events
+ [ReplayContext] Total events after update: 1463
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] coder56: Converting 1463 events, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] db_admin: Converting 1463 events, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] soc_god_server: Converting 1463 events, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 283 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] soc_god_compromised: Converting 1463 events, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 336 entries
+ [useOpenCodeStream] host=undefined, events=1463, startTimeMs=1777661042729, positionMs=1777661842069, windowEndMs=1777661902069
+ [useOpenCodeStream] host=undefined stats: opencode=315, filtered=0, stepFiltered=150, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=239
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=272
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661842069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661842069
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661852069 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] coder56: Converting 1463 events, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] db_admin: Converting 1463 events, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] soc_god_server: Converting 1463 events, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 283 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] soc_god_compromised: Converting 1463 events, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 336 entries
+ [useOpenCodeStream] host=undefined, events=1463, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069
+ [useOpenCodeStream] host=undefined stats: opencode=315, filtered=0, stepFiltered=150, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=239
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=272
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1463, startTimeMs=1777661042729, positionMs=1777661852069
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 138 events
+ [ReplayContext] Total events after update: 1601
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1601, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] coder56: Converting 1601 events, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1601, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] db_admin: Converting 1601 events, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1601, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] soc_god_server: Converting 1601 events, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1601, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] soc_god_compromised: Converting 1601 events, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 339 entries
+ [useOpenCodeStream] host=undefined, events=1601, startTimeMs=1777661042729, positionMs=1777661852069, windowEndMs=1777661912069
+ [useOpenCodeStream] host=undefined stats: opencode=443, filtered=0, stepFiltered=234, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=275
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1601, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1601, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1601, startTimeMs=1777661042729, positionMs=1777661852069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1601, startTimeMs=1777661042729, positionMs=1777661852069
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661862969 playing: true
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 4 events
+ [ReplayContext] Total events after update: 1605
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] coder56: Converting 1605 events, startTimeMs=1777661042729, positionMs=1777661862969, windowEndMs=1777661922969, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] db_admin: Converting 1605 events, startTimeMs=1777661042729, positionMs=1777661862969, windowEndMs=1777661922969, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] soc_god_server: Converting 1605 events, startTimeMs=1777661042729, positionMs=1777661862969, windowEndMs=1777661922969, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] soc_god_compromised: Converting 1605 events, startTimeMs=1777661042729, positionMs=1777661862969, windowEndMs=1777661922969, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 343 entries
+ [useOpenCodeStream] host=undefined, events=1605, startTimeMs=1777661042729, positionMs=1777661862969, windowEndMs=1777661922969
+ [useOpenCodeStream] host=undefined stats: opencode=443, filtered=0, stepFiltered=234, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=279
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661862969
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661872969 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] coder56: Converting 1605 events, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] db_admin: Converting 1605 events, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] soc_god_server: Converting 1605 events, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] soc_god_compromised: Converting 1605 events, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 343 entries
+ [useOpenCodeStream] host=undefined, events=1605, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969
+ [useOpenCodeStream] host=undefined stats: opencode=443, filtered=0, stepFiltered=234, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=279
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1605, startTimeMs=1777661042729, positionMs=1777661872969
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 20 events
+ [ReplayContext] Total events after update: 1625
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] coder56: Converting 1625 events, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] db_admin: Converting 1625 events, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] soc_god_server: Converting 1625 events, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] soc_god_compromised: Converting 1625 events, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 346 entries
+ [useOpenCodeStream] host=undefined, events=1625, startTimeMs=1777661042729, positionMs=1777661872969, windowEndMs=1777661932969
+ [useOpenCodeStream] host=undefined stats: opencode=443, filtered=0, stepFiltered=234, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=282
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661872969
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661872969
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661883069 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] coder56: Converting 1625 events, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] db_admin: Converting 1625 events, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] soc_god_server: Converting 1625 events, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] soc_god_compromised: Converting 1625 events, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 346 entries
+ [useOpenCodeStream] host=undefined, events=1625, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069
+ [useOpenCodeStream] host=undefined stats: opencode=443, filtered=0, stepFiltered=234, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=282
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1625, startTimeMs=1777661042729, positionMs=1777661883069
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 6 events
+ [ReplayContext] Total events after update: 1631
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] coder56: Converting 1631 events, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] db_admin: Converting 1631 events, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] soc_god_server: Converting 1631 events, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] soc_god_compromised: Converting 1631 events, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 349 entries
+ [useOpenCodeStream] host=undefined, events=1631, startTimeMs=1777661042729, positionMs=1777661883069, windowEndMs=1777661943069
+ [useOpenCodeStream] host=undefined stats: opencode=443, filtered=0, stepFiltered=234, totalMessages=109
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=285
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661883069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661883069
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661893069 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] coder56: Converting 1631 events, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] db_admin: Converting 1631 events, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] soc_god_server: Converting 1631 events, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1631, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] soc_god_compromised: Converting 1631 events, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 349 entries
+ [useOpenCodeStream] host=undefined, events=1631, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069
+ [useOpenCodeStream] host=undefined stats: opencode=443, filtered=0, stepFiltered=234, totalMessages=109
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 25 events
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=285
+ [ReplayContext] Total events after update: 1656
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] coder56: Converting 1656 events, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] db_admin: Converting 1656 events, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] soc_god_server: Converting 1656 events, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] soc_god_compromised: Converting 1656 events, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 354 entries
+ [useOpenCodeStream] host=undefined, events=1656, startTimeMs=1777661042729, positionMs=1777661893069, windowEndMs=1777661953069
+ [useOpenCodeStream] host=undefined stats: opencode=444, filtered=0, stepFiltered=234, totalMessages=110
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661893069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661893069
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661903169 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] coder56: Converting 1656 events, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] db_admin: Converting 1656 events, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] soc_god_server: Converting 1656 events, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1656, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] soc_god_compromised: Converting 1656 events, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 354 entries
+ [useOpenCodeStream] host=undefined, events=1656, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169
+ [useOpenCodeStream] host=undefined stats: opencode=444, filtered=0, stepFiltered=234, totalMessages=110
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 5 events
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=290
+ [ReplayContext] Total events after update: 1661
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] coder56: Converting 1661 events, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] db_admin: Converting 1661 events, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] soc_god_server: Converting 1661 events, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] soc_god_compromised: Converting 1661 events, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 359 entries
+ [useOpenCodeStream] host=undefined, events=1661, startTimeMs=1777661042729, positionMs=1777661903169, windowEndMs=1777661963169
+ [useOpenCodeStream] host=undefined stats: opencode=446, filtered=0, stepFiltered=234, totalMessages=112
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=295
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661903169
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661903169
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661913269 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] coder56: Converting 1661 events, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] db_admin: Converting 1661 events, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] soc_god_server: Converting 1661 events, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1661, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] soc_god_compromised: Converting 1661 events, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 359 entries
+ [useOpenCodeStream] host=undefined, events=1661, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269
+ [useOpenCodeStream] host=undefined stats: opencode=446, filtered=0, stepFiltered=234, totalMessages=112
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 105 events
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=295
+ [ReplayContext] Total events after update: 1766
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] coder56: Converting 1766 events, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] db_admin: Converting 1766 events, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] soc_god_server: Converting 1766 events, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] soc_god_compromised: Converting 1766 events, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 362 entries
+ [useOpenCodeStream] host=undefined, events=1766, startTimeMs=1777661042729, positionMs=1777661913269, windowEndMs=1777661973269
+ [useOpenCodeStream] host=undefined stats: opencode=446, filtered=0, stepFiltered=234, totalMessages=112
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=298
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661913269
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661913269
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661923469 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] coder56: Converting 1766 events, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] db_admin: Converting 1766 events, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] soc_god_server: Converting 1766 events, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1766, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] soc_god_compromised: Converting 1766 events, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 362 entries
+ [useOpenCodeStream] host=undefined, events=1766, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469
+ [useOpenCodeStream] host=undefined stats: opencode=446, filtered=0, stepFiltered=234, totalMessages=112
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 133 events
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=298
+ [ReplayContext] Total events after update: 1899
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] coder56: Converting 1899 events, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] db_admin: Converting 1899 events, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] soc_god_server: Converting 1899 events, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] soc_god_compromised: Converting 1899 events, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 366 entries
+ [useOpenCodeStream] host=undefined, events=1899, startTimeMs=1777661042729, positionMs=1777661923469, windowEndMs=1777661983469
+ [useOpenCodeStream] host=undefined stats: opencode=446, filtered=0, stepFiltered=234, totalMessages=112
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=302
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661923469
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661923469
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661933769 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] coder56: Converting 1899 events, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] db_admin: Converting 1899 events, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] soc_god_server: Converting 1899 events, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1899, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] soc_god_compromised: Converting 1899 events, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 366 entries
+ [useOpenCodeStream] host=undefined, events=1899, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769
+ [useOpenCodeStream] host=undefined stats: opencode=446, filtered=0, stepFiltered=234, totalMessages=112
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 17 events
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=302
+ [ReplayContext] Total events after update: 1916
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] coder56: Converting 1916 events, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] db_admin: Converting 1916 events, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] soc_god_server: Converting 1916 events, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] soc_god_compromised: Converting 1916 events, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 370 entries
+ [useOpenCodeStream] host=undefined, events=1916, startTimeMs=1777661042729, positionMs=1777661933769, windowEndMs=1777661993769
+ [useOpenCodeStream] host=undefined stats: opencode=447, filtered=0, stepFiltered=234, totalMessages=113
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=306
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661933769
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661933769
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661943769 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] coder56: Converting 1916 events, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] db_admin: Converting 1916 events, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] soc_god_server: Converting 1916 events, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 418 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1916, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] soc_god_compromised: Converting 1916 events, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 370 entries
+ [useOpenCodeStream] host=undefined, events=1916, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769
+ [useOpenCodeStream] host=undefined stats: opencode=447, filtered=0, stepFiltered=234, totalMessages=113
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 6 events
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=290
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=306
+ [ReplayContext] Total events after update: 1922
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] coder56: Converting 1922 events, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] db_admin: Converting 1922 events, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] soc_god_server: Converting 1922 events, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 419 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] soc_god_compromised: Converting 1922 events, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 375 entries
+ [useOpenCodeStream] host=undefined, events=1922, startTimeMs=1777661042729, positionMs=1777661943769, windowEndMs=1777662003769
+ [useOpenCodeStream] host=undefined stats: opencode=448, filtered=0, stepFiltered=234, totalMessages=114
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=291
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=311
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661943769
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661943769
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661953869 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] coder56: Converting 1922 events, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] db_admin: Converting 1922 events, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] soc_god_server: Converting 1922 events, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 419 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] soc_god_compromised: Converting 1922 events, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 375 entries
+ [useOpenCodeStream] host=undefined, events=1922, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869
+ [useOpenCodeStream] host=undefined stats: opencode=448, filtered=0, stepFiltered=234, totalMessages=114
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=291
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=311
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1922, startTimeMs=1777661042729, positionMs=1777661953869
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 4 events
+ [ReplayContext] Total events after update: 1926
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] coder56: Converting 1926 events, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] db_admin: Converting 1926 events, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] soc_god_server: Converting 1926 events, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 419 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] soc_god_compromised: Converting 1926 events, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 379 entries
+ [useOpenCodeStream] host=undefined, events=1926, startTimeMs=1777661042729, positionMs=1777661953869, windowEndMs=1777662013869
+ [useOpenCodeStream] host=undefined stats: opencode=448, filtered=0, stepFiltered=234, totalMessages=114
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=291
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=315
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661953869
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661953869
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661963869 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] coder56: Converting 1926 events, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] db_admin: Converting 1926 events, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] soc_god_server: Converting 1926 events, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 419 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1926, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] soc_god_compromised: Converting 1926 events, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 379 entries
+ [useOpenCodeStream] host=undefined, events=1926, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869
+ [useOpenCodeStream] host=undefined stats: opencode=448, filtered=0, stepFiltered=234, totalMessages=114
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 21 events
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=291
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=315
+ [ReplayContext] Total events after update: 1947
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] coder56: Converting 1947 events, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] db_admin: Converting 1947 events, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] soc_god_server: Converting 1947 events, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 419 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] soc_god_compromised: Converting 1947 events, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 383 entries
+ [useOpenCodeStream] host=undefined, events=1947, startTimeMs=1777661042729, positionMs=1777661963869, windowEndMs=1777662023869
+ [useOpenCodeStream] host=undefined stats: opencode=449, filtered=0, stepFiltered=234, totalMessages=115
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=291
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=319
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661963869
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661974069 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] coder56: Converting 1947 events, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] db_admin: Converting 1947 events, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] soc_god_server: Converting 1947 events, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 419 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] soc_god_compromised: Converting 1947 events, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 383 entries
+ [useOpenCodeStream] host=undefined, events=1947, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069
+ [useOpenCodeStream] host=undefined stats: opencode=449, filtered=0, stepFiltered=234, totalMessages=115
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=291
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=319
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1947, startTimeMs=1777661042729, positionMs=1777661974069
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 4 events
+ [ReplayContext] Total events after update: 1951
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] coder56: Converting 1951 events, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] db_admin: Converting 1951 events, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] soc_god_server: Converting 1951 events, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 419 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] soc_god_compromised: Converting 1951 events, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 387 entries
+ [useOpenCodeStream] host=undefined, events=1951, startTimeMs=1777661042729, positionMs=1777661974069, windowEndMs=1777662034069
+ [useOpenCodeStream] host=undefined stats: opencode=450, filtered=0, stepFiltered=234, totalMessages=116
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=291
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=323
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661974069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661974069
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661984069 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] coder56: Converting 1951 events, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] db_admin: Converting 1951 events, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] soc_god_server: Converting 1951 events, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 419 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] soc_god_compromised: Converting 1951 events, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 387 entries
+ [useOpenCodeStream] host=undefined, events=1951, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069
+ [useOpenCodeStream] host=undefined stats: opencode=450, filtered=0, stepFiltered=234, totalMessages=116
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=291
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=323
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1951, startTimeMs=1777661042729, positionMs=1777661984069
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 37 events
+ [ReplayContext] Total events after update: 1988
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] coder56: Converting 1988 events, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] db_admin: Converting 1988 events, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] soc_god_server: Converting 1988 events, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 434 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] soc_god_compromised: Converting 1988 events, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 393 entries
+ [useOpenCodeStream] host=undefined, events=1988, startTimeMs=1777661042729, positionMs=1777661984069, windowEndMs=1777662044069
+ [useOpenCodeStream] host=undefined stats: opencode=452, filtered=0, stepFiltered=234, totalMessages=118
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=306
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=329
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661984069
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661984069
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777661994269 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] coder56: Converting 1988 events, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] db_admin: Converting 1988 events, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] soc_god_server: Converting 1988 events, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 434 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] soc_god_compromised: Converting 1988 events, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 393 entries
+ [useOpenCodeStream] host=undefined, events=1988, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269
+ [useOpenCodeStream] host=undefined stats: opencode=452, filtered=0, stepFiltered=234, totalMessages=118
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=306
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=329
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1988, startTimeMs=1777661042729, positionMs=1777661994269
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 9 events
+ [ReplayContext] Total events after update: 1997
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] coder56: Converting 1997 events, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] db_admin: Converting 1997 events, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] soc_god_server: Converting 1997 events, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 439 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] soc_god_compromised: Converting 1997 events, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 397 entries
+ [useOpenCodeStream] host=undefined, events=1997, startTimeMs=1777661042729, positionMs=1777661994269, windowEndMs=1777662054269
+ [useOpenCodeStream] host=undefined stats: opencode=453, filtered=0, stepFiltered=234, totalMessages=119
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=311
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=333
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777661994269
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777661994269
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777662004269 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] coder56: Converting 1997 events, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] db_admin: Converting 1997 events, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] soc_god_server: Converting 1997 events, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 439 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] soc_god_compromised: Converting 1997 events, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 397 entries
+ [useOpenCodeStream] host=undefined, events=1997, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269
+ [useOpenCodeStream] host=undefined stats: opencode=453, filtered=0, stepFiltered=234, totalMessages=119
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=311
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=333
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=1997, startTimeMs=1777661042729, positionMs=1777662004269
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 161 events
+ [ReplayContext] Total events after update: 2158
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] coder56: Converting 2158 events, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] db_admin: Converting 2158 events, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] soc_god_server: Converting 2158 events, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 443 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] soc_god_compromised: Converting 2158 events, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 554 entries
+ [useOpenCodeStream] host=undefined, events=2158, startTimeMs=1777661042729, positionMs=1777662004269, windowEndMs=1777662064269
+ [useOpenCodeStream] host=undefined stats: opencode=603, filtered=0, stepFiltered=332, totalMessages=120
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=315
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=392
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662004269
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662004269
+ [ReplayContext] WebSocket message: state Object
+ [ReplayContext] State update: 1777662015669 playing: true
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] coder56: Converting 2158 events, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] db_admin: Converting 2158 events, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669, patterns=["benign_agent/db_admin"]
+ [useTimelineStream] db_admin: Filtered to 0 entries
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] soc_god_server: Converting 2158 events, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669, patterns=["defender/server/"]
+ [useTimelineStream] soc_god_server: Filtered to 443 entries
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] soc_god_compromised: Converting 2158 events, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669, patterns=["defender/compromised/"]
+ [useTimelineStream] soc_god_compromised: Filtered to 554 entries
+ [useOpenCodeStream] host=undefined, events=2158, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669
+ [useOpenCodeStream] host=undefined stats: opencode=603, filtered=0, stepFiltered=332, totalMessages=120
+ [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+ [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+ [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=315
+ [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=392
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2158, startTimeMs=1777661042729, positionMs=1777662015669
+ [ReplayContext] WebSocket message: events Object
+ [ReplayContext] Received 24 events
+ [ReplayContext] Total events after update: 2182
+ [useTimelineStream] coder56 render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] coder56: Converting 2182 events, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669, patterns=["coder56/"]
+ [useTimelineStream] coder56: Filtered to 66 entries
+ [useTimelineStream] db_admin render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662015669
+ [useTimelineStream] db_admin: Converting 2182 events, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669, patterns=["benign_agent/db_admin"]
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin: Filtered to 0 entries
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662015669
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server: Converting 2182 events, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669, patterns=["defender/server/"]
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server: Filtered to 447 entries
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662015669
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised: Converting 2182 events, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669, patterns=["defender/compromised/"]
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised: Filtered to 554 entries
+index-CPC9q4zj.js:284 [useOpenCodeStream] host=undefined, events=2182, startTimeMs=1777661042729, positionMs=1777662015669, windowEndMs=1777662075669
+index-CPC9q4zj.js:284 [useOpenCodeStream] host=undefined stats: opencode=603, filtered=0, stepFiltered=332, totalMessages=120
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=319
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=392
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662015669
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662015669
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662015669
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662015669
+index-CPC9q4zj.js:262 [ReplayContext] WebSocket message: state Object
+index-CPC9q4zj.js:262 [ReplayContext] State update: 1777662025769 playing: true
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56: Converting 2182 events, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769, patterns=["coder56/"]
+index-CPC9q4zj.js:284 [useTimelineStream] coder56: Filtered to 66 entries
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin: Converting 2182 events, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769, patterns=["benign_agent/db_admin"]
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin: Filtered to 0 entries
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server: Converting 2182 events, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769, patterns=["defender/server/"]
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server: Filtered to 447 entries
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2182, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised: Converting 2182 events, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769, patterns=["defender/compromised/"]
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised: Filtered to 554 entries
+index-CPC9q4zj.js:284 [useOpenCodeStream] host=undefined, events=2182, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769
+index-CPC9q4zj.js:284 [useOpenCodeStream] host=undefined stats: opencode=603, filtered=0, stepFiltered=332, totalMessages=120
+index-CPC9q4zj.js:262 [ReplayContext] WebSocket message: events Object
+index-CPC9q4zj.js:262 [ReplayContext] Received 19 events
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=319
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=392
+index-CPC9q4zj.js:262 [ReplayContext] Total events after update: 2201
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56: Converting 2201 events, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769, patterns=["coder56/"]
+index-CPC9q4zj.js:284 [useTimelineStream] coder56: Filtered to 66 entries
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin: Converting 2201 events, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769, patterns=["benign_agent/db_admin"]
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin: Filtered to 0 entries
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server: Converting 2201 events, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769, patterns=["defender/server/"]
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server: Filtered to 453 entries
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised: Converting 2201 events, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769, patterns=["defender/compromised/"]
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised: Filtered to 554 entries
+index-CPC9q4zj.js:284 [useOpenCodeStream] host=undefined, events=2201, startTimeMs=1777661042729, positionMs=1777662025769, windowEndMs=1777662085769
+index-CPC9q4zj.js:284 [useOpenCodeStream] host=undefined stats: opencode=606, filtered=0, stepFiltered=332, totalMessages=123
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 effect: replayId=the_3, replayEntries=24
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin effect: replayId=the_3, replayEntries=0
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server effect: replayId=the_3, replayEntries=325
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised effect: replayId=the_3, replayEntries=392
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] coder56 render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] db_admin render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_server render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769
+index-CPC9q4zj.js:284 [useTimelineStream] soc_god_compromised render: replayId=the_3, events.length=2201, startTimeMs=1777661042729, positionMs=1777662025769

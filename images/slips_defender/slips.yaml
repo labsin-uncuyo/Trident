@@ -26,7 +26,7 @@ parameters:
   # For 5 min
   # time_window_width : 300
   # For 1 hour
-  time_window_width: 3600
+  time_window_width: 60
   # For 1 day
   # time_window_width = 86400
   # Make Slips use only one time window (also like if no TW is used)
@@ -57,7 +57,7 @@ parameters:
   # This mode provides comprehensive network monitoring, allowing you to detect
   # outgoing as well as incoming attacks and connections.
   # analysis_direction : all
-  analysis_direction: all
+  analysis_direction: out
 
   # Delete zeek log files after stopping slips.
   # this parameter deletes arp.log every 1h. useful for saving disk space
@@ -80,7 +80,7 @@ parameters:
   # Default pcap packet filter. Used with zeek pcapfilter : 'ip or not ip'
   # Keep ICMP/ARP and general IP traffic; drop only mDNS/DHCP to cut noise.
   # Avoid multicast/broadcast keywords (not supported on SLL captures).
-  pcapfilter: 'not port 5353 and not port 67 and not port 68'
+  pcapfilter: 'port 53'
 
   # Defines for Zeek how much is the TCP inactivity timeout (minutes).
   # Lowered to finish tiny rotations faster; adjust if you need longer flows.
@@ -185,7 +185,7 @@ modules:
   # (they all should be lowercase with no special characters). Example,
   # threatintelligence, blocking, networkdiscovery, timeline, virustotal,
   # rnnccdetection, flowmldetection, updatemanager
-  disable: [template, rnn_cc_detection, flowmldetection, threat_intelligence, update_manager, virustotal, timeline, blocking]
+  disable: [template, rnn_cc_detection, flowmldetection, threat_intelligence, update_manager, virustotal, timeline, blocking, networkdiscovery]
 
   # For each line in timeline file there is a timestamp.
   # By default the timestamp is seconds in unix time. However

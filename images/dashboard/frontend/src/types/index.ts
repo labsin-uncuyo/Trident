@@ -90,6 +90,7 @@ export interface PcapFile {
   path: string;
   size_bytes: number;
   modified: string;
+  slips_checked: boolean;
 }
 
 /* ── Runs ──────────────────────────────────────────────────────── */

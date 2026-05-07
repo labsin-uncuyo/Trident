@@ -39,6 +39,9 @@ RETRY_DELAYS = [1, 5, 10]  # Seconds to wait between retries (1s, 5s, 10s)
 # Planner-only mode: skip OpenCode execution
 PLANNER_ONLY = os.getenv("PLANNER_ONLY", "").lower() in ("true", "1", "yes", "on")
 
+# DNS-only defense mode: ignore non-DNS alerts
+DNS_ONLY_DEFENSE = os.getenv("DNS_ONLY_DEFENSE", "").lower() in ("true", "1", "yes", "on")
+
 # OpenCode Server API configuration
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
 
@@ -77,7 +80,8 @@ class AutoResponder:
                 "duplicate_window": DUPLICATE_DETECTION_WINDOW,
                 "retry_delays": RETRY_DELAYS,
                 "mode": "opencode_server_api",
-                "planner_only": PLANNER_ONLY
+                "planner_only": PLANNER_ONLY,
+                "dns_only_defense": DNS_ONLY_DEFENSE
             }
         })
 
@@ -85,9 +89,19 @@ class AutoResponder:
             print(f"[auto_responder] ✓ PLANNER-ONLY mode ENABLED (OpenCode execution disabled)")
         else:
             print(f"[auto_responder] ✓ OpenCode Server API mode ENABLED")
+        if DNS_ONLY_DEFENSE:
+            print(f"[auto_responder] ✓ DNS-ONLY defense ENABLED (non-DNS alerts ignored)")
         print(f"[auto_responder]   - Server: http://{OPENCODE_SERVER_HOST}:{OPENCODE_SERVER_PORT}")
         print(f"[auto_responder]   - Compromised: http://{OPENCODE_COMPROMISED_HOST}:{OPENCODE_SERVER_PORT}")
         print(f"[auto_responder]   - Retry delays: {RETRY_DELAYS}s (for model errors)")
+
+    def is_dns_alert(self, alert: Dict) -> bool:
+        raw_alert = str(alert.get("raw", "")).lower()
+        description = str(alert.get("description", "")).lower()
+        attack_id = str(alert.get("attackid", "")).lower()
+        threat_level = str(alert.get("threat_level", "")).lower()
+        haystack = f"{raw_alert} {description} {attack_id} {threat_level}"
+        return any(token in haystack for token in ["dns", "domain", "txt", "entropy"])
 
     def get_opencode_base_url(self, target_ip: str) -> str:
         """Get the OpenCode server API base URL for a target IP."""
@@ -463,7 +477,7 @@ class AutoResponder:
 
     def call_planner(self, alert_text: str) -> Optional[Dict]:
         payload = {"alert": alert_text}
-        
+
         # Log the exact alert being sent to planner
         print(f"[AUTO_RESPONDER_TO_PLANNER_START]", flush=True)
         print(f"Alert text length: {len(alert_text)}", flush=True)
@@ -471,32 +485,87 @@ class AutoResponder:
         print(f"[ALERT_TO_PLANNER]", flush=True)
         print(alert_text, flush=True)
         print(f"[ALERT_TO_PLANNER_END]", flush=True)
-        
+
         last_error = None
+        last_response_text = None
+        last_status_code = None
         max_attempts = max(1, PLANNER_REQUEST_RETRIES + 1)
 
         for attempt in range(1, max_attempts + 1):
+            attempt_start = time.time()
             try:
+                print(f"[PLANNER_REQUEST_ATTEMPT] attempt={attempt}/{max_attempts} timeout={PLANNER_REQUEST_TIMEOUT}s url={PLANNER_URL}", flush=True)
                 response = requests.post(PLANNER_URL, json=payload, timeout=PLANNER_REQUEST_TIMEOUT)
+                last_status_code = response.status_code
+                attempt_duration = time.time() - attempt_start
+
+                print(f"[PLANNER_RESPONSE] status={response.status_code} duration={attempt_duration:.2f}s headers={dict(response.headers)}", flush=True)
+
+                # Log raw response text before parsing
+                last_response_text = response.text
+                print(f"[PLANNER_RAW_RESPONSE_LENGTH] {len(response.text)}", flush=True)
+                print(f"[PLANNER_RAW_RESPONSE_PREVIEW] {response.text[:1000]}", flush=True)
+
                 response.raise_for_status()
                 result = response.json()
-                print(f"[PLANNER_RESPONSE_RECEIVED]", flush=True)
+
+                # Detailed validation of response structure
+                print(f"[PLANNER_PARSED_JSON] keys={list(result.keys())}", flush=True)
+                print(f"[PLANNER_RESPONSE_DETAILS]", flush=True)
+                for key, value in result.items():
+                    if key == "plan" and value:
+                        print(f"  {key}: length={len(value)} preview={value[:200]}", flush=True)
+                    elif key == "plans" and isinstance(value, list):
+                        print(f"  {key}: count={len(value)}", flush=True)
+                        for idx, plan in enumerate(value):
+                            plan_data = plan if isinstance(plan, dict) else {"plan": plan}
+                            print(f"    plan[{idx}]: executor_host_ip='{plan_data.get('executor_host_ip', 'N/A')}' plan_length={len(plan_data.get('plan', ''))}", flush=True)
+                    else:
+                        print(f"  {key}: {value}", flush=True)
+
                 if "plans" in result and result["plans"]:
                     for idx, plan in enumerate(result["plans"]):
                         print(f"[PLAN_{idx}_PREVIEW]", flush=True)
                         print(plan.get("plan", "")[:500], flush=True)
                         print(f"[PLAN_{idx}_PREVIEW_END]", flush=True)
+
                 print(f"[AUTO_RESPONDER_TO_PLANNER_END]", flush=True)
                 return result
-            except Exception as e:
-                last_error = e
+            except json.JSONDecodeError as e:
+                last_error = f"JSON decode error: {e}"
+                print(f"[PLANNER_JSON_ERROR] attempt={attempt}/{max_attempts} error={e} pos={e.pos if hasattr(e, 'pos') else 'N/A'}", flush=True)
+                print(f"[PLANNER_RAW_RESPONSE_ON_ERROR] {last_response_text[:500] if last_response_text else 'N/A'}", flush=True)
                 if attempt < max_attempts:
                     retry_delay = min(5, attempt * 2)
-                    print(
-                        f"[auto_responder] Planner request attempt {attempt}/{max_attempts} failed: {e}. "
-                        f"Retrying in {retry_delay}s...",
-                        flush=True,
-                    )
+                    print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
+                    time.sleep(retry_delay)
+                    continue
+                break
+            except requests.exceptions.Timeout as e:
+                last_error = f"Timeout error: {e}"
+                print(f"[PLANNER_TIMEOUT] attempt={attempt}/{max_attempts} timeout={PLANNER_REQUEST_TIMEOUT}s", flush=True)
+                if attempt < max_attempts:
+                    retry_delay = min(5, attempt * 2)
+                    print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
+                    time.sleep(retry_delay)
+                    continue
+                break
+            except requests.exceptions.HTTPError as e:
+                last_error = f"HTTP error: {e}"
+                print(f"[PLANNER_HTTP_ERROR] attempt={attempt}/{max_attempts} status={last_status_code} error={e}", flush=True)
+                print(f"[PLANNER_RAW_RESPONSE_ON_ERROR] {last_response_text[:500] if last_response_text else 'N/A'}", flush=True)
+                if attempt < max_attempts:
+                    retry_delay = min(5, attempt * 2)
+                    print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
+                    time.sleep(retry_delay)
+                    continue
+                break
+            except Exception as e:
+                last_error = e
+                print(f"[PLANNER_EXCEPTION] attempt={attempt}/{max_attempts} type={type(e).__name__} error={e}", flush=True)
+                if attempt < max_attempts:
+                    retry_delay = min(5, attempt * 2)
+                    print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
                     time.sleep(retry_delay)
                     continue
                 break
@@ -1039,7 +1108,9 @@ CONTEXT:
 - **NEVER use 0.0.0.0/0 as destination**
 - **FORBIDDEN:** iptables -A INPUT -p tcp --dport 4096 -j DROP (blocks OpenCode API - kills your agent)
 
-Execute all containment and remediation steps immediately. Be decisive and thorough. After containment and remediation, take at least 1 extra creative step, it can be deception, counter attacking, etc. Basic containment is not enough."""
+Execute all containment and remediation steps immediately. Be decisive and thorough. After containment and remediation, take at least 1 extra creative step, it can be deception, counter attacking, etc. Basic containment is not enough.
+Always start your work by fully understanding artifacts if present and things related with the artifacts, for example, decoding, and then, if you find something there, that is your next priority ant this has the most priority of the whole plan
+"""
 
             machine_output_dir = self.get_machine_output_dir(target_name)
             stdout_path = machine_output_dir / "opencode_stdout.jsonl"  # legacy JSONL
@@ -1337,11 +1408,43 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
             else:
                 plan = plan_response.get("plan", "")
                 executor_ip = plan_response.get("executor_host_ip", "")
+
+                # Detailed logging of why plan extraction might fail
+                print(f"[PLAN_EXTRACTION_DEBUG]", flush=True)
+                print(f"  'plans' key in response: {'plans' in plan_response}", flush=True)
+                print(f"  plan_response keys: {list(plan_response.keys())}", flush=True)
+                print(f"  'plan' key value type: {type(plan)}", flush=True)
+                print(f"  'plan' value length: {len(str(plan)) if plan else 0}", flush=True)
+                print(f"  'plan' value truthy: {bool(plan)}", flush=True)
+                print(f"  'executor_host_ip' value: '{executor_ip}'", flush=True)
+                print(f"  'executor_host_ip' truthy: {bool(executor_ip)}", flush=True)
+
                 if plan and executor_ip:
                     plans_list = [{"executor_host_ip": executor_ip, "plan": plan}]
+                    print(f"  Created single plan from plan+executor_host_ip", flush=True)
+                else:
+                    print(f"  Could not create plan - missing plan or executor_host_ip", flush=True)
+
+                # Check for debug info in response
+                debug_info = plan_response.get("_debug", {})
+                if debug_info:
+                    print(f"  Debug info from planner:", flush=True)
+                    for k, v in debug_info.items():
+                        print(f"    {k}: {v}", flush=True)
+
+                print(f"[PLAN_EXTRACTION_DEBUG_END]", flush=True)
 
             if not plans_list:
-                self.log("ERROR", "No valid plans in response", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={"plan_response": plan_response})
+                self.log("ERROR", "No valid plans in response", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
+                    "plan_response": plan_response,
+                    "plan_response_keys": list(plan_response.keys()),
+                    "has_plans_key": "plans" in plan_response,
+                    "has_plan_key": "plan" in plan_response,
+                    "has_executor_host_ip": "executor_host_ip" in plan_response,
+                    "plan_length": len(str(plan_response.get("plan", ""))),
+                    "executor_host_ip_value": plan_response.get("executor_host_ip", ""),
+                    "raw_plan_response": str(plan_response),
+                })
                 return False
 
             self.log("PLAN", f"Generated {len(plans_list)} plan(s) ({plan_duration:.2f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
@@ -1384,6 +1487,12 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
             processed_count = 0
             for alert in new_alerts:
                 alert_hash = self.get_alert_hash(alert)
+                if DNS_ONLY_DEFENSE and not self.is_dns_alert(alert):
+                    self.log("SKIP", "Non-DNS alert ignored (dns-only mode)", machine_name=None, alert_hash=alert_hash)
+                    with self.lock:
+                        self.processed_alerts.add(alert_hash)
+                    processed_count += 1
+                    continue
                 # Re-check threat dedup here (not in get_new_alerts) so that
                 # record_threat() from the previous iteration is visible.
                 if self.is_duplicate_threat(alert, alert_hash):

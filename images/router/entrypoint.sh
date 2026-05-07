@@ -3,6 +3,11 @@ set -euo pipefail
 
 : "${RUN_ID:=run_local}"
 : "${PCAP_ROTATE_SECS:=30}"
+TCPDUMP_FILTER=""
+if [[ "${DNS_ONLY_DEFENSE:-}" =~ ^(true|1|yes|on)$ ]]; then
+    TCPDUMP_FILTER="tcp port 53 and src port 53"
+    echo "✓ DNS_ONLY_DEFENSE enabled: capturing DNS TCP responses only"
+fi
 
 pcap_dir="/outputs/${RUN_ID}/pcaps"
 mkdir -p "${pcap_dir}"
@@ -198,6 +203,7 @@ tcpdump -U -s 0 -i "${lan_a_if}" \
   -G "${PCAP_ROTATE_SECS}" \
   -w "${pcap_dir}/router_%Y-%m-%d_%H-%M-%S.pcap" \
   -Z root \
+    ${TCPDUMP_FILTER} \
   >>"${file_log}" 2>&1 &
 
 trap 'pkill tcpdump || true' EXIT

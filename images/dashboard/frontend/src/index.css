@@ -25,6 +25,10 @@
     --color-trident-border-subtle: #334155;
   }
 
+  body {
+    @apply text-base text-trident-text bg-trident-bg antialiased;
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: #64748b transparent;
@@ -35,8 +39,8 @@
   }
 
   *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   *::-webkit-scrollbar-track {
@@ -45,17 +49,17 @@
 
   *::-webkit-scrollbar-thumb {
     background-color: #64748b;
-    border-radius: 3px;
+    border-radius: 4px;
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-trident-border bg-trident-surface p-4 shadow-lg;
+    @apply rounded-xl border border-trident-border bg-trident-surface p-5 shadow-lg;
   }
 
   .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+    @apply inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold;
   }
 
   .badge-success {
@@ -79,7 +83,7 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-trident-accent focus:ring-offset-2 focus:ring-offset-trident-bg;
+    @apply inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-base font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-trident-accent focus:ring-offset-2 focus:ring-offset-trident-bg;
   }
 
   .btn-primary {
@@ -91,7 +95,7 @@
   }
 
   .nav-link {
-    @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-trident-muted transition-colors hover:bg-trident-border hover:text-trident-text;
+    @apply flex items-center gap-3 rounded-lg px-4 py-2.5 text-base font-semibold text-trident-muted transition-colors hover:bg-trident-border hover:text-trident-text;
   }
 
   .nav-link.active {
@@ -99,6 +103,6 @@
   }
 
   .terminal-output {
-    @apply whitespace-pre-wrap break-all rounded-lg bg-gray-950 p-3 font-mono text-sm text-green-400 dark:bg-black dark:text-green-400;
+    @apply whitespace-pre-wrap break-all rounded-lg bg-gray-950 p-4 font-mono text-base text-green-400 dark:bg-black dark:text-green-400;
   }
 }
