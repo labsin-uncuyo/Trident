@@ -37,7 +37,7 @@ function PartRenderer({ part }: { part: MessagePart }) {
       const displayed = isLong && !textExpanded ? raw.slice(0, TEXT_PREVIEW_LENGTH) + '…' : raw;
       return (
         <div className="flex gap-2 py-1">
-          <MessageSquare size={14} className="mt-0.5 flex-shrink-0 text-blue-400" />
+          <MessageSquare size={14} className="mt-0.5 flex-shrink-0 text-blue-700 dark:text-blue-400" />
           <div className="min-w-0 flex-1">
             <pre className="whitespace-pre-wrap break-words text-xs text-trident-text font-mono leading-relaxed">
               {displayed}
@@ -62,14 +62,14 @@ function PartRenderer({ part }: { part: MessagePart }) {
       const output = state.output ?? (part as any).output ?? (part as any).result ?? '';
       const summary = toolInputSummary(input);
       return (
-        <div className="my-1 rounded-lg border border-trident-border bg-black/30">
+        <div className="my-1 rounded-lg border border-trident-border bg-black/5 dark:bg-black/30">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-white/5"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-black/5 dark:hover:bg-white/5"
           >
             {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            <Wrench size={12} className="text-amber-400 flex-shrink-0" />
-            <span className="font-mono font-medium text-amber-400 flex-shrink-0">{toolName}</span>
+            <Wrench size={12} className="text-amber-700 dark:text-amber-400 flex-shrink-0" />
+            <span className="font-mono font-medium text-amber-700 dark:text-amber-400 flex-shrink-0">{toolName}</span>
             {summary && (
               <span className="truncate text-trident-muted font-mono">{summary}</span>
             )}
@@ -79,7 +79,7 @@ function PartRenderer({ part }: { part: MessagePart }) {
               {typeof input === 'object' && Object.keys(input).length > 0 && (
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-trident-muted">Input</span>
-                  <pre className="terminal-output mt-1 max-h-60 overflow-auto text-yellow-300">
+                  <pre className="terminal-output mt-1 max-h-60 overflow-auto text-yellow-400 dark:text-yellow-300">
                     {JSON.stringify(input, null, 2)}
                   </pre>
                 </div>
@@ -132,7 +132,7 @@ function MessageFullscreenModal({ message, onClose }: { message: SessionMessage;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-md"
       onClick={onClose}
     >
       <div
@@ -142,26 +142,26 @@ function MessageFullscreenModal({ message, onClose }: { message: SessionMessage;
         {/* Close button - larger, always visible */}
         <button
           onClick={onClose}
-          className="fixed top-6 right-6 z-50 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/90 border-2 border-white/20 text-white shadow-2xl backdrop-blur-sm transition-all hover:bg-red-500 hover:scale-105 active:scale-95"
+          className="fixed top-6 right-6 z-50 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-600 border-2 border-red-400 text-white shadow-2xl backdrop-blur-sm transition-all hover:bg-red-700 hover:scale-105 active:scale-95 dark:bg-red-500/90 dark:border-white/20"
           aria-label="Close fullscreen"
         >
           <X size={32} strokeWidth={3} />
         </button>
 
         {/* Message content */}
-        <div className="rounded-xl border border-white/10 bg-black/60 backdrop-blur-xl p-8 shadow-2xl ring-1 ring-white/5">
+        <div className="rounded-xl border border-trident-border bg-white dark:bg-black/60 backdrop-blur-xl p-8 shadow-2xl ring-1 ring-trident-border dark:ring-white/5">
           {/* Message header */}
-          <div className="mb-6 flex items-center gap-4 border-b border-white/10 pb-5">
+          <div className="mb-6 flex items-center gap-4 border-b border-trident-border dark:border-white/10 pb-5">
             <span className={`badge ${message.info?.role === 'assistant' ? 'badge-info' : 'badge-muted'} text-sm px-4 py-1.5`}>
               {message.info?.role || 'unknown'}
             </span>
             {message.info?.tokens && (
-              <span className="text-sm text-white/60">
+              <span className="text-sm text-trident-muted">
                 {message.info.tokens.input}↓ {message.info.tokens.output}↑ tokens
               </span>
             )}
             {message.info?.time?.created && (
-              <span className="ml-auto text-sm text-white/50">
+              <span className="ml-auto text-sm text-trident-muted">
                 {new Date(message.info.time.created).toLocaleString()}
               </span>
             )}
@@ -176,19 +176,19 @@ function MessageFullscreenModal({ message, onClose }: { message: SessionMessage;
                 <div key={pIdx}>
                   {part.type === 'text' ? (
                     <div>
-                      <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-wider text-white/40">
-                        <MessageSquare size={16} className="text-blue-400" />
+                      <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-wider text-trident-muted">
+                        <MessageSquare size={16} className="text-blue-700 dark:text-blue-400" />
                         Text
                       </div>
-                      <pre className="whitespace-pre-wrap break-words text-base text-white/90 font-mono leading-relaxed">
+                      <pre className="whitespace-pre-wrap break-words text-base text-trident-text font-mono leading-relaxed">
                         {typeof part.text === 'string' ? part.text : JSON.stringify(part.text)}
                       </pre>
                     </div>
                   ) : part.type === 'tool' ? (
-                    <div className="rounded-xl border border-white/10 bg-black/40">
-                      <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10">
-                        <Wrench size={16} className="text-amber-400 flex-shrink-0" />
-                        <span className="font-mono font-medium text-amber-400 text-sm">
+                    <div className="rounded-xl border border-trident-border dark:border-white/10 bg-gray-100 dark:bg-black/40">
+                      <div className="flex items-center gap-3 px-5 py-4 border-b border-trident-border dark:border-white/10">
+                        <Wrench size={16} className="text-amber-700 dark:text-amber-500 flex-shrink-0" />
+                        <span className="font-mono font-semibold text-amber-700 dark:text-amber-500 text-sm">
                           {part.tool || 'unknown_tool'}
                         </span>
                       </div>
@@ -197,16 +197,16 @@ function MessageFullscreenModal({ message, onClose }: { message: SessionMessage;
                           <>
                             {typeof toolPart.state.input === 'object' && Object.keys(toolPart.state.input).length > 0 && (
                               <div>
-                                <span className="text-xs uppercase tracking-wider text-white/40 mb-3 block">Input</span>
-                                <pre className="terminal-output text-base text-yellow-300 rounded-lg bg-black/30 p-4">
+                                <span className="text-xs uppercase tracking-wider text-trident-muted mb-3 block">Input</span>
+                                <pre className="terminal-output text-base text-yellow-700 dark:text-yellow-300 rounded-lg bg-gray-200 dark:bg-black/30 p-4">
                                   {JSON.stringify(toolPart.state.input, null, 2)}
                                 </pre>
                               </div>
                             )}
                             {toolPart.state.output && (
                               <div>
-                                <span className="text-xs uppercase tracking-wider text-white/40 mb-3 block">Output</span>
-                                <pre className="terminal-output text-base rounded-lg bg-black/30 p-4">
+                                <span className="text-xs uppercase tracking-wider text-trident-muted mb-3 block">Output</span>
+                                <pre className="terminal-output text-base rounded-lg bg-gray-200 dark:bg-black/30 p-4">
                                   {typeof toolPart.state.output === 'string' ? toolPart.state.output : JSON.stringify(toolPart.state.output, null, 2)}
                                 </pre>
                               </div>

@@ -42,8 +42,8 @@ export function ContainerStatusBar() {
               <span
                 className={`ml-auto text-[10px] ${
                   c.health === 'healthy'
-                    ? 'text-green-400'
-                    : 'text-yellow-400'
+                    ? 'text-green-700 dark:text-green-400'
+                    : 'text-yellow-700 dark:text-yellow-400'
                 }`}
               >
                 {c.health}

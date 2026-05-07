@@ -54,7 +54,7 @@ export function AlertsPage() {
     <div className="flex h-full flex-col">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="font-heading text-2xl font-bold text-white">Alerts</h2>
+          <h2 className="font-heading text-2xl font-bold text-trident-text">Alerts</h2>
           <p className="text-sm text-trident-muted">
             SLIPS IDS alerts — {alerts.length} total
           </p>
@@ -124,10 +124,10 @@ export function AlertsPage() {
                   size={16}
                   className={`mt-0.5 flex-shrink-0 ${
                     sev === 'high' || sev === 'critical'
-                      ? 'text-red-400'
+                      ? 'text-red-700 dark:text-red-400'
                       : sev === 'medium'
-                      ? 'text-yellow-400'
-                      : 'text-blue-400'
+                      ? 'text-yellow-700 dark:text-yellow-400'
+                      : 'text-blue-700 dark:text-blue-400'
                   }`}
                 />
                 <div className="flex-1 min-w-0">

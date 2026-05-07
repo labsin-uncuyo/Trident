@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { api } from '@/api';
 import { useOpenCodeStream } from '@/hooks/useOpenCodeStream';
 import { SessionStream } from '@/components/SessionStream';
+import { useReplayContext } from '@/contexts/ReplayContext';
 import type { SessionMessage } from '@/types';
 
 export function SessionDetailPage() {
@@ -12,13 +13,19 @@ export function SessionDetailPage() {
     sessionId: string;
   }>();
 
-  const { messagesBySession, sessions, connected } = useOpenCodeStream(host);
+  const { messagesBySession, sessions, connected, isReplayActive } = useOpenCodeStream(host);
   const [restMessages, setRestMessages] = useState<SessionMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Load initial messages via REST
+  // Load initial messages via REST - only when NOT in replay mode
   useEffect(() => {
+    // Skip API fetch when replay is active
+    if (isReplayActive) {
+      setLoading(false);
+      return;
+    }
+
     if (!sessionId) return;
     setLoading(true);
     api
@@ -30,7 +37,7 @@ export function SessionDetailPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [host, sessionId]);
+  }, [host, sessionId, isReplayActive]);
 
   // Combine REST + WS messages (WS appends new ones)
   const wsMessages = messagesBySession[sessionId] || [];
@@ -52,8 +59,9 @@ export function SessionDetailPage() {
           <ArrowLeft size={18} />
         </Link>
         <div className="flex-1">
-          <h2 className="font-heading text-xl font-bold text-white">
+          <h2 className="font-heading text-xl font-bold text-trident-text">
             Session on <span className="capitalize text-trident-accent">{host}</span>
+            {isReplayActive && <span className="ml-2 text-sm text-trident-muted">(Replay)</span>}
           </h2>
           <p className="font-mono text-xs text-trident-muted">{sessionId}</p>
         </div>
@@ -68,8 +76,8 @@ export function SessionDetailPage() {
         >
           {status}
         </span>
-        <span className={`badge ${connected ? 'badge-success' : 'badge-danger'}`}>
-          {connected ? 'Live' : 'Offline'}
+        <span className={`badge ${isReplayActive ? 'badge-warning' : connected ? 'badge-success' : 'badge-danger'}`}>
+          {isReplayActive ? 'Replay' : connected ? 'Live' : 'Offline'}
         </span>
       </div>
 

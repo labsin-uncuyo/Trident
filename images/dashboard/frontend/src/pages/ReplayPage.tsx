@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Play, FolderOpen, RefreshCw, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
-import { useReplay, useReplayRuns } from '@/hooks/useReplay';
+import { useReplayRuns } from '@/hooks/useReplay';
 import { TimelineControls } from '@/components/TimelineControls';
 import { SessionStream } from '@/components/SessionStream';
+import { useReplayContext } from '@/contexts/ReplayContext';
 import type { ReplayEvent, SessionMessage } from '@/types';
 
 // Convert replay events to SessionMessage format for SessionStream component
@@ -44,13 +45,13 @@ function TimelineEntryRow({ entry }: { entry: ReplayEvent }) {
   const [expanded, setExpanded] = useState(false);
 
   const LEVEL_STYLES: Record<string, string> = {
-    INIT: 'text-blue-400',
-    OPENCODE: 'text-purple-400',
-    ERROR: 'text-red-400',
-    WARNING: 'text-amber-400',
-    INFO: 'text-green-400',
+    INIT: 'text-blue-700 dark:text-blue-400',
+    OPENCODE: 'text-purple-700 dark:text-purple-400',
+    ERROR: 'text-red-700 dark:text-red-400',
+    WARNING: 'text-amber-700 dark:text-amber-400',
+    INFO: 'text-green-700 dark:text-green-400',
     DEBUG: 'text-trident-muted',
-    ALERT: 'text-red-500',
+    ALERT: 'text-red-700 dark:text-red-500',
   };
 
   const levelColor = LEVEL_STYLES[entry.level || ''] ?? 'text-trident-muted';
@@ -91,7 +92,7 @@ function TimelineEntryRow({ entry }: { entry: ReplayEvent }) {
 
   return (
     <div
-      className="cursor-pointer border-b border-trident-border/40 px-3 py-1.5 hover:bg-white/5"
+      className="cursor-pointer border-b border-trident-border/40 px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
       onClick={() => setExpanded((e) => !e)}
     >
       <div className="flex items-start gap-2 text-xs">
@@ -136,7 +137,7 @@ function RunSelector({
       >
         <div className="flex items-center gap-2">
           <FolderOpen size={18} className="text-trident-accent" />
-          <h3 className="font-heading text-lg font-bold text-white">Select Run to Replay</h3>
+          <h3 className="font-heading text-lg font-bold text-trident-text">Select Run to Replay</h3>
         </div>
         {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       </button>
@@ -148,7 +149,7 @@ function RunSelector({
               <RefreshCw size={20} className="animate-spin text-trident-accent" />
             </div>
           ) : error ? (
-            <div className="flex items-center gap-2 text-red-400 py-4">
+            <div className="flex items-center gap-2 text-red-700 dark:text-red-400 py-4">
               <AlertCircle size={16} />
               <span className="text-sm">{error}</span>
             </div>
@@ -167,7 +168,7 @@ function RunSelector({
                   }`}
                 >
                   <div>
-                    <div className="font-mono text-sm text-white">
+                    <div className="font-mono text-sm text-trident-text">
                       {run.run_id}
                       {run.is_current && (
                         <span className="ml-2 text-xs text-trident-accent">(current)</span>
@@ -199,7 +200,7 @@ function TabSwitcher<T extends string>({
   onTabChange: (tab: T) => void;
 }) {
   return (
-    <div className="flex gap-1 rounded-lg bg-black/20 p-1 mb-4">
+    <div className="flex gap-1 rounded-lg bg-black/5 dark:bg-black/20 p-1 mb-4">
       {tabs.map((tab) => (
         <button
           key={tab.key}
@@ -207,7 +208,7 @@ function TabSwitcher<T extends string>({
           className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
             activeTab === tab.key
               ? 'bg-trident-accent/20 text-trident-accent'
-              : 'text-trident-muted hover:text-white'
+              : 'text-trident-muted hover:text-trident-text'
           }`}
         >
           {tab.label} ({tab.count})
@@ -226,13 +227,8 @@ export function ReplayPage() {
   // Custom path input
   const [customPath, setCustomPath] = useState('');
 
-  // Replay hook
-  const { state, controls } = useReplay(selectedRunId, selectedPath, {
-    onLoad: () => {
-      // Reset to timeline view on new load
-      setViewTab('timeline');
-    },
-  });
+  // Use the global ReplayContext instead of local useReplay hook
+  const { replay, controls, isLoading, error } = useReplayContext();
 
   // Available runs
   const { runs, loading: runsLoading, error: runsError } = useReplayRuns();
@@ -240,41 +236,50 @@ export function ReplayPage() {
   // Auto-select current run if available
   useEffect(() => {
     const currentRun = runs.find((r) => r.is_current);
-    if (currentRun && !selectedRunId && !state.error) {
+    if (currentRun && !selectedRunId && !error) {
       // Don't auto-select, let user choose
     }
   }, [runs]);
 
+  // Reset to timeline view when a new replay is loaded
+  useEffect(() => {
+    if (replay.replayId) {
+      setViewTab('timeline');
+    }
+  }, [replay.replayId]);
+
   // Convert events to session messages
   const sessionMessages = useMemo(() => {
-    return replayEventsToSessionMessages(state.events);
-  }, [state.events]);
+    return replayEventsToSessionMessages(replay.events);
+  }, [replay.events]);
 
   // Timeline entries (all events)
-  const timelineEntries = state.events;
+  const timelineEntries = replay.events;
 
   // Event counts by type
   const eventCounts = useMemo(() => {
     const counts = { timeline: 0, messages: 0, alerts: 0 };
-    for (const e of state.events) {
+    for (const e of replay.events) {
       counts.timeline++;
       if (e.source_type === 'opencode') counts.messages++;
       if (e.source_type === 'alert') counts.alerts++;
     }
     return counts;
-  }, [state.events]);
+  }, [replay.events]);
 
   // Handle run selection
-  const handleSelectRun = (path: string, runId: string) => {
+  const handleSelectRun = async (path: string, runId: string) => {
     setSelectedPath(path);
     setSelectedRunId(runId);
+    await controls.loadReplay(path, runId);
   };
 
   // Handle custom path load
-  const handleLoadCustomPath = () => {
+  const handleLoadCustomPath = async () => {
     if (customPath.trim()) {
       setSelectedPath(customPath.trim());
       setSelectedRunId(null);
+      await controls.loadReplay(customPath.trim());
     }
   };
 
@@ -282,7 +287,7 @@ export function ReplayPage() {
     <div className="flex h-full flex-col gap-6 overflow-auto">
       {/* Header */}
       <div>
-        <h2 className="font-heading text-2xl font-bold text-white">Replay</h2>
+        <h2 className="font-heading text-2xl font-bold text-trident-text">Replay</h2>
         <p className="text-sm text-trident-muted">
           Replay historical logs with timeline and playback controls
         </p>
@@ -301,7 +306,7 @@ export function ReplayPage() {
       <div className="card">
         <div className="flex items-center gap-2 mb-2">
           <FolderOpen size={16} className="text-trident-accent" />
-          <h3 className="font-heading text-sm font-bold text-white">Or enter custom path:</h3>
+          <h3 className="font-heading text-sm font-bold text-trident-text">Or enter custom path:</h3>
         </div>
         <div className="flex gap-2">
           <input
@@ -309,7 +314,7 @@ export function ReplayPage() {
             value={customPath}
             onChange={(e) => setCustomPath(e.target.value)}
             placeholder="/outputs/run_20250102_123456"
-            className="flex-1 px-3 py-2 rounded bg-trident-bg border border-trident-border text-sm text-white focus:outline-none focus:border-trident-accent font-mono"
+            className="flex-1 px-3 py-2 rounded bg-trident-bg border border-trident-border text-sm text-trident-text focus:outline-none focus:border-trident-accent font-mono"
             onKeyDown={(e) => e.key === 'Enter' && handleLoadCustomPath()}
           />
           <button
@@ -322,46 +327,46 @@ export function ReplayPage() {
       </div>
 
       {/* Error Display */}
-      {state.error && (
+      {error && (
         <div className="card bg-red-500/10 border-red-500/50">
-          <div className="flex items-center gap-2 text-red-400">
+          <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
             <AlertCircle size={16} />
-            <span className="text-sm">{state.error}</span>
+            <span className="text-sm">{error}</span>
           </div>
         </div>
       )}
 
       {/* Replay Controls */}
-      {state.replayId && state.durationMs > 0 && (
+      {replay.replayId && replay.durationMs > 0 && (
         <>
           <TimelineControls
-            duration={state.durationMs}
-            position={state.positionMs - state.startTimeMs}  // Convert to offset
-            startTimeMs={state.startTimeMs}
-            isPlaying={state.isPlaying}
-            speed={state.speed}
+            duration={replay.durationMs}
+            position={replay.positionMs - replay.startTimeMs}  // Convert to offset
+            startTimeMs={replay.startTimeMs}
+            isPlaying={replay.isPlaying}
+            speed={replay.speed}
             onPlay={controls.play}
             onPause={controls.pause}
-            onSeek={(offset) => controls.seek(offset + state.startTimeMs)}  // Convert back to absolute
+            onSeek={(offset) => controls.seek(offset + replay.startTimeMs)}  // Convert back to absolute
             onSpeedChange={controls.setSpeed}
           />
 
           {/* Stats */}
           <div className="grid grid-cols-4 gap-3">
-            <div className="rounded-lg bg-black/30 p-3 text-center">
-              <p className="text-2xl font-bold text-white">{state.eventCount}</p>
+            <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+              <p className="text-2xl font-bold text-trident-text">{replay.eventCount}</p>
               <p className="text-[10px] uppercase tracking-wider text-trident-muted">Total Events</p>
             </div>
-            <div className="rounded-lg bg-black/30 p-3 text-center">
-              <p className="text-2xl font-bold text-purple-400">{eventCounts.messages}</p>
+            <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+              <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">{eventCounts.messages}</p>
               <p className="text-[10px] uppercase tracking-wider text-trident-muted">Messages</p>
             </div>
-            <div className="rounded-lg bg-black/30 p-3 text-center">
-              <p className="text-2xl font-bold text-blue-400">{eventCounts.timeline}</p>
+            <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+              <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{eventCounts.timeline}</p>
               <p className="text-[10px] uppercase tracking-wider text-trident-muted">Timeline</p>
             </div>
-            <div className="rounded-lg bg-black/30 p-3 text-center">
-              <p className="text-2xl font-bold text-red-400">{eventCounts.alerts}</p>
+            <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+              <p className="text-2xl font-bold text-red-700 dark:text-red-400">{eventCounts.alerts}</p>
               <p className="text-[10px] uppercase tracking-wider text-trident-muted">Alerts</p>
             </div>
           </div>
@@ -386,11 +391,11 @@ export function ReplayPage() {
               )
             ) : timelineEntries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                {state.eventCount === 0 ? (
+                {replay.eventCount === 0 ? (
                   <>
                     <Play size={32} className="text-trident-muted mb-4" />
                     <p className="text-sm text-trident-muted">
-                      {state.isPlaying ? 'Replaying...' : 'Press play to start replay'}
+                      {replay.isPlaying ? 'Replaying...' : 'Press play to start replay'}
                     </p>
                   </>
                 ) : (
@@ -409,10 +414,10 @@ export function ReplayPage() {
       )}
 
       {/* Empty State */}
-      {!state.replayId && !state.error && (
+      {!replay.replayId && !error && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <FolderOpen size={48} className="text-trident-muted mb-4" />
-          <h3 className="text-lg font-bold text-white mb-2">No Replay Loaded</h3>
+          <h3 className="text-lg font-bold text-trident-text mb-2">No Replay Loaded</h3>
           <p className="text-sm text-trident-muted max-w-md">
             Select a run from the list above or enter a custom path to load and replay historical logs.
           </p>

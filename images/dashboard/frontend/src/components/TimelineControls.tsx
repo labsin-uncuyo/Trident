@@ -1,3 +1,4 @@
+import { useState, useCallback, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
 interface Props {
@@ -28,12 +29,15 @@ export function TimelineControls({
   className = '',
 }: Props) {
   const progress = duration > 0 ? (position / duration) * 100 : 0;
+  const [timeInput, setTimeInput] = useState('');
+  const [inputError, setInputError] = useState(false);
+  const [isUserEditing, setIsUserEditing] = useState(false);
 
-  const formatTime = (ms: number): string => {
+  // Format time helper - needs to be defined before the useEffect
+  const formatTime = useCallback((ms: number): string => {
     if (ms < 0) ms = 0;
-    // If this looks like an absolute timestamp (very large number), convert to offset from start
     let displayMs = ms;
-    if (startTimeMs > 0 && ms > 1000000000000) {  // Absolute timestamp detected
+    if (startTimeMs > 0 && ms > 1000000000000) {
       displayMs = ms - startTimeMs;
     }
     const totalSeconds = Math.floor(displayMs / 1000);
@@ -45,7 +49,15 @@ export function TimelineControls({
       return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     }
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
+  }, [startTimeMs]);
+
+  // Update the input when position changes externally (e.g., during playback)
+  // But don't update while user is editing
+  useEffect(() => {
+    if (!isUserEditing) {
+      setTimeInput(formatTime(position));
+    }
+  }, [position, isUserEditing, formatTime]);
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value);
@@ -58,6 +70,72 @@ export function TimelineControls({
 
   const handleSkipForward = () => {
     onSeek(Math.min(duration, position + 10000)); // Forward 10 seconds
+  };
+
+  // Parse time string in formats: "MM:SS", "HH:MM:SS", or "SS" (seconds only)
+  const parseTimeToMs = useCallback((timeStr: string): number | null => {
+    if (!timeStr.trim()) return null;
+
+    // Try just seconds first (plain number)
+    const secondsOnly = parseFloat(timeStr);
+    if (!isNaN(secondsOnly)) {
+      return Math.min(duration, Math.max(0, secondsOnly * 1000));
+    }
+
+    // Try HH:MM:SS or MM:SS format
+    const parts = timeStr.split(':').map(p => parseInt(p, 10));
+
+    if (parts.length === 2 && parts.every(p => !isNaN(p))) {
+      // MM:SS format
+      const [mins, secs] = parts;
+      const totalMs = (mins * 60 + secs) * 1000;
+      return Math.min(duration, Math.max(0, totalMs));
+    }
+
+    if (parts.length === 3 && parts.every(p => !isNaN(p))) {
+      // HH:MM:SS format
+      const [hrs, mins, secs] = parts;
+      const totalMs = (hrs * 3600 + mins * 60 + secs) * 1000;
+      return Math.min(duration, Math.max(0, totalMs));
+    }
+
+    return null;
+  }, [duration]);
+
+  const handleTimeInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setIsUserEditing(true);
+    setTimeInput(e.target.value);
+    setInputError(false);
+  };
+
+  const handleTimeInputSubmit = () => {
+    const ms = parseTimeToMs(timeInput);
+    if (ms !== null) {
+      onSeek(ms);
+      onPlay(speed); // Auto-play when seeking via text input
+      setInputError(false);
+      setIsUserEditing(false);
+    } else {
+      setInputError(true);
+    }
+  };
+
+  const handleTimeInputBlur = () => {
+    // Reset to current position on blur if user didn't submit
+    setIsUserEditing(false);
+    setInputError(false);
+    setTimeInput(formatTime(position));
+  };
+
+  const handleTimeInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleTimeInputSubmit();
+    } else if (e.key === 'Escape') {
+      // Cancel editing on Escape
+      setIsUserEditing(false);
+      setInputError(false);
+      setTimeInput(formatTime(position));
+    }
   };
 
   return (
@@ -75,7 +153,7 @@ export function TimelineControls({
       {/* Skip buttons */}
       <button
         onClick={handleSkipBack}
-        className="flex h-7 w-7 items-center justify-center rounded text-trident-muted hover:text-white hover:bg-white/10 transition-colors"
+        className="flex h-7 w-7 items-center justify-center rounded text-trident-muted hover:text-trident-text hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
         aria-label="Skip back 10s"
         title="Skip back 10s"
       >
@@ -83,7 +161,7 @@ export function TimelineControls({
       </button>
       <button
         onClick={handleSkipForward}
-        className="flex h-7 w-7 items-center justify-center rounded text-trident-muted hover:text-white hover:bg-white/10 transition-colors"
+        className="flex h-7 w-7 items-center justify-center rounded text-trident-muted hover:text-trident-text hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
         aria-label="Skip forward 10s"
         title="Skip forward 10s"
       >
@@ -122,6 +200,29 @@ export function TimelineControls({
       <span className="text-xs font-mono text-trident-muted min-w-[80px] text-right">
         {formatTime(position)} / {formatTime(duration)}
       </span>
+
+      {/* Time input */}
+      <div className="relative">
+        <input
+          type="text"
+          value={timeInput}
+          onChange={handleTimeInputChange}
+          onKeyDown={handleTimeInputKeyDown}
+          onBlur={handleTimeInputBlur}
+          placeholder="MM:SS"
+          className={`w-20 px-2 py-1 text-xs font-mono bg-trident-bg border rounded text-trident-text focus:outline-none ${
+            inputError
+              ? 'border-red-500 focus:border-red-500'
+              : 'border-trident-border focus:border-trident-accent'
+          }`}
+          title="Enter time as MM:SS, HH:MM:SS, or seconds, then press Enter to jump and play"
+        />
+        {inputError && (
+          <span className="absolute -bottom-4 left-0 text-[9px] text-red-700 dark:text-red-400 whitespace-nowrap">
+            Invalid time
+          </span>
+        )}
+      </div>
     </div>
   );
 }
