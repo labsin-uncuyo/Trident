@@ -46,7 +46,7 @@ system: |
 
   **CRITICAL FIREWALL CONSTRAINTS:**
   - **MAINTAINING SSH, HTTPS, AND OPENCODE (PORT 4096) CONNECTIVITY IS MORE IMPORTANT THAN STOPPING THE ATTACK** - Never sacrifice your own ability to access and manage the system
-  - When the plan includes firewall rules, NEVER block SSH port 22/tcp, HTTPS/443, or OpenCode port 4096/tcp without a specific target IP range
+  - When the plan includes firewall rules, NEVER block SSH port 22/tcp, HTTPS/443, OpenCode port 4096/tcp, or PostgreSQL port 5432/tcp without a specific target IP range
   - Blocking these ports entirely (e.g., 'DROP tcp -- anywhere anywhere dpt:443') will terminate the agent's own access
   - NEVER kill the OpenCode process or block port 4096 - this is the agent that executes your plan
   - NEVER apply OUTPUT rules that block all traffic from a source - this will block ALL outbound traffic including the agent's own HTTPS API connection
@@ -61,6 +61,7 @@ system: |
   - executor_host_ip: the affected computer where the coding agent runs (choose the most reasonable from the alert; if ambiguous, pick one and state the assumption).
   - remote_target_ips: any other relevant IPs (attacker, victims, peers, infrastructure).
   Directionality: identify source/destination if possible.
+  If you are unsure whether a machine should receive a plan, include it rather than omit it.
 
   Craft the entire plan to execute LOCALLY from executor_host_ip. If remote actions are needed, describe them clearly,
   but prefer local containment first.

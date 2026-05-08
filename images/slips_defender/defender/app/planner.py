@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import os
+import sys
+import time
 import uuid
+import json
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -13,6 +17,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import BaseMessage
+
+# Local timing trace utilities
+from .timing_trace import get_tracer, trace_span
 
 
 load_dotenv()  # Load .env if present; intentionally early to set env for model
@@ -38,6 +45,8 @@ class PlannerConfig:
     langfuse_secret_key: Optional[str] = os.getenv("LANGFUSE_SECRET_KEY")
     langfuse_host: Optional[str] = os.getenv("LANGFUSE_HOST")
     langfuse_trace_name: str = os.getenv("LANGFUSE_TRACE_NAME", "incident_planner")
+    # Async Langfuse flush (non-blocking) - default enabled for performance
+    langfuse_async_flush: bool = _is_truthy(os.getenv("LANGFUSE_ASYNC_FLUSH"), default=True)
 
 
 import yaml
@@ -53,8 +62,11 @@ class IncidentPlanner:
         self.config = config or PlannerConfig()
         self.prompts_path = prompts_path or os.getenv("PROMPTS_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts.yaml"))
 
+        # Initialize timing tracer
+        self.tracer = get_tracer("planner")
+        self._init_start = time.time()
+
         # Log configuration for debugging
-        import sys
         print(f"\n[PLANNER_INIT] Initializing IncidentPlanner with config:", file=sys.stderr, flush=True)
         print(f"  model: {self.config.model}", file=sys.stderr, flush=True)
         print(f"  temperature: {self.config.temperature}", file=sys.stderr, flush=True)
@@ -105,14 +117,14 @@ class IncidentPlanner:
         self.chain = self.prompt | self.llm | StrOutputParser()
 
     def plan(self, alert: str, *, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> Dict[str, Any]:
-        # Log the exact alert being sent to planner
-        import sys
-        import os
-        
+        """Generate a remediation plan from an IDS alert with fine-grained timing traces."""
+        # Overall plan timing
+        plan_start = time.time()
+
         # Log file path
         log_file = f"/outputs/{os.getenv('RUN_ID', 'run')}/logs/planner_llm_detailed.log"
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        
+
         # Helper to log to both stderr and file
         def log_msg(msg):
             print(msg, file=sys.stderr, flush=True)
@@ -120,56 +132,96 @@ class IncidentPlanner:
                 f.write(msg + "\n")
 
         request_id = str(uuid.uuid4())
-        invoke_config: Dict[str, Any] = {
-            "metadata": {
-                "request_id": request_id,
-                "component": "incident_planner",
-            },
-            "run_name": self.config.langfuse_trace_name,
-        }
-        if self.langfuse_callback is not None:
-            invoke_config["callbacks"] = [self.langfuse_callback]
-         
-        log_msg(f"[PLANNER_LLM_INPUT_START]")
-        log_msg(f"Alert length: {len(alert)}")
-        log_msg(f"Alert contains base64 marker: {'VUc5' in alert or 'base64' in alert.lower()}")
-        log_msg(f"[ALERT_TEXT]")
-        log_msg(alert)
-        log_msg(f"[ALERT_TEXT_END]")
-         
-        # Build formatted prompt messages (always, for logging purposes)
-        formatted_messages = self.prompt.format_messages(alert=alert)
-        formatted_prompt_text = self._serialize_prompt_messages(formatted_messages)
-        log_msg(f"[LLM_FULL_FORMATTED_PROMPT_START]")
-        log_msg(formatted_prompt_text)
-        log_msg(f"[LLM_FULL_FORMATTED_PROMPT_END]")
-        
-        # Explicit Langfuse generation capture to guarantee full planner input/output payloads
-        langfuse_generation = self._start_langfuse_generation(
-            request_id=request_id,
-            alert=alert,
-            formatted_prompt_text=formatted_prompt_text,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        alert_len = len(alert)
+        has_base64 = 'VUc5' in alert or 'base64' in alert.lower()
+
+        # Phase 1: Initialization and config setup
+        with self.tracer.span("plan_request_setup", "planner",
+                              request_id=request_id[:8],
+                              alert_length=alert_len,
+                              has_base64=has_base64):
+            invoke_config: Dict[str, Any] = {
+                "metadata": {
+                    "request_id": request_id,
+                    "component": "incident_planner",
+                },
+                "run_name": self.config.langfuse_trace_name,
+            }
+            if self.langfuse_callback is not None:
+                invoke_config["callbacks"] = [self.langfuse_callback]
+
+            log_msg(f"[PLANNER_LLM_INPUT_START] request_id={request_id[:8]}")
+            log_msg(f"Alert length: {alert_len}")
+            log_msg(f"Alert contains base64 marker: {has_base64}")
+            log_msg(f"[ALERT_TEXT]")
+            log_msg(alert)
+            log_msg(f"[ALERT_TEXT_END]")
+
+        # Phase 2: Prompt formatting
+        formatted_messages = None
+        formatted_prompt_text = None
+        with self.tracer.span("prompt_formatting", "planner",
+                              request_id=request_id[:8]) as fmt_span:
+            formatted_messages = self.prompt.format_messages(alert=alert)
+            formatted_prompt_text = self._serialize_prompt_messages(formatted_messages)
+
+            log_msg(f"[LLM_FULL_FORMATTED_PROMPT_START]")
+            log_msg(formatted_prompt_text)
+            log_msg(f"[LLM_FULL_FORMATTED_PROMPT_END]")
+
+            # Record prompt size metrics
+            fmt_span.args.update({
+                "prompt_length": len(formatted_prompt_text),
+                "num_messages": len(formatted_messages),
+            })
+
+        # Phase 3: Langfuse generation start
+        langfuse_generation = None
+        with self.tracer.span("langfuse_start", "planner",
+                              request_id=request_id[:8]):
+            langfuse_generation = self._start_langfuse_generation(
+                request_id=request_id,
+                alert=alert,
+                formatted_prompt_text=formatted_prompt_text,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+        # Phase 4: LLM invocation (the critical path)
+        result_text = ""
+        llm_error = None
+        llm_start = time.time()
+
         try:
             # Allow per-request overrides
-            if temperature is not None or max_tokens is not None:
-                llm = ChatOpenAI(
-                    model=self.config.model,
-                    temperature=temperature if temperature is not None else self.config.temperature,
-                    max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
-                    base_url=self.config.openai_base_url,
-                    api_key=self.config.openai_api_key,
-                    timeout=30.0,
-                                )
-                result_message = llm.invoke(formatted_messages, config=invoke_config)
-                result_text = self._extract_result_text(result_message)
-            else:
-                result_text = self.chain.invoke({"alert": alert}, config=invoke_config)
+            with self.tracer.span("llm_invoke", "planner",
+                                  request_id=request_id[:8],
+                                  model=self.config.model,
+                                  has_temp_override=temperature is not None,
+                                  has_max_tokens_override=max_tokens is not None):
+                if temperature is not None or max_tokens is not None:
+                    with self.tracer.span("llm_model_creation", "planner"):
+                        llm = ChatOpenAI(
+                            model=self.config.model,
+                            temperature=temperature if temperature is not None else self.config.temperature,
+                            max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
+                            base_url=self.config.openai_base_url,
+                            api_key=self.config.openai_api_key,
+                            timeout=30.0,
+                        )
+
+                    with self.tracer.span("llm_invoke_call", "planner"):
+                        result_message = llm.invoke(formatted_messages, config=invoke_config)
+                    result_text = self._extract_result_text(result_message)
+                else:
+                    with self.tracer.span("llm_chain_invoke", "planner"):
+                        result_text = self.chain.invoke({"alert": alert}, config=invoke_config)
+
+            llm_duration = (time.time() - llm_start) * 1000
 
             if langfuse_generation is not None:
-                langfuse_generation.update(output=result_text)
+                with self.tracer.span("langfuse_update", "planner"):
+                    langfuse_generation.update(output=result_text)
 
             log_msg(f"[LLM_OUTPUT_START]")
             log_msg(f"Raw result type: {type(result_text)}")
@@ -178,7 +230,11 @@ class IncidentPlanner:
             log_msg(result_text)
             log_msg(f"[LLM_OUTPUT_END]")
             log_msg(f"[PLANNER_LLM_INPUT_END]")
+
         except Exception as e:
+            llm_duration = (time.time() - llm_start) * 1000
+            llm_error = f"{type(e).__name__}: {e}"
+
             # Log any exception that occurs during LLM invocation
             import traceback
             log_msg(f"[LLM_INVOCATION_EXCEPTION]")
@@ -186,95 +242,251 @@ class IncidentPlanner:
             log_msg(f"Exception message: {e}")
             log_msg(f"Traceback: {traceback.format_exc()}")
             log_msg(f"[LLM_INVOCATION_EXCEPTION_END]")
+
+            # Record error in trace
+            self.tracer.add_span(
+                "llm_invoke_error",
+                (llm_start - self._init_start) * 1000,
+                llm_duration,
+                "planner",
+                error_type=type(e).__name__,
+                error_message=str(e)[:200],
+                request_id=request_id[:8],
+            )
+
             # Re-raise to be handled by caller
             raise
         finally:
-            if langfuse_generation is not None:
-                langfuse_generation.end()
-            self._flush_langfuse()
+            # Phase 5: Langfuse flush
+            with self.tracer.span("langfuse_flush", "planner",
+                                  request_id=request_id[:8]):
+                if langfuse_generation is not None:
+                    langfuse_generation.end()
+                self._flush_langfuse()
 
-        # Parse strict JSON: {"executor_host_ip": "...", "plan": "..."}
+        # Phase 6: Response parsing
         executor_host_ip: str = ""
         plan_text: str = ""
         parse_error = None
-        parse_details = {}
+        parse_details: Dict[str, Any] = {}
 
-        try:
-            import json
-            # be resilient to any leading/trailing text
-            start = result_text.find("{")
-            end = result_text.rfind("}")
+        with self.tracer.span("response_parsing", "planner",
+                              request_id=request_id[:8],
+                              result_length=len(result_text)):
 
-            parse_details = {
-                "result_length": len(result_text),
-                "first_bracket_pos": start,
-                "last_bracket_pos": end,
-                "has_opening_brace": start != -1,
-                "has_closing_brace": end != -1,
-                "bracket_order_valid": end > start if start != -1 and end != -1 else False,
+            # Sub-phase: Markdown cleanup
+            with self.tracer.span("parse_markdown_cleanup", "planner"):
+                def _best_effort_unescape(raw: str) -> str:
+                    try:
+                        return json.loads(f'"{raw}"')
+                    except Exception:
+                        return (
+                            raw.replace(r"\\", "\\")
+                            .replace(r"\"", '"')
+                            .replace(r"\n", "\n")
+                            .replace(r"\r", "\r")
+                            .replace(r"\t", "\t")
+                        )
+
+                def _extract_json_string_value(text: str, key: str, *, allow_unterminated: bool = False) -> Optional[str]:
+                    key_token = f'"{key}"'
+                    key_pos = text.find(key_token)
+                    if key_pos == -1:
+                        return None
+                    colon_pos = text.find(":", key_pos + len(key_token))
+                    if colon_pos == -1:
+                        return None
+                    i = colon_pos + 1
+                    while i < len(text) and text[i].isspace():
+                        i += 1
+                    if i >= len(text) or text[i] != '"':
+                        return None
+                    i += 1
+
+                    raw_chars = []
+                    escaped = False
+                    while i < len(text):
+                        ch = text[i]
+                        if escaped:
+                            raw_chars.append("\\" + ch)
+                            escaped = False
+                        else:
+                            if ch == "\\":
+                                escaped = True
+                            elif ch == '"':
+                                return _best_effort_unescape("".join(raw_chars))
+                            else:
+                                raw_chars.append(ch)
+                        i += 1
+
+                    if allow_unterminated:
+                        return _best_effort_unescape("".join(raw_chars))
+                    return None
+
+                import re
+
+                cleaned_text = str(result_text or "")
+
+                # 1) Clean up markdown code blocks that LLMs sometimes add
+                # Pattern: ```json ... ``` or ``` ... ``` (prefer blocks that look like JSON)
+                code_block_pattern = r"```(?:json)?\s*\n?(.*?)\n?```"
+                fenced_blocks = re.findall(code_block_pattern, cleaned_text, re.DOTALL)
+                if fenced_blocks:
+                    preferred_block = next((block for block in fenced_blocks if "{" in block and "}" in block), fenced_blocks[0])
+                    cleaned_text = preferred_block.strip()
+                    parse_details["markdown_code_block_removed"] = True
+                else:
+                    # Handle cases where the fence is present but not properly closed
+                    if re.match(r"^```(?:json)?\s*", cleaned_text):
+                        cleaned_text = re.sub(r"^```(?:json)?\s*", "", cleaned_text)
+                        parse_details["markdown_code_block_removed"] = True
+                    if cleaned_text.rstrip().endswith("```"):
+                        cleaned_text = re.sub(r"\n?```\s*$", "", cleaned_text).rstrip()
+                        parse_details["markdown_code_block_removed"] = True
+
+            # Sub-phase: JSON extraction
+            with self.tracer.span("parse_json_extraction", "planner"):
+                # 2) Extract the first balanced JSON object if any extra text remains
+                start = cleaned_text.find("{")
+                if start != -1:
+                    # Find the matching closing brace by counting
+                    brace_count = 0
+                    in_string = False
+                    escape_next = False
+                    for i in range(start, len(cleaned_text)):
+                        char = cleaned_text[i]
+                        if escape_next:
+                            escape_next = False
+                            continue
+                        if char == "\\":
+                            escape_next = True
+                            continue
+                        if char == '"' and not escape_next:
+                            in_string = not in_string
+                            continue
+                        if not in_string:
+                            if char == "{":
+                                brace_count += 1
+                            elif char == "}":
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    # Found matching closing brace
+                                    cleaned_text = cleaned_text[start:i + 1]
+                                    parse_details["balanced_braces_extracted"] = True
+                                    parse_details["extracted_start_pos"] = start
+                                    parse_details["extracted_end_pos"] = i + 1
+                                    break
+
+                parse_details.update({
+                    "result_length": len(result_text),
+                    "cleaned_length": len(cleaned_text),
+                    "first_bracket_pos": cleaned_text.find("{"),
+                    "last_bracket_pos": cleaned_text.rfind("}"),
+                    "has_opening_brace": cleaned_text.startswith("{"),
+                    "has_closing_brace": cleaned_text.endswith("}"),
+                })
+
+                json_str_to_parse = cleaned_text
+                parse_details["json_extracted_preview"] = json_str_to_parse[:200] if json_str_to_parse else ""
+
+            # Sub-phase: JSON parsing
+            with self.tracer.span("parse_json_decode", "planner"):
+                try:
+                    obj = json.loads(json_str_to_parse)
+                    parse_details["json_keys"] = list(obj.keys())
+                    parse_details["has_executor_host_ip"] = "executor_host_ip" in obj
+                    parse_details["has_plan"] = "plan" in obj
+
+                    raw_executor_ip = obj.get("executor_host_ip", "")
+                    raw_plan = obj.get("plan", "")
+
+                    parse_details["raw_executor_host_ip"] = str(raw_executor_ip) if raw_executor_ip else ""
+                    parse_details["raw_plan_length"] = len(str(raw_plan)) if raw_plan else 0
+                    parse_details["raw_plan_preview"] = str(raw_plan)[:100] if raw_plan else ""
+
+                    executor_host_ip = str(raw_executor_ip or "")
+                    plan_text = str(raw_plan or "")
+
+                    parse_details["final_executor_host_ip"] = executor_host_ip
+                    parse_details["final_plan_length"] = len(plan_text)
+
+                except json.JSONDecodeError as e:
+                    parse_error = f"JSON decode error: {e}"
+                    parse_details["json_error"] = str(e)
+                    parse_details["json_error_pos"] = e.pos if hasattr(e, 'pos') else None
+
+                    with self.tracer.span("parse_json_recovery", "planner"):
+                        recovered_executor = _extract_json_string_value(cleaned_text, "executor_host_ip")
+                        recovered_plan = _extract_json_string_value(cleaned_text, "plan", allow_unterminated=True)
+                        if recovered_executor or recovered_plan:
+                            if recovered_executor:
+                                executor_host_ip = recovered_executor
+                            if recovered_plan is not None:
+                                plan_text = recovered_plan
+                            parse_details["recovered_partial_json"] = True
+                            parse_details["recovered_executor_host_ip"] = executor_host_ip
+                            parse_details["recovered_plan_length"] = len(plan_text)
+                            parse_error = None
+                        else:
+                            # Fallback: return whole text as plan
+                            plan_text = result_text
+                except Exception as e:
+                    parse_error = f"Parse error: {type(e).__name__}: {e}"
+                    parse_details["exception_type"] = type(e).__name__
+                    parse_details["exception_msg"] = str(e)
+                    # Fallback: return whole text as plan
+                    plan_text = result_text
+
+            # Log parse results
+            log_msg(f"[PLAN_PARSE_START]")
+            if parse_error:
+                log_msg(f"Parse error occurred: {parse_error}")
+            log_msg(f"Parse details: {parse_details}")
+            log_msg(f"Final executor_host_ip: '{executor_host_ip}'")
+            log_msg(f"Final plan length: {len(plan_text)}")
+            log_msg(f"Final plan preview: {plan_text[:200]}")
+            log_msg(f"[PLAN_PARSE_END]")
+
+        # Phase 7: Response building
+        with self.tracer.span("response_building", "planner",
+                              request_id=request_id[:8],
+                              parse_error=parse_error is not None):
+            response = {
+                "executor_host_ip": executor_host_ip,
+                "plan": plan_text,
+                "model": self.config.model,
+                "request_id": request_id,
+                "created": datetime.now(timezone.utc).isoformat(),
             }
 
-            json_str_to_parse = result_text[start:end + 1] if start != -1 and end != -1 and end > start else result_text
-            parse_details["json_extracted_length"] = len(json_str_to_parse)
-            parse_details["json_extracted_preview"] = json_str_to_parse[:200] if json_str_to_parse else ""
+            # Add debug info if parsing failed
+            if parse_error or (not executor_host_ip and not plan_text):
+                response["_debug"] = {
+                    "parse_error": parse_error,
+                    "parse_details": parse_details,
+                    "original_result_length": len(result_text),
+                    "original_result_preview": result_text[:500],
+                }
 
-            obj = json.loads(json_str_to_parse)
-            parse_details["json_keys"] = list(obj.keys())
-            parse_details["has_executor_host_ip"] = "executor_host_ip" in obj
-            parse_details["has_plan"] = "plan" in obj
+        # Phase 8: Trace write
+        total_duration = (time.time() - plan_start) * 1000
+        with self.tracer.span("trace_write", "planner",
+                              request_id=request_id[:8],
+                              total_duration_ms=total_duration):
+            self.tracer.write()
 
-            raw_executor_ip = obj.get("executor_host_ip", "")
-            raw_plan = obj.get("plan", "")
-
-            parse_details["raw_executor_host_ip"] = str(raw_executor_ip) if raw_executor_ip else ""
-            parse_details["raw_plan_length"] = len(str(raw_plan)) if raw_plan else 0
-            parse_details["raw_plan_preview"] = str(raw_plan)[:100] if raw_plan else ""
-
-            executor_host_ip = str(raw_executor_ip or "")
-            plan_text = str(raw_plan or "")
-
-            parse_details["final_executor_host_ip"] = executor_host_ip
-            parse_details["final_plan_length"] = len(plan_text)
-
-        except json.JSONDecodeError as e:
-            parse_error = f"JSON decode error: {e}"
-            parse_details["json_error"] = str(e)
-            parse_details["json_error_pos"] = e.pos if hasattr(e, 'pos') else None
-            # Fallback: return whole text as plan
-            plan_text = result_text
-        except Exception as e:
-            parse_error = f"Parse error: {type(e).__name__}: {e}"
-            parse_details["exception_type"] = type(e).__name__
-            parse_details["exception_msg"] = str(e)
-            # Fallback: return whole text as plan
-            plan_text = result_text
-
-        # Log parse results
-        log_msg(f"[PLAN_PARSE_START]")
-        if parse_error:
-            log_msg(f"Parse error occurred: {parse_error}")
-        log_msg(f"Parse details: {parse_details}")
-        log_msg(f"Final executor_host_ip: '{executor_host_ip}'")
-        log_msg(f"Final plan length: {len(plan_text)}")
-        log_msg(f"Final plan preview: {plan_text[:200]}")
-        log_msg(f"[PLAN_PARSE_END]")
-
-        response = {
-            "executor_host_ip": executor_host_ip,
-            "plan": plan_text,
-            "model": self.config.model,
-            "request_id": request_id,
-            "created": datetime.now(timezone.utc).isoformat(),
-        }
-
-        # Add debug info if parsing failed
-        if parse_error or (not executor_host_ip and not plan_text):
-            response["_debug"] = {
-                "parse_error": parse_error,
-                "parse_details": parse_details,
-                "original_result_length": len(result_text),
-                "original_result_preview": result_text[:500],
-            }
+        # Add overall plan span
+        self.tracer.add_span(
+            "plan_total",
+            (plan_start - self._init_start) * 1000,
+            total_duration,
+            "planner",
+            request_id=request_id[:8],
+            alert_length=alert_len,
+            result_length=len(result_text),
+            plan_length=len(plan_text),
+            has_parse_error=parse_error is not None,
+        )
 
         return response
 
@@ -376,19 +588,42 @@ class IncidentPlanner:
         )
 
     def _flush_langfuse(self) -> None:
-        if self.langfuse_client is not None:
-            client_flush_fn = getattr(self.langfuse_client, "flush", None)
-            if callable(client_flush_fn):
-                client_flush_fn()
-        if self.langfuse_callback is None:
-            return
-        flush_fn = getattr(self.langfuse_callback, "flush", None)
-        if callable(flush_fn):
-            flush_fn()
-            return
-        langfuse_client = getattr(self.langfuse_callback, "langfuse", None)
-        if langfuse_client is None:
-            return
-        client_flush_fn = getattr(langfuse_client, "flush", None)
-        if callable(client_flush_fn):
-            client_flush_fn()
+        """Flush Langfuse telemetry.
+
+        If langfuse_async_flush is enabled (default), uses a background daemon
+        thread to avoid blocking the response. Errors during background flush are
+        logged but do not affect the response.
+        """
+        def _do_flush():
+            """Internal flush function that runs in background thread."""
+            try:
+                if self.langfuse_client is not None:
+                    client_flush_fn = getattr(self.langfuse_client, "flush", None)
+                    if callable(client_flush_fn):
+                        client_flush_fn()
+                if self.langfuse_callback is not None:
+                    flush_fn = getattr(self.langfuse_callback, "flush", None)
+                    if callable(flush_fn):
+                        flush_fn()
+                        return
+                    langfuse_client = getattr(self.langfuse_callback, "langfuse", None)
+                    if langfuse_client is not None:
+                        client_flush_fn = getattr(langfuse_client, "flush", None)
+                        if callable(client_flush_fn):
+                            client_flush_fn()
+            except Exception as e:
+                # Log but don't fail - telemetry is non-critical
+                # Using stderr to avoid disrupting any structured logging
+                import sys
+                print(f"[LANGFUSE] Background flush error (non-critical): {e}",
+                      file=sys.stderr, flush=True)
+
+        # Check if async flush is enabled (default)
+        if self.config.langfuse_async_flush:
+            # Start background flush - daemon=True allows thread to be killed on exit
+            flush_thread = threading.Thread(target=_do_flush, daemon=True)
+            flush_thread.start()
+            # Return immediately without waiting
+        else:
+            # Synchronous flush (legacy behavior)
+            _do_flush()

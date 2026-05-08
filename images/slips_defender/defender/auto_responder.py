@@ -14,6 +14,7 @@ instead of SSH+pexpect for remote execution.
 
 import json
 import os
+import sys
 import time
 import threading
 import hashlib
@@ -22,6 +23,10 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple
 import requests
 import logging
+
+# Add app directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "app"))
+from timing_trace import get_tracer, trace_span
 
 # Configuration
 RUN_ID = os.getenv("RUN_ID", "run_local")
@@ -60,6 +65,10 @@ class AutoResponder:
         self.lock = threading.Lock()
         self.setup_logging()
         self.load_processed_alerts()
+
+        # Initialize timing tracer
+        self.tracer = get_tracer("auto_responder")
+        self._init_start = time.time()
 
         # target_ip -> session_id: track one active session per host so
         # follow-up alerts reuse the same OpenCode session instead of
@@ -476,6 +485,7 @@ class AutoResponder:
         return formatted
 
     def call_planner(self, alert_text: str) -> Optional[Dict]:
+        """Call planner service with detailed timing traces."""
         payload = {"alert": alert_text}
 
         # Log the exact alert being sent to planner
@@ -491,84 +501,201 @@ class AutoResponder:
         last_status_code = None
         max_attempts = max(1, PLANNER_REQUEST_RETRIES + 1)
 
+        call_start = time.time()
+
         for attempt in range(1, max_attempts + 1):
             attempt_start = time.time()
-            try:
-                print(f"[PLANNER_REQUEST_ATTEMPT] attempt={attempt}/{max_attempts} timeout={PLANNER_REQUEST_TIMEOUT}s url={PLANNER_URL}", flush=True)
-                response = requests.post(PLANNER_URL, json=payload, timeout=PLANNER_REQUEST_TIMEOUT)
-                last_status_code = response.status_code
-                attempt_duration = time.time() - attempt_start
 
-                print(f"[PLANNER_RESPONSE] status={response.status_code} duration={attempt_duration:.2f}s headers={dict(response.headers)}", flush=True)
+            with self.tracer.span("planner_request_attempt", "auto_responder",
+                                  attempt=attempt,
+                                  max_attempts=max_attempts,
+                                  timeout=PLANNER_REQUEST_TIMEOUT):
+                try:
+                    # Phase: HTTP request
+                    with self.tracer.span("http_post", "auto_responder",
+                                          url=PLANNER_URL,
+                                          timeout=PLANNER_REQUEST_TIMEOUT):
+                        print(f"[PLANNER_REQUEST_ATTEMPT] attempt={attempt}/{max_attempts} timeout={PLANNER_REQUEST_TIMEOUT}s url={PLANNER_URL}", flush=True)
+                        response = requests.post(PLANNER_URL, json=payload, timeout=PLANNER_REQUEST_TIMEOUT)
 
-                # Log raw response text before parsing
-                last_response_text = response.text
-                print(f"[PLANNER_RAW_RESPONSE_LENGTH] {len(response.text)}", flush=True)
-                print(f"[PLANNER_RAW_RESPONSE_PREVIEW] {response.text[:1000]}", flush=True)
+                    last_status_code = response.status_code
+                    attempt_duration = (time.time() - attempt_start) * 1000
 
-                response.raise_for_status()
-                result = response.json()
+                    # Record timing
+                    self.tracer.add_span(
+                        "planner_http_response",
+                        (attempt_start - self._init_start) * 1000,
+                        attempt_duration,
+                        "auto_responder",
+                        status_code=response.status_code,
+                        attempt=attempt,
+                    )
 
-                # Detailed validation of response structure
-                print(f"[PLANNER_PARSED_JSON] keys={list(result.keys())}", flush=True)
-                print(f"[PLANNER_RESPONSE_DETAILS]", flush=True)
-                for key, value in result.items():
-                    if key == "plan" and value:
-                        print(f"  {key}: length={len(value)} preview={value[:200]}", flush=True)
-                    elif key == "plans" and isinstance(value, list):
-                        print(f"  {key}: count={len(value)}", flush=True)
-                        for idx, plan in enumerate(value):
-                            plan_data = plan if isinstance(plan, dict) else {"plan": plan}
-                            print(f"    plan[{idx}]: executor_host_ip='{plan_data.get('executor_host_ip', 'N/A')}' plan_length={len(plan_data.get('plan', ''))}", flush=True)
-                    else:
-                        print(f"  {key}: {value}", flush=True)
+                    print(f"[PLANNER_RESPONSE] status={response.status_code} duration={attempt_duration:.2f}s headers={dict(response.headers)}", flush=True)
 
-                if "plans" in result and result["plans"]:
-                    for idx, plan in enumerate(result["plans"]):
-                        print(f"[PLAN_{idx}_PREVIEW]", flush=True)
-                        print(plan.get("plan", "")[:500], flush=True)
-                        print(f"[PLAN_{idx}_PREVIEW_END]", flush=True)
+                    # Log raw response text before parsing
+                    last_response_text = response.text
+                    print(f"[PLANNER_RAW_RESPONSE_LENGTH] {len(response.text)}", flush=True)
+                    print(f"[PLANNER_RAW_RESPONSE_PREVIEW] {response.text[:1000]}", flush=True)
 
-                print(f"[AUTO_RESPONDER_TO_PLANNER_END]", flush=True)
-                return result
-            except json.JSONDecodeError as e:
-                last_error = f"JSON decode error: {e}"
-                print(f"[PLANNER_JSON_ERROR] attempt={attempt}/{max_attempts} error={e} pos={e.pos if hasattr(e, 'pos') else 'N/A'}", flush=True)
-                print(f"[PLANNER_RAW_RESPONSE_ON_ERROR] {last_response_text[:500] if last_response_text else 'N/A'}", flush=True)
-                if attempt < max_attempts:
-                    retry_delay = min(5, attempt * 2)
-                    print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
-                    time.sleep(retry_delay)
-                    continue
-                break
-            except requests.exceptions.Timeout as e:
-                last_error = f"Timeout error: {e}"
-                print(f"[PLANNER_TIMEOUT] attempt={attempt}/{max_attempts} timeout={PLANNER_REQUEST_TIMEOUT}s", flush=True)
-                if attempt < max_attempts:
-                    retry_delay = min(5, attempt * 2)
-                    print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
-                    time.sleep(retry_delay)
-                    continue
-                break
-            except requests.exceptions.HTTPError as e:
-                last_error = f"HTTP error: {e}"
-                print(f"[PLANNER_HTTP_ERROR] attempt={attempt}/{max_attempts} status={last_status_code} error={e}", flush=True)
-                print(f"[PLANNER_RAW_RESPONSE_ON_ERROR] {last_response_text[:500] if last_response_text else 'N/A'}", flush=True)
-                if attempt < max_attempts:
-                    retry_delay = min(5, attempt * 2)
-                    print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
-                    time.sleep(retry_delay)
-                    continue
-                break
-            except Exception as e:
-                last_error = e
-                print(f"[PLANNER_EXCEPTION] attempt={attempt}/{max_attempts} type={type(e).__name__} error={e}", flush=True)
-                if attempt < max_attempts:
-                    retry_delay = min(5, attempt * 2)
-                    print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
-                    time.sleep(retry_delay)
-                    continue
-                break
+                    # Phase: Response parsing
+                    with self.tracer.span("response_json_parse", "auto_responder",
+                                          response_length=len(response.text)):
+                        response.raise_for_status()
+                        result = response.json()
+
+                    # Detailed validation of response structure
+                    print(f"[PLANNER_PARSED_JSON] keys={list(result.keys())}", flush=True)
+                    print(f"[PLANNER_RESPONSE_DETAILS]", flush=True)
+                    for key, value in result.items():
+                        if key == "plan" and value:
+                            print(f"  {key}: length={len(value)} preview={value[:200]}", flush=True)
+                        elif key == "plans" and isinstance(value, list):
+                            print(f"  {key}: count={len(value)}", flush=True)
+                            for idx, plan in enumerate(value):
+                                plan_data = plan if isinstance(plan, dict) else {"plan": plan}
+                                print(f"    plan[{idx}]: executor_host_ip='{plan_data.get('executor_host_ip', 'N/A')}' plan_length={len(plan_data.get('plan', ''))}", flush=True)
+                        else:
+                            print(f"  {key}: {value}", flush=True)
+
+                    if "plans" in result and result["plans"]:
+                        for idx, plan in enumerate(result["plans"]):
+                            print(f"[PLAN_{idx}_PREVIEW]", flush=True)
+                            print(plan.get("plan", "")[:500], flush=True)
+                            print(f"[PLAN_{idx}_PREVIEW_END]", flush=True)
+
+                    print(f"[AUTO_RESPONDER_TO_PLANNER_END]", flush=True)
+
+                    # Record total call_planner timing
+                    total_duration = (time.time() - call_start) * 1000
+                    self.tracer.add_span(
+                        "call_planner_total",
+                        (call_start - self._init_start) * 1000,
+                        total_duration,
+                        "auto_responder",
+                        attempt=attempt,
+                        status="success",
+                    )
+
+                    # Write trace after successful planner call
+                    self.tracer.write()
+
+                    return result
+
+                except json.JSONDecodeError as e:
+                    last_error = f"JSON decode error: {e}"
+                    print(f"[PLANNER_JSON_ERROR] attempt={attempt}/{max_attempts} error={e} pos={e.pos if hasattr(e, 'pos') else 'N/A'}", flush=True)
+                    print(f"[PLANNER_RAW_RESPONSE_ON_ERROR] {last_response_text[:500] if last_response_text else 'N/A'}", flush=True)
+
+                    # Record error in trace
+                    self.tracer.add_span(
+                        "planner_json_error",
+                        (attempt_start - self._init_start) * 1000,
+                        (time.time() - attempt_start) * 1000,
+                        "auto_responder",
+                        error=str(e)[:200],
+                        attempt=attempt,
+                    )
+
+                    if attempt < max_attempts:
+                        retry_delay = min(5, attempt * 2)
+                        print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
+                        with self.tracer.span("retry_delay", "auto_responder",
+                                              delay_seconds=retry_delay,
+                                              attempt=attempt):
+                            time.sleep(retry_delay)
+                        continue
+                    break
+
+                except requests.exceptions.Timeout as e:
+                    last_error = f"Timeout error: {e}"
+                    print(f"[PLANNER_TIMEOUT] attempt={attempt}/{max_attempts} timeout={PLANNER_REQUEST_TIMEOUT}s", flush=True)
+
+                    # Record timeout in trace
+                    timeout_duration = (time.time() - attempt_start) * 1000
+                    self.tracer.add_span(
+                        "planner_timeout",
+                        (attempt_start - self._init_start) * 1000,
+                        timeout_duration,
+                        "auto_responder",
+                        timeout_setting=PLANNER_REQUEST_TIMEOUT,
+                        actual_duration_ms=timeout_duration,
+                        attempt=attempt,
+                    )
+
+                    if attempt < max_attempts:
+                        retry_delay = min(5, attempt * 2)
+                        print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
+                        with self.tracer.span("retry_delay", "auto_responder",
+                                              delay_seconds=retry_delay,
+                                              attempt=attempt):
+                            time.sleep(retry_delay)
+                        continue
+                    break
+
+                except requests.exceptions.HTTPError as e:
+                    last_error = f"HTTP error: {e}"
+                    print(f"[PLANNER_HTTP_ERROR] attempt={attempt}/{max_attempts} status={last_status_code} error={e}", flush=True)
+                    print(f"[PLANNER_RAW_RESPONSE_ON_ERROR] {last_response_text[:500] if last_response_text else 'N/A'}", flush=True)
+
+                    # Record HTTP error in trace
+                    self.tracer.add_span(
+                        "planner_http_error",
+                        (attempt_start - self._init_start) * 1000,
+                        (time.time() - attempt_start) * 1000,
+                        "auto_responder",
+                        status_code=last_status_code,
+                        error=str(e)[:200],
+                        attempt=attempt,
+                    )
+
+                    if attempt < max_attempts:
+                        retry_delay = min(5, attempt * 2)
+                        print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
+                        with self.tracer.span("retry_delay", "auto_responder",
+                                              delay_seconds=retry_delay,
+                                              attempt=attempt):
+                            time.sleep(retry_delay)
+                        continue
+                    break
+
+                except Exception as e:
+                    last_error = e
+                    print(f"[PLANNER_EXCEPTION] attempt={attempt}/{max_attempts} type={type(e).__name__} error={e}", flush=True)
+
+                    # Record exception in trace
+                    self.tracer.add_span(
+                        "planner_exception",
+                        (attempt_start - self._init_start) * 1000,
+                        (time.time() - attempt_start) * 1000,
+                        "auto_responder",
+                        error_type=type(e).__name__,
+                        error=str(e)[:200],
+                        attempt=attempt,
+                    )
+
+                    if attempt < max_attempts:
+                        retry_delay = min(5, attempt * 2)
+                        print(f"[auto_responder] Retrying in {retry_delay}s...", flush=True)
+                        with self.tracer.span("retry_delay", "auto_responder",
+                                              delay_seconds=retry_delay,
+                                              attempt=attempt):
+                            time.sleep(retry_delay)
+                        continue
+                    break
+
+        # Record total failure
+        total_duration = (time.time() - call_start) * 1000
+        self.tracer.add_span(
+            "call_planner_total",
+            (call_start - self._init_start) * 1000,
+            total_duration,
+            "auto_responder",
+            status="failed",
+            max_attempts=max_attempts,
+            error=str(last_error)[:200] if last_error else None,
+        )
+        self.tracer.write()
 
         print(
             f"[auto_responder] Planner request failed after {max_attempts} attempts "
@@ -1056,25 +1183,41 @@ class AutoResponder:
     def execute_plan_via_server_api(self, plan: str, target_name: str, target_ip: str,
                                     alert: Dict, alert_hash: str = None,
                                     execution_id: str = None) -> bool:
-        """Execute remediation plan using OpenCode Server HTTP API with retry logic."""
+        """Execute remediation plan using OpenCode Server HTTP API with retry logic and detailed timing traces."""
         if not execution_id:
             execution_id = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:16]
 
+        exec_start = time.time()
+
         # Retry loop for model availability errors
         for attempt, delay in enumerate([0] + RETRY_DELAYS):
-            if attempt > 0:
-                self.log("RETRY", f"Retry attempt {attempt}/{len(RETRY_DELAYS)} after {delay}s delay",
-                         target_name, alert_hash, execution_id)
-                time.sleep(delay)
+            attempt_start = time.time()
 
-            self.log("API", f"Checking OpenCode server health on {target_name} ({target_ip})", target_name, alert_hash, execution_id)
-            if not self.check_opencode_health(target_ip):
-                self.log("API", f"Waiting for OpenCode server on {target_name}...", target_name, alert_hash, execution_id)
-                if not self.wait_for_opencode_server(target_ip, timeout=60):
-                    self.log("ERROR", f"OpenCode server not available on {target_name} ({target_ip})", target_name, alert_hash, execution_id)
-                    continue  # Retry instead of returning False
+            with self.tracer.span("opencode_execution_attempt", "auto_responder",
+                                  target_name=target_name,
+                                  target_ip=target_ip,
+                                  attempt=attempt,
+                                  execution_id=execution_id[:8]):
+                if attempt > 0:
+                    self.log("RETRY", f"Retry attempt {attempt}/{len(RETRY_DELAYS)} after {delay}s delay",
+                             target_name, alert_hash, execution_id)
+                    with self.tracer.span("retry_delay_opencode", "auto_responder",
+                                          delay_seconds=delay,
+                                          attempt=attempt):
+                        time.sleep(delay)
 
-            self.log("API", f"✓ OpenCode server healthy on {target_name}", target_name, alert_hash, execution_id)
+                # Phase: Health check
+                with self.tracer.span("opencode_health_check", "auto_responder",
+                                      target_name=target_name,
+                                      target_ip=target_ip):
+                    self.log("API", f"Checking OpenCode server health on {target_name} ({target_ip})", target_name, alert_hash, execution_id)
+                    if not self.check_opencode_health(target_ip):
+                        self.log("API", f"Waiting for OpenCode server on {target_name}...", target_name, alert_hash, execution_id)
+                        if not self.wait_for_opencode_server(target_ip, timeout=60):
+                            self.log("ERROR", f"OpenCode server not available on {target_name} ({target_ip})", target_name, alert_hash, execution_id)
+                            continue  # Retry instead of returning False
+
+                self.log("API", f"✓ OpenCode server healthy on {target_name}", target_name, alert_hash, execution_id)
 
             context = f"""Execute this security remediation plan immediately:
 
@@ -1102,7 +1245,7 @@ CONTEXT:
   These files are essential for security forensics and incident analysis.
 
 **CRITICAL FIREWALL RULES - FOLLOW EXACTLY:**
-- **Maintain SSH (port 22), HTTPS (port 443), and OpenCode (port 4096) connectivity above all else**
+- **Maintain SSH (port 22), HTTPS (port 443), Postgres (port 5432), and OpenCode (port 4096) connectivity above all else**
 - **INPUT chain:** Use to block traffic FROM specific source IPs - SAFE
 - **OUTPUT chain:** Use to block traffic TO specific destination IPs - SAFE if NOT your own IP
 - **NEVER use 0.0.0.0/0 as destination**
@@ -1133,7 +1276,10 @@ Always start your work by fully understanding artifacts if present and things re
                         # message history alive, so the next prompt continues with full context.
                         self.log("API", f"Aborting running task in session {existing_id[:8]} on {target_name} to send new plan",
                                  target_name, alert_hash, execution_id)
-                        aborted = self.abort_session(target_ip, existing_id)
+                        with self.tracer.span("opencode_session_abort", "auto_responder",
+                                              session_id=existing_id[:8],
+                                              target_name=target_name):
+                            aborted = self.abort_session(target_ip, existing_id)
                         if aborted:
                             self.log("API", f"Successfully aborted session {existing_id[:8]}",
                                      target_name, alert_hash, execution_id)
@@ -1148,32 +1294,41 @@ Always start your work by fully understanding artifacts if present and things re
                     self.log("API", f"Reusing session {session_id[:8]} on {target_name}",
                              target_name, alert_hash, execution_id, extra_data={"session_id": session_id})
 
-                if session_id is None:
-                    session_title = f"Defender response {alert_hash[:8] if alert_hash else 'unknown'}"
-                    session_id = self.create_session(target_ip, title=session_title)
-                    if not session_id:
-                        self.log("ERROR", f"Failed to create session on {target_name}", target_name, alert_hash, execution_id)
-                        continue  # Retry instead of returning False
-                    self.log("API", f"Created session {session_id[:8]} on {target_name}", target_name, alert_hash, execution_id, extra_data={
-                        "session_id": session_id
-                    })
+                # Phase: Session creation
+                with self.tracer.span("opencode_session_management", "auto_responder",
+                                      target_name=target_name,
+                                      reused=session_id is not None):
+                    if session_id is None:
+                        session_title = f"Defender response {alert_hash[:8] if alert_hash else 'unknown'}"
+                        session_id = self.create_session(target_ip, title=session_title)
+                        if not session_id:
+                            self.log("ERROR", f"Failed to create session on {target_name}", target_name, alert_hash, execution_id)
+                            continue  # Retry instead of returning False
+                        self.log("API", f"Created session {session_id[:8]} on {target_name}", target_name, alert_hash, execution_id, extra_data={
+                            "session_id": session_id
+                        })
 
-                # Track this session as the active one for the target
-                with self.lock:
-                    self.active_sessions[target_ip] = session_id
+                    # Track this session as the active one for the target
+                    with self.lock:
+                        self.active_sessions[target_ip] = session_id
 
-                self.update_canonical_opencode_state(
-                    machine_name=target_name,
-                    session_id=session_id,
-                    status="created",
-                    messages=[],
-                )
+                    self.update_canonical_opencode_state(
+                        machine_name=target_name,
+                        session_id=session_id,
+                        status="created",
+                        messages=[],
+                    )
 
-                self.log("API", f"Sending plan to session {session_id[:8]} (async, fire-and-continue)", target_name, alert_hash, execution_id)
-                success = self.send_message_async(target_ip, session_id, context, agent="soc_god")
-                if not success:
-                    self.log("ERROR", f"Failed to send message to session {session_id[:8]}", target_name, alert_hash, execution_id)
-                    continue  # Retry
+                # Phase: Send message to OpenCode
+                with self.tracer.span("opencode_send_message", "auto_responder",
+                                      session_id=session_id[:8],
+                                      target_name=target_name,
+                                      plan_length=len(context)):
+                    self.log("API", f"Sending plan to session {session_id[:8]} (async, fire-and-continue)", target_name, alert_hash, execution_id)
+                    success = self.send_message_async(target_ip, session_id, context, agent="soc_god")
+                    if not success:
+                        self.log("ERROR", f"Failed to send message to session {session_id[:8]}", target_name, alert_hash, execution_id)
+                        continue  # Retry
 
                 self.update_canonical_opencode_state(
                     machine_name=target_name,
@@ -1186,19 +1341,26 @@ Always start your work by fully understanding artifacts if present and things re
                 sse_future = None
                 self.log("SSE", "SSE streaming disabled - using API messages only", target_name, alert_hash, execution_id)
 
-                # Wait for session to complete
+                # Phase: Wait for completion (polling)
+                poll_start = time.time()
                 self.log("API", f"Waiting for session {session_id[:8]} to complete...", target_name, alert_hash, execution_id)
-                completed = self.wait_for_session_complete(
-                    target_ip,
-                    session_id,
-                    timeout=OPENCODE_TIMEOUT,
-                    on_poll=lambda polled_status: self.sync_realtime_opencode_state(
-                        target_ip=target_ip,
-                        session_id=session_id,
-                        machine_name=target_name,
-                        status=polled_status,
-                    ),
-                )
+                with self.tracer.span("opencode_wait_completion", "auto_responder",
+                                      session_id=session_id[:8],
+                                      target_name=target_name,
+                                      timeout=OPENCODE_TIMEOUT):
+                    completed = self.wait_for_session_complete(
+                        target_ip,
+                        session_id,
+                        timeout=OPENCODE_TIMEOUT,
+                        on_poll=lambda polled_status: self.sync_realtime_opencode_state(
+                            target_ip=target_ip,
+                            session_id=session_id,
+                            machine_name=target_name,
+                            status=polled_status,
+                        ),
+                    )
+
+                poll_duration = (time.time() - poll_start) * 1000
 
                 if completed:
                     self.log("API", f"✓ Session {session_id[:8]} completed successfully", target_name, alert_hash, execution_id)
@@ -1209,8 +1371,11 @@ Always start your work by fully understanding artifacts if present and things re
                 if sse_future:
                     self.log("WARN", "SSE future should be None", target_name, alert_hash, execution_id)
 
-                # Save complete session logs via API (PRIMARY SOURCE OF TRUTH)
-                metrics = self.save_session_logs(target_ip, session_id, target_name, execution_id, alert_hash)
+                # Phase: Save session logs
+                with self.tracer.span("opencode_save_logs", "auto_responder",
+                                      session_id=session_id[:8],
+                                      target_name=target_name):
+                    metrics = self.save_session_logs(target_ip, session_id, target_name, execution_id, alert_hash)
 
                 llm_calls = metrics.get('llm_calls', 0)
                 tool_calls = len(metrics.get('tool_calls', []))
@@ -1220,6 +1385,20 @@ Always start your work by fully understanding artifacts if present and things re
                          target_name, alert_hash, execution_id)
 
                 duration = time.time() - start_time
+
+                # Record overall execution timing
+                self.tracer.add_span(
+                    "opencode_execution_total",
+                    (start_time - self._init_start) * 1000,
+                    duration * 1000,
+                    "auto_responder",
+                    target_name=target_name,
+                    session_id=session_id[:8],
+                    completed=completed,
+                    llm_calls=llm_calls,
+                    tool_calls=tool_calls,
+                    poll_duration_ms=poll_duration,
+                )
 
                 # Check for model availability errors
                 model_error = self.check_for_model_error(
@@ -1347,16 +1526,22 @@ Always start your work by fully understanding artifacts if present and things re
         pool.shutdown(wait=False)
 
     def process_alert(self, alert: Dict) -> bool:
-        """Process single alert through plan generation and execution."""
+        """Process single alert through plan generation and execution with detailed timing traces."""
         import re
 
         alert_hash = self.get_alert_hash(alert)
         base_execution_id = hashlib.md5(f"{alert_hash}{time.time()}".encode()).hexdigest()[:16]
         start_time = time.time()
 
-        source_ip = alert.get('sourceip', 'unknown')
-        dest_ip = alert.get('destip', 'unknown')
-        raw_alert = alert.get('raw', '')
+        with self.tracer.span("process_alert_total", "auto_responder",
+                              alert_hash=alert_hash[:8],
+                              execution_id=base_execution_id[:8]):
+            # Phase 1: Alert parsing
+            with self.tracer.span("alert_parsing", "auto_responder",
+                                  alert_hash=alert_hash[:8]):
+                source_ip = alert.get('sourceip', 'unknown')
+                dest_ip = alert.get('destip', 'unknown')
+                raw_alert = alert.get('raw', '')
 
         if source_ip == 'unknown' or dest_ip == 'unknown':
             src_match = re.search(r'Src IP\s+(\d+\.\d+\.\d+\.\d+)', raw_alert)
@@ -1384,138 +1569,217 @@ Always start your work by fully understanding artifacts if present and things re
                         # Only one unique IP found in alert
                         dest_ip = 'unknown'
 
-        self.log("ALERT", f"New: {source_ip} → {dest_ip}", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
-            "source_ip": source_ip,
-            "dest_ip": dest_ip,
-            "attack_type": alert.get('attackid', 'unknown'),
-            "raw": raw_alert,
-            "full_alert": alert
-        })
+            # Phase 2: Alert logging
+            with self.tracer.span("alert_logging", "auto_responder",
+                                  source_ip=source_ip,
+                                  dest_ip=dest_ip):
+                self.log("ALERT", f"New: {source_ip} → {dest_ip}", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
+                    "source_ip": source_ip,
+                    "dest_ip": dest_ip,
+                    "attack_type": alert.get('attackid', 'unknown'),
+                    "raw": raw_alert,
+                    "full_alert": alert
+                })
 
-        try:
-            alert_text = self.format_alert_for_planner(alert)
-            plan_start = time.time()
-            plan_response = self.call_planner(alert_text)
-            plan_duration = time.time() - plan_start
+            try:
+                # Phase 3: Alert formatting for planner
+                with self.tracer.span("alert_format_planner", "auto_responder"):
+                    alert_text = self.format_alert_for_planner(alert)
 
-            if not plan_response:
-                self.log("ERROR", f"Plan generation failed ({plan_duration:.2f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id)
-                return False
+                # Phase 4: Plan generation (call_planner has its own traces)
+                plan_start = time.time()
+                plan_response = self.call_planner(alert_text)
+                plan_duration = (time.time() - plan_start) * 1000
 
-            plans_list = []
-            if "plans" in plan_response:
-                plans_list = plan_response.get("plans", [])
-            else:
-                plan = plan_response.get("plan", "")
-                executor_ip = plan_response.get("executor_host_ip", "")
+                # Record plan generation timing
+                self.tracer.add_span(
+                    "plan_generation_total",
+                    (plan_start - self._init_start) * 1000,
+                    plan_duration,
+                    "auto_responder",
+                    alert_hash=alert_hash[:8],
+                    success=plan_response is not None,
+                )
 
-                # Detailed logging of why plan extraction might fail
-                print(f"[PLAN_EXTRACTION_DEBUG]", flush=True)
-                print(f"  'plans' key in response: {'plans' in plan_response}", flush=True)
-                print(f"  plan_response keys: {list(plan_response.keys())}", flush=True)
-                print(f"  'plan' key value type: {type(plan)}", flush=True)
-                print(f"  'plan' value length: {len(str(plan)) if plan else 0}", flush=True)
-                print(f"  'plan' value truthy: {bool(plan)}", flush=True)
-                print(f"  'executor_host_ip' value: '{executor_ip}'", flush=True)
-                print(f"  'executor_host_ip' truthy: {bool(executor_ip)}", flush=True)
+                if not plan_response:
+                    self.log("ERROR", f"Plan generation failed ({plan_duration:.2f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id)
+                    self.tracer.write()
+                    return False
 
-                if plan and executor_ip:
-                    plans_list = [{"executor_host_ip": executor_ip, "plan": plan}]
-                    print(f"  Created single plan from plan+executor_host_ip", flush=True)
-                else:
-                    print(f"  Could not create plan - missing plan or executor_host_ip", flush=True)
+                # Phase 5: Plan extraction
+                plans_list = []
+                with self.tracer.span("plan_extraction", "auto_responder",
+                                      has_plans_key="plans" in plan_response):
+                    if "plans" in plan_response:
+                        plans_list = plan_response.get("plans", [])
+                    else:
+                        plan = plan_response.get("plan", "")
+                        executor_ip = plan_response.get("executor_host_ip", "")
 
-                # Check for debug info in response
-                debug_info = plan_response.get("_debug", {})
-                if debug_info:
-                    print(f"  Debug info from planner:", flush=True)
-                    for k, v in debug_info.items():
-                        print(f"    {k}: {v}", flush=True)
+                        # Detailed logging of why plan extraction might fail
+                        print(f"[PLAN_EXTRACTION_DEBUG]", flush=True)
+                        print(f"  'plans' key in response: {'plans' in plan_response}", flush=True)
+                        print(f"  plan_response keys: {list(plan_response.keys())}", flush=True)
+                        print(f"  'plan' key value type: {type(plan)}", flush=True)
+                        print(f"  'plan' value length: {len(str(plan)) if plan else 0}", flush=True)
+                        print(f"  'plan' value truthy: {bool(plan)}", flush=True)
+                        print(f"  'executor_host_ip' value: '{executor_ip}'", flush=True)
+                        print(f"  'executor_host_ip' truthy: {bool(executor_ip)}", flush=True)
 
-                print(f"[PLAN_EXTRACTION_DEBUG_END]", flush=True)
+                        if plan and executor_ip:
+                            plans_list = [{"executor_host_ip": executor_ip, "plan": plan}]
+                            print(f"  Created single plan from plan+executor_host_ip", flush=True)
+                        else:
+                            print(f"  Could not create plan - missing plan or executor_host_ip", flush=True)
 
-            if not plans_list:
-                self.log("ERROR", "No valid plans in response", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
-                    "plan_response": plan_response,
-                    "plan_response_keys": list(plan_response.keys()),
-                    "has_plans_key": "plans" in plan_response,
-                    "has_plan_key": "plan" in plan_response,
-                    "has_executor_host_ip": "executor_host_ip" in plan_response,
-                    "plan_length": len(str(plan_response.get("plan", ""))),
-                    "executor_host_ip_value": plan_response.get("executor_host_ip", ""),
-                    "raw_plan_response": str(plan_response),
+                        # Check for debug info in response
+                        debug_info = plan_response.get("_debug", {})
+                        if debug_info:
+                            print(f"  Debug info from planner:", flush=True)
+                            for k, v in debug_info.items():
+                                print(f"    {k}: {v}", flush=True)
+
+                        print(f"[PLAN_EXTRACTION_DEBUG_END]", flush=True)
+
+                if not plans_list:
+                    self.log("ERROR", "No valid plans in response", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
+                        "plan_response": plan_response,
+                        "plan_response_keys": list(plan_response.keys()),
+                        "has_plans_key": "plans" in plan_response,
+                        "has_plan_key": "plan" in plan_response,
+                        "has_executor_host_ip": "executor_host_ip" in plan_response,
+                        "plan_length": len(str(plan_response.get("plan", ""))),
+                        "executor_host_ip_value": plan_response.get("executor_host_ip", ""),
+                        "raw_plan_response": str(plan_response),
+                    })
+                    self.tracer.write()
+                    return False
+
+                self.log("PLAN", f"Generated {len(plans_list)} plan(s) ({plan_duration:.2f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
+                    "num_plans": len(plans_list),
+                    "plans": plans_list,
+                    "model": plan_response.get("model", "unknown"),
+                    "formatted_alert": alert_text
+                })
+
+                # Phase 6: Plan execution
+                exec_start = time.time()
+                with self.tracer.span("plan_execution_dispatch", "auto_responder",
+                                      num_plans=len(plans_list),
+                                      planner_only=PLANNER_ONLY):
+                    self.execute_multiple_plans_async(plans_list, alert, alert_hash, base_execution_id)
+
+                exec_duration = (time.time() - exec_start) * 1000
+                total_duration = (time.time() - start_time) * 1000
+
+                # Record execution timing
+                self.tracer.add_span(
+                    "plan_execution_dispatch_duration",
+                    (exec_start - self._init_start) * 1000,
+                    exec_duration,
+                    "auto_responder",
+                    num_plans=len(plans_list),
+                )
+
+                status_msg = "planner_only_skipped" if PLANNER_ONLY else "started_in_background"
+                self.log("DONE", f"{'Plans logged (planner-only mode)' if PLANNER_ONLY else f'Started execution'} in {total_duration:.1f}s (plan: {plan_duration:.1f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
+                    "total_duration": total_duration / 1000,
+                    "plan_duration": plan_duration / 1000,
+                    "status": status_msg,
+                    "planner_only": PLANNER_ONLY
+                })
+
+                # Write trace after successful processing
+                self.tracer.write()
+
+                return True
+
+            except Exception as e:
+                # Record exception in trace
+                self.tracer.add_span(
+                    "process_alert_exception",
+                    (start_time - self._init_start) * 1000,
+                    (time.time() - start_time) * 1000,
+                    "auto_responder",
+                    error_type=type(e).__name__,
+                    error=str(e)[:200],
+                    alert_hash=alert_hash[:8],
+                )
+                self.tracer.write()
+
+                self.log("ERROR", f"Exception: {e}", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
+                    "exception": str(e),
+                    "alert": alert
                 })
                 return False
 
-            self.log("PLAN", f"Generated {len(plans_list)} plan(s) ({plan_duration:.2f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
-                "num_plans": len(plans_list),
-                "plans": plans_list,
-                "model": plan_response.get("model", "unknown"),
-                "formatted_alert": alert_text
-            })
-
-            exec_start = time.time()
-            self.execute_multiple_plans_async(plans_list, alert, alert_hash, base_execution_id)
-            total_duration = time.time() - start_time
-
-            status_msg = "planner_only_skipped" if PLANNER_ONLY else "started_in_background"
-            self.log("DONE", f"{'Plans logged (planner-only mode)' if PLANNER_ONLY else f'Started execution'} in {total_duration:.1f}s (plan: {plan_duration:.1f}s)", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
-                "total_duration": total_duration,
-                "plan_duration": plan_duration,
-                "status": status_msg,
-                "planner_only": PLANNER_ONLY
-            })
-
-            return True
-
-        except Exception as e:
-            self.log("ERROR", f"Exception: {e}", machine_name=None, alert_hash=alert_hash, execution_id=base_execution_id, extra_data={
-                "exception": str(e),
-                "alert": alert
-            })
-            return False
-
     def run_once(self) -> None:
-        """Single run of the alert processing loop."""
-        try:
-            new_alerts = self.get_new_alerts()
-            if not new_alerts:
-                return
+        """Single run of the alert processing loop with timing traces."""
+        loop_start = time.time()
 
-            print(f"[auto_responder] Found {len(new_alerts)} new alerts")
+        with self.tracer.span("run_once_loop", "auto_responder"):
+            try:
+                # Phase: Read new alerts
+                with self.tracer.span("get_new_alerts", "auto_responder"):
+                    new_alerts = self.get_new_alerts()
 
-            processed_count = 0
-            for alert in new_alerts:
-                alert_hash = self.get_alert_hash(alert)
-                if DNS_ONLY_DEFENSE and not self.is_dns_alert(alert):
-                    self.log("SKIP", "Non-DNS alert ignored (dns-only mode)", machine_name=None, alert_hash=alert_hash)
-                    with self.lock:
-                        self.processed_alerts.add(alert_hash)
-                    processed_count += 1
-                    continue
-                # Re-check threat dedup here (not in get_new_alerts) so that
-                # record_threat() from the previous iteration is visible.
-                if self.is_duplicate_threat(alert, alert_hash):
-                    print(f"[auto_responder] Skipping duplicate threat: {self.get_threat_hash(alert)[:8]}")
-                    continue
-                try:
-                    success = self.process_alert(alert)
-                    if success:
-                        with self.lock:
-                            self.processed_alerts.add(alert_hash)
-                        self.record_threat(alert)
-                        processed_count += 1
-                    else:
-                        print(f"[auto_responder] Failed to process alert, will retry later")
-                except Exception as e:
-                    print(f"[auto_responder] Error processing alert: {e}")
+                if not new_alerts:
+                    return
 
-            if processed_count > 0:
-                self.save_processed_alerts()
-                print(f"[auto_responder] Successfully processed {processed_count} alerts")
+                print(f"[auto_responder] Found {len(new_alerts)} new alerts")
 
-        except Exception as e:
-            print(f"[auto_responder] Error in run_once: {e}")
+                processed_count = 0
+                for alert in new_alerts:
+                    alert_hash = self.get_alert_hash(alert)
+
+                    # Phase: Alert filtering
+                    with self.tracer.span("alert_filtering", "auto_responder",
+                                          alert_hash=alert_hash[:8]):
+                        if DNS_ONLY_DEFENSE and not self.is_dns_alert(alert):
+                            self.log("SKIP", "Non-DNS alert ignored (dns-only mode)", machine_name=None, alert_hash=alert_hash)
+                            with self.lock:
+                                self.processed_alerts.add(alert_hash)
+                            processed_count += 1
+                            continue
+                        # Re-check threat dedup here (not in get_new_alerts) so that
+                        # record_threat() from the previous iteration is visible.
+                        if self.is_duplicate_threat(alert, alert_hash):
+                            print(f"[auto_responder] Skipping duplicate threat: {self.get_threat_hash(alert)[:8]}")
+                            continue
+
+                    # Phase: Process alert
+                    try:
+                        success = self.process_alert(alert)
+                        if success:
+                            with self.lock:
+                                self.processed_alerts.add(alert_hash)
+                            self.record_threat(alert)
+                            processed_count += 1
+                        else:
+                            print(f"[auto_responder] Failed to process alert, will retry later")
+                    except Exception as e:
+                        print(f"[auto_responder] Error processing alert: {e}")
+
+                # Phase: Save processed alerts
+                if processed_count > 0:
+                    with self.tracer.span("save_processed_alerts", "auto_responder",
+                                          count=processed_count):
+                        self.save_processed_alerts()
+                    print(f"[auto_responder] Successfully processed {processed_count} alerts")
+
+                    # Write trace after processing batch
+                    self.tracer.write()
+
+            except Exception as e:
+                print(f"[auto_responder] Error in run_once: {e}")
+                # Record loop error in trace
+                self.tracer.add_span(
+                    "run_once_error",
+                    (loop_start - self._init_start) * 1000,
+                    (time.time() - loop_start) * 1000,
+                    "auto_responder",
+                    error=str(e)[:200],
+                )
 
     def run(self) -> None:
         """Main monitoring loop"""
@@ -1528,6 +1792,8 @@ Always start your work by fully understanding artifacts if present and things re
                 time.sleep(POLL_INTERVAL)
             except KeyboardInterrupt:
                 print(f"[auto_responder] Shutting down...")
+                # Write final trace on shutdown
+                self.tracer.write()
                 break
             except Exception as e:
                 print(f"[auto_responder] Error: {e}")

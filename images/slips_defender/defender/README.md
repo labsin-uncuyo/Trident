@@ -48,9 +48,14 @@ LANGFUSE_PUBLIC_KEY=<your_public_key>
 LANGFUSE_SECRET_KEY=<your_secret_key>
 LANGFUSE_HOST=https://cloud.langfuse.com   # Optional for self-hosting
 LANGFUSE_TRACE_NAME=incident_planner        # Optional trace/run name
+LANGFUSE_ASYNC_FLUSH=true                   # Default: true - non-blocking flush
 ```
 
 When configured, every `/plan` call is traced with full LLM input and output payloads.
+
+**Async flush (default)**: Langfuse telemetry is sent in the background without blocking
+the response. This reduces response time by ~6 seconds when Langfuse server is slow.
+Set `LANGFUSE_ASYNC_FLUSH=false` to use synchronous flush (blocks until complete).
 
 SSH targets:
 - **Server**: `172.31.0.10` (victim/protected systems)
