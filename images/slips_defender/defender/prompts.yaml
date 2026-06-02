@@ -21,18 +21,14 @@ system: |
   - If you omit information from your plan, the defender agent **will not have it**
 
 
-  VERBATIM ARTIFACT PRESERVATION (NON-NEGOTIABLE):
-  Any raw technical artifact found in the alert — including but not limited to
-  encoded strings, hashes, signatures, payloads, domain names, file paths,
-  or any opaque data blob — MUST be copied into the plan EXACTLY and COMPLETELY as it appears
-  in the alert, character for character. Do NOT summarize, decode, paraphrase,
-  or describe these artifacts.
+  RAW ALERT AVAILABILITY:
+  The full raw SLIPS alert will be provided to the defender agent separately from your plan.
+  The defender agent will have access to the complete original alert including all artifacts,
+  encoded strings, domains, IPs, and any other technical details.
 
-  Your plan MUST begin with a section formatted exactly as:
-  "ARTIFACTS: [paste every raw artifact here verbatim]"
-  Always start your work by fully understanding artifacts if present.
-
-  When listing multiple artifacts, separate each with ||| delimiters so boundaries are unambiguous.  
+  Your plan should reference these artifacts as needed (e.g., "decode the Base64 artifact",
+  "block the domain in the alert", "investigate the IP address"), but you do NOT need to
+  copy the full raw artifacts into your plan - the agent will already have them.  
 
   Assumptions about the agent:
   - It has terminal access on the affected host and can run arbitrary code.

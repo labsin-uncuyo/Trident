@@ -47,6 +47,9 @@ PLANNER_ONLY = os.getenv("PLANNER_ONLY", "").lower() in ("true", "1", "yes", "on
 # DNS-only defense mode: ignore non-DNS alerts
 DNS_ONLY_DEFENSE = os.getenv("DNS_ONLY_DEFENSE", "").lower() in ("true", "1", "yes", "on")
 
+# Server-only defense mode: skip execution on compromised container
+SERVER_ONLY = os.getenv("SERVER_ONLY", "").lower() in ("true", "1", "yes", "on")
+
 # OpenCode Server API configuration
 OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
 
@@ -90,7 +93,8 @@ class AutoResponder:
                 "retry_delays": RETRY_DELAYS,
                 "mode": "opencode_server_api",
                 "planner_only": PLANNER_ONLY,
-                "dns_only_defense": DNS_ONLY_DEFENSE
+                "dns_only_defense": DNS_ONLY_DEFENSE,
+                "server_only": SERVER_ONLY
             }
         })
 
@@ -100,6 +104,8 @@ class AutoResponder:
             print(f"[auto_responder] ✓ OpenCode Server API mode ENABLED")
         if DNS_ONLY_DEFENSE:
             print(f"[auto_responder] ✓ DNS-ONLY defense ENABLED (non-DNS alerts ignored)")
+        if SERVER_ONLY:
+            print(f"[auto_responder] ✓ SERVER-ONLY mode ENABLED (responses on compromised container will be skipped)")
         print(f"[auto_responder]   - Server: http://{OPENCODE_SERVER_HOST}:{OPENCODE_SERVER_PORT}")
         print(f"[auto_responder]   - Compromised: http://{OPENCODE_COMPROMISED_HOST}:{OPENCODE_SERVER_PORT}")
         print(f"[auto_responder]   - Retry delays: {RETRY_DELAYS}s (for model errors)")
@@ -399,6 +405,11 @@ class AutoResponder:
             self.threat_history[threat_hash] = now
 
     def get_new_alerts(self) -> List[Dict]:
+        """Read alerts from SLIPS ndjson file.
+
+        Joins fragmented DNS TXT entries: if a line has only 'raw' field (no timestamp),
+        it's a fragment of the previous alert and gets appended to its 'raw' field.
+        """
         if not ALERT_FILE.exists():
             return []
 
@@ -411,6 +422,13 @@ class AutoResponder:
                         continue
                     try:
                         alert = json.loads(line)
+                        raw = alert.get("raw", "")
+
+                        # Fragment: has only 'raw' field (no timestamp, run_id) - append to previous alert
+                        if len(alert) == 1 and "raw" in alert and new_alerts:
+                            new_alerts[-1]["raw"] += raw
+                            continue
+
                         if not self._is_high_confidence_alert(alert):
                             continue
                         alert_hash = self.get_alert_hash(alert)
@@ -1221,7 +1239,11 @@ class AutoResponder:
 
             context = f"""Execute this security remediation plan immediately:
 
-PLAN: {plan}
+PLAN:
+{plan}
+
+RAW SLIPS ALERT:
+{alert.get('raw', str(alert))}
 
 CONTEXT:
 - Alert Source IP: {alert.get('sourceip', 'unknown')}
@@ -1464,6 +1486,7 @@ Always start your work by fully understanding artifacts if present and things re
         """Execute multiple plans in background threads (truly non-blocking).
 
         In PLANNER_ONLY mode, logs plans without executing via OpenCode.
+        In SERVER_ONLY mode, skips execution on compromised container.
         """
         import concurrent.futures
 
@@ -1488,6 +1511,34 @@ Always start your work by fully understanding artifacts if present and things re
                     "plan_preview": plan if plan else ""
                 })
             return
+
+        # Server-only mode: filter out plans targeting compromised container
+        if SERVER_ONLY:
+            filtered_plans = []
+            for i, plan_data in enumerate(plans_list):
+                executor_ip = plan_data.get("executor_host_ip", "")
+                target_info = self.determine_target_info(executor_ip)
+                target_name = target_info[1] if target_info else "unknown"
+                target_ip = target_info[0] if target_info else "unknown"
+
+                if target_name == "compromised":
+                    ip_safe = executor_ip.replace('.', '_')
+                    ip_execution_id = f"{base_execution_id}_{ip_safe}"
+                    self.log("SERVER_ONLY", f"Skipped execution on compromised container {executor_ip} (server-only mode)",
+                             "compromised", alert_hash, ip_execution_id, extra_data={
+                        "executor_ip": executor_ip,
+                        "ip_index": i,
+                        "total_plans": len(plans_list),
+                        "skipped_reason": "server_only_mode"
+                    })
+                else:
+                    filtered_plans.append(plan_data)
+
+            if not filtered_plans:
+                self.log("SERVER_ONLY", "No plans to execute (all filtered by server-only mode)", machine_name=None, alert_hash=alert_hash)
+                return
+
+            plans_list = filtered_plans
 
         def execute_single_plan(plan_data: Dict, ip_index: int):
             executor_ip = plan_data.get("executor_host_ip", "")
@@ -1659,7 +1710,8 @@ Always start your work by fully understanding artifacts if present and things re
                     "num_plans": len(plans_list),
                     "plans": plans_list,
                     "model": plan_response.get("model", "unknown"),
-                    "formatted_alert": alert_text
+                    "formatted_alert": alert_text,
+                    "raw_alert": alert.get("raw", "")
                 })
 
                 # Phase 6: Plan execution

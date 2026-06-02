@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Dict
@@ -28,6 +29,10 @@ OUTPUT_ROOT = Path(os.getenv("SLIPS_OUTPUT_DIR", str(SLIPS_BASE / "output")))
 DEFENDER_URL = os.getenv("DEFENDER_URL", "http://127.0.0.1:8000/alerts")
 POLL_INTERVAL = float(os.getenv("SLIPS_ALERT_INTERVAL", "2"))
 
+# Regex to detect the start of a new SLIPS alert (lines with ISO timestamp)
+# Matches patterns like: 2026-05-11T23:42:21.263763+00:00
+_SLIPS_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
 
 def _log_files() -> list[Path]:
     if not OUTPUT_ROOT.exists():
@@ -42,6 +47,46 @@ def _post_alert(payload: Dict[str, object]) -> bool:
     except requests.RequestException as exc:
         print(f"[slips-forward] failed to POST alert: {exc}", flush=True)
         return False
+
+
+def _aggregate_alerts(lines: list[str]) -> list[str]:
+    """
+    Aggregate multi-line SLIPS alerts into single complete alerts.
+
+    SLIPS alerts can span multiple lines. A new alert starts with a line
+    beginning with an ISO timestamp. Lines without timestamps are continuations
+    of the previous alert. Blank lines are preserved as part of the alert content.
+
+    Args:
+        lines: Raw lines from the alerts.log file
+
+    Returns:
+        List of complete alerts (each alert is a joined string)
+    """
+    complete_alerts = []
+    current_alert_parts: list[str] = []
+
+    for line in lines:
+        original_line = line.rstrip("\n\r")
+        stripped = original_line.strip()
+
+        # Check if this line starts a new alert (has ISO timestamp at start)
+        if _SLIPS_TIMESTAMP_RE.match(stripped):
+            # Save previous alert if exists
+            if current_alert_parts:
+                complete_alerts.append(" ".join(current_alert_parts))
+            # Start new alert - preserve original spacing
+            current_alert_parts = [stripped]
+        else:
+            # Continuation of current alert - preserve the content
+            # Empty lines become spaces, non-empty lines are added
+            current_alert_parts.append(stripped)
+
+    # Don't forget the last alert
+    if current_alert_parts:
+        complete_alerts.append(" ".join(current_alert_parts))
+
+    return complete_alerts
 
 
 def main() -> None:
@@ -62,17 +107,27 @@ def main() -> None:
                 with log_path.open("r", encoding="utf-8") as handle:
                     handle.seek(previous)
                     success = True
-                    for line in handle:
-                        line = line.strip()
-                        if not line:
+
+                    # Read all new lines and aggregate multi-line alerts
+                    new_lines = handle.readlines()
+                    if not new_lines:
+                        positions[log_path] = handle.tell()
+                        continue
+
+                    complete_alerts = _aggregate_alerts(new_lines)
+
+                    for alert in complete_alerts:
+                        alert = alert.strip()
+                        if not alert:
                             continue
                         try:
-                            payload = json.loads(line)
+                            payload = json.loads(alert)
                         except json.JSONDecodeError:
-                            payload = {"raw": line, "run_id": RUN_ID}
+                            payload = {"raw": alert, "run_id": RUN_ID}
                         if not _post_alert(payload):
                             success = False
                             break
+
                     if success:
                         positions[log_path] = handle.tell()
                     else:
