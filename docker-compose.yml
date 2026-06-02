@@ -54,6 +54,7 @@ services:
       - OPENCODE_API_KEY=${OPENCODE_API_KEY}
       - PLANNER_ONLY=${PLANNER_ONLY:-}
       - DNS_ONLY_DEFENSE=${DNS_ONLY_DEFENSE:-}
+      - SERVER_ONLY=${SERVER_ONLY:-}
     volumes:
       - ./outputs/${RUN_ID}/pcaps:/StratosphereLinuxIPS/dataset
       - ./outputs/${RUN_ID}/slips:/StratosphereLinuxIPS/output
