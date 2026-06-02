@@ -94,6 +94,11 @@ export function useTimelineStream(agent: string) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
   const backoffRef = useRef(1000);
+  // Ref so onclose always sees the *current* replayId, avoiding stale-closure reconnects
+  const replayIdRef = useRef<string | null>(replay.replayId);
+
+  // Keep ref in sync with state
+  replayIdRef.current = replay.replayId;
 
   // Check if replay is active
   const isReplayActive = replay.replayId !== null;
@@ -173,8 +178,11 @@ export function useTimelineStream(agent: string) {
     };
 
     ws.onclose = () => {
-      // Only reconnect if not in replay mode
-      if (replay.replayId === null) {
+      // Use ref (not closure) so we always read the *current* replayId.
+      // Without this, loading a replay after the WS connected would leave
+      // replayId=null in the closure, causing a spurious reconnect that then
+      // overwrites replay state with live data.
+      if (replayIdRef.current === null) {
         setConnected(false);
         const delay = backoffRef.current;
         backoffRef.current = Math.min(delay * 2, 30000);

@@ -168,6 +168,9 @@ export function useOpenCodeStream(_host?: string, timelineEntries?: Array<{ leve
 
   // Check if replay is active
   const isReplayActive = replay.replayId !== null;
+  // Ref so onclose always sees the *current* replayId, avoiding stale-closure reconnects
+  const replayIdRef = useRef<string | null>(replay.replayId);
+  replayIdRef.current = replay.replayId;
 
   // Convert replay events to OpenCode format when replay is active
   // Filter by both host and current playback position
@@ -255,8 +258,10 @@ export function useOpenCodeStream(_host?: string, timelineEntries?: Array<{ leve
     };
 
     ws.onclose = () => {
-      // Only reconnect if not in replay mode
-      if (replay.replayId === null) {
+      // Use ref (not closure) so we always read the *current* replayId.
+      // Without this, loading a replay after the WS connected would cause a
+      // spurious reconnect that overwrites replay session data with live data.
+      if (replayIdRef.current === null) {
         setConnected(false);
         const delay = backoffRef.current;
         backoffRef.current = Math.min(delay * 2, 30000);
