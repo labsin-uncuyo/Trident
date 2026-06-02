@@ -8,6 +8,7 @@ services:
     privileged: true
     environment:
       - RUN_ID=${RUN_ID}
+      - DNS_ONLY_DEFENSE=${DNS_ONLY_DEFENSE:-}
     volumes:
       - ./outputs:/outputs
     networks:

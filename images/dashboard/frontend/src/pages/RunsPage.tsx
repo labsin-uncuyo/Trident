@@ -18,7 +18,7 @@ export function RunsPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="mb-6">
-        <h2 className="font-heading text-2xl font-bold text-white">Runs</h2>
+        <h2 className="font-heading text-2xl font-bold text-trident-text">Runs</h2>
         <p className="text-sm text-trident-muted">
           Experiment run history — {runs.length} runs found
         </p>
@@ -50,7 +50,7 @@ export function RunsPage() {
 
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-medium text-white">{run.run_id}</span>
+                  <span className="font-mono text-sm font-medium text-trident-text">{run.run_id}</span>
                   {run.is_current && (
                     <span className="badge badge-success">
                       <CheckCircle size={10} className="mr-1" />

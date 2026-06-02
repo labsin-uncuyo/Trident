@@ -6,15 +6,19 @@ export default {
     extend: {
       colors: {
         trident: {
-          bg: '#0a0e1a',
-          surface: '#111827',
-          border: '#1e293b',
-          accent: '#3b82f6',
-          success: '#22c55e',
-          warning: '#f59e0b',
-          danger: '#ef4444',
-          muted: '#6b7280',
-          text: '#e5e7eb',
+          // Light mode colors - MAXIMUM contrast
+          bg: '#f1f5f9',
+          surface: '#ffffff',
+          border: '#cbd5e1',
+          'border-hover': '#94a3b8',
+          accent: '#1d4ed8',
+          'accent-hover': '#1e40af',
+          success: '#166534',
+          warning: '#92400e',
+          danger: '#991b1b',
+          muted: '#1e293b',
+          text: '#020617',
+          'text-secondary': '#1e293b',
         },
       },
       fontFamily: {
@@ -24,5 +28,10 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // Plugin to add dark mode color overrides
+    function({ addVariant }) {
+      addVariant('dark', '.dark &');
+    },
+  ],
 };

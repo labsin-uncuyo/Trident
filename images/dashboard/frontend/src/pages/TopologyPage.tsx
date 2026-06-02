@@ -81,11 +81,11 @@ function TopologyNodeComponent({ data }: NodeProps) {
         />
 
         <Icon size={32} style={{ color }} />
-        <span className="mt-2 text-sm font-semibold text-white">{nodeData.label}</span>
+        <span className="mt-2 text-sm font-semibold text-trident-text">{nodeData.label}</span>
 
         <div className="mt-1.5 flex flex-wrap justify-center gap-1">
           {nodeData.ips.map((ip) => (
-            <span key={ip} className="rounded bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-trident-muted">
+            <span key={ip} className="rounded bg-black/40 dark:bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-trident-muted">
               {ip}
             </span>
           ))}
@@ -196,7 +196,7 @@ export function TopologyPage() {
     <div className="flex h-full flex-col">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="font-heading text-2xl font-bold text-white">Network Topology</h2>
+          <h2 className="font-heading text-2xl font-bold text-trident-text">Network Topology</h2>
           <p className="text-sm text-trident-muted">
             Trident cyber range — live container status · active agents · traffic flow
           </p>
@@ -218,7 +218,7 @@ export function TopologyPage() {
           proOptions={{ hideAttribution: true }}
           className="bg-trident-bg"
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd5e1" />
           <Controls
             className="!border-trident-border !bg-trident-surface [&>button]:!border-trident-border [&>button]:!bg-trident-surface [&>button]:!text-trident-text [&>button:hover]:!bg-trident-border"
           />

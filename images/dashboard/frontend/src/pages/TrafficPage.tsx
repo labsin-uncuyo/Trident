@@ -34,7 +34,7 @@ export function TrafficPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="mb-6">
-        <h2 className="font-heading text-2xl font-bold text-white">Traffic Capture</h2>
+        <h2 className="font-heading text-2xl font-bold text-trident-text">Traffic Capture</h2>
         <p className="text-sm text-trident-muted">
           PCAP files from router + server — {pcaps.length} files, {formatBytes(totalSize)} total
         </p>
@@ -44,22 +44,22 @@ export function TrafficPage() {
       <div className="mb-6 grid grid-cols-4 gap-4">
         <div className="card text-center">
           <FileText size={24} className="mx-auto mb-2 text-trident-accent" />
-          <p className="text-2xl font-bold text-white">{pcaps.length}</p>
+          <p className="text-2xl font-bold text-trident-text">{pcaps.length}</p>
           <p className="text-[10px] uppercase tracking-wider text-trident-muted">PCAP Files</p>
         </div>
         <div className="card text-center">
           <HardDrive size={24} className="mx-auto mb-2 text-trident-accent" />
-          <p className="text-2xl font-bold text-white">{formatBytes(totalSize)}</p>
+          <p className="text-2xl font-bold text-trident-text">{formatBytes(totalSize)}</p>
           <p className="text-[10px] uppercase tracking-wider text-trident-muted">Total Size</p>
         </div>
         <div className="card text-center">
           <Clock size={24} className="mx-auto mb-2 text-trident-accent" />
-          <p className="text-2xl font-bold text-white">30s</p>
+          <p className="text-2xl font-bold text-trident-text">30s</p>
           <p className="text-[10px] uppercase tracking-wider text-trident-muted">Rotation</p>
         </div>
         <div className="card text-center">
           <Wifi size={24} className="mx-auto mb-2 text-trident-accent" />
-          <p className="text-2xl font-bold text-white">2</p>
+          <p className="text-2xl font-bold text-trident-text">2</p>
           <p className="text-[10px] uppercase tracking-wider text-trident-muted">Interfaces</p>
         </div>
       </div>
@@ -76,7 +76,7 @@ export function TrafficPage() {
       </div>
 
       {/* PCAP file list */}
-      <h3 className="mb-3 font-heading text-lg font-bold text-white">Capture Files</h3>
+      <h3 className="mb-3 font-heading text-lg font-bold text-trident-text">Capture Files</h3>
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -91,6 +91,7 @@ export function TrafficPage() {
             <thead className="border-b border-trident-border text-xs uppercase tracking-wider text-trident-muted">
               <tr>
                 <th className="px-3 py-2">Filename</th>
+                <th className="px-3 py-2">SLIPS</th>
                 <th className="px-3 py-2">Size</th>
                 <th className="px-3 py-2">Modified</th>
               </tr>
@@ -99,6 +100,11 @@ export function TrafficPage() {
               {pcaps.map((p) => (
                 <tr key={p.filename} className="hover:bg-trident-border/30">
                   <td className="px-3 py-2 font-mono text-xs text-trident-text">{p.filename}</td>
+                  <td className="px-3 py-2 text-xs">
+                    <span className={`badge ${p.slips_checked ? 'badge-success' : 'badge-muted'}`}>
+                      {p.slips_checked ? 'Checked' : 'Pending'}
+                    </span>
+                  </td>
                   <td className="px-3 py-2 text-xs text-trident-muted">{formatBytes(p.size_bytes)}</td>
                   <td className="px-3 py-2 text-xs text-trident-muted">
                     {new Date(p.modified).toLocaleString()}

@@ -206,7 +206,11 @@ async def replay_websocket(ws: WebSocket, replay_id: str):
                             if e.get("timestamp_ms", 0) <= current_pos + 10000  # 10 second window
                         ]
                         if events_window:
-                            await ws.send_json({"type": "events", "events": events_window})
+                            await ws.send_json({
+                                "type": "events",
+                                "replay_id": replay_id,
+                                "events": events_window,
+                            })
                             last_event_index = len(events_window) - 1
                         has_sent_initial_batch = True
 
@@ -224,7 +228,11 @@ async def replay_websocket(ws: WebSocket, replay_id: str):
                         e for e in all_events
                         if e.get("timestamp_ms", 0) <= current_pos
                     ]
-                    await ws.send_json({"type": "events", "events": events_at_pos})
+                    await ws.send_json({
+                        "type": "events",
+                        "replay_id": replay_id,
+                        "events": events_at_pos,
+                    })
                     last_event_index = len(events_at_pos) - 1
                     logger.debug("Replay %s: seeked to %d, sent %d events", replay_id, current_pos, len(events_at_pos))
 
@@ -247,7 +255,7 @@ async def replay_websocket(ws: WebSocket, replay_id: str):
                 if current_pos >= end_time:
                     current_pos = end_time
                     playing = False
-                    await ws.send_json({"type": "playback_complete"})
+                    await ws.send_json({"type": "playback_complete", "replay_id": replay_id})
 
                 # Find events that occurred in this time window
                 new_events = []
@@ -273,13 +281,17 @@ async def replay_websocket(ws: WebSocket, replay_id: str):
 
                 # Send new events if any
                 if new_events:
-                    await ws.send_json({"type": "events", "events": new_events})
+                    await ws.send_json({
+                        "type": "events",
+                        "replay_id": replay_id,
+                        "events": new_events,
+                    })
 
     except WebSocketDisconnect:
         logger.debug("Replay %s: WebSocket disconnected", replay_id)
     except Exception as exc:
         logger.debug("Replay %s: WebSocket error: %s", replay_id, exc)
-        await ws.send_json({"type": "error", "message": str(exc)})
+        await ws.send_json({"type": "error", "replay_id": replay_id, "message": str(exc)})
     finally:
         # Unregister client
         _active_replays[replay_id]["clients"].discard(ws)

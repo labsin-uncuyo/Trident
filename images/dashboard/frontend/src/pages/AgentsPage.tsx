@@ -9,11 +9,11 @@ import { useReplayContext } from '@/contexts/ReplayContext';
 import type { SessionsMap, SessionMessage, TimelineEntry } from '@/types';
 
 const LEVEL_STYLES: Record<string, string> = {
-  INIT: 'text-blue-400',
-  OPENCODE: 'text-purple-400',
-  ERROR: 'text-red-400',
-  WARNING: 'text-amber-400',
-  INFO: 'text-green-400',
+  INIT: 'text-blue-700 dark:text-blue-400',
+  OPENCODE: 'text-purple-700 dark:text-purple-400',
+  ERROR: 'text-red-700 dark:text-red-400',
+  WARNING: 'text-amber-700 dark:text-amber-400',
+  INFO: 'text-green-700 dark:text-green-400',
   DEBUG: 'text-trident-muted',
 };
 
@@ -54,7 +54,7 @@ function TimelineEntryRow({ entry }: { entry: TimelineEntry }) {
 
   return (
     <div
-      className="cursor-pointer border-b border-trident-border/40 px-3 py-1.5 hover:bg-white/5"
+      className="cursor-pointer border-b border-trident-border/40 px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
       onClick={() => setExpanded((e) => !e)}
     >
       <div className="flex items-start gap-2 text-xs">
@@ -82,33 +82,33 @@ const TIMELINE_AGENTS: Array<{ key: string; label: string; desc: string; color: 
     key: 'coder56',
     label: 'coder56',
     desc: 'Red-team attacker — recon, exploitation, persistence',
-    color: 'text-red-400',
+    color: 'text-red-700 dark:text-red-400',
     host: 'compromised',
   },
   {
     key: 'db_admin',
     label: 'db_admin',
     desc: 'Benign DBA persona "John Scott" — routine DB tasks',
-    color: 'text-green-400',
+    color: 'text-green-700 dark:text-green-400',
     host: 'compromised',
   },
   {
     key: 'soc_god_server',
     label: 'soc_god · server',
     desc: 'Autonomous defensive subsystem — threat analysis & remediation (server)',
-    color: 'text-sky-400',
+    color: 'text-sky-700 dark:text-sky-400',
     host: 'server',
   },
   {
     key: 'soc_god_compromised',
     label: 'soc_god · compromised',
     desc: 'Autonomous defensive subsystem — threat analysis & remediation (compromised)',
-    color: 'text-cyan-400',
+    color: 'text-cyan-700 dark:text-cyan-400',
     host: 'compromised',
   },
 ];
 
-function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySession, sessionSources, timelineMessages, timelineStream }: {
+function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySession, sessionSources, timelineMessages, timelineStream, isReplayActive }: {
   agentKey: string;
   label: string;
   desc: string;
@@ -118,6 +118,7 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
   sessionSources: Record<string, string>;
   timelineMessages: Record<string, SessionMessage[]>;
   timelineStream: ReturnType<typeof useTimelineStream>;
+  isReplayActive: boolean;
 }) {
   const { entries, connected } = timelineStream;
   const recent = entries.slice(-200);
@@ -150,7 +151,11 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
   }, [entries, sessionSources, agentKey]);
 
   // For any session ID not in the shared messagesBySession, try the API first
+  // Skip this when replay is active to avoid fetching live data
   useEffect(() => {
+    // Don't fetch from API when replay is active
+    if (isReplayActive) return;
+
     for (const sid of sessionIds) {
       if (!messagesBySession[sid] && !timelineMessages[sid] && !fetchedRef.current.has(sid)) {
         fetchedRef.current.add(sid);
@@ -164,7 +169,7 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
           .catch(() => {});
       }
     }
-  }, [sessionIds, messagesBySession, timelineMessages]);
+  }, [sessionIds, messagesBySession, timelineMessages, isReplayActive]);
 
   // Collect all OpenCode messages: shared stream > timeline reconstruction > API fetch
   const ocMessages = useMemo(() => {
@@ -205,15 +210,15 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
       <p className="mb-3 text-xs text-trident-muted">{desc}</p>
 
       <div className="mb-3 grid grid-cols-3 gap-3">
-        <div className="rounded-lg bg-black/30 p-3 text-center">
-          <p className="text-2xl font-bold text-white">{entries.length}</p>
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+          <p className="text-2xl font-bold text-trident-text">{entries.length}</p>
           <p className="text-[10px] uppercase tracking-wider text-trident-muted">Events</p>
         </div>
-        <div className="rounded-lg bg-black/30 p-3 text-center">
-          <p className="text-2xl font-bold text-purple-400">{msgCount}</p>
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+          <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">{msgCount}</p>
           <p className="text-[10px] uppercase tracking-wider text-trident-muted">Messages</p>
         </div>
-        <div className="rounded-lg bg-black/30 p-3 text-center">
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
           <p className={`truncate text-sm font-bold ${lastEntry ? LEVEL_STYLES[lastEntry.level] ?? 'text-trident-muted' : 'text-trident-muted'}`}>
             {lastEntry?.level ?? '—'}
           </p>
@@ -228,7 +233,7 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
           className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
             tab === 'messages'
               ? 'bg-trident-accent/20 text-trident-accent'
-              : 'text-trident-muted hover:text-white'
+              : 'text-trident-muted hover:text-trident-text'
           }`}
         >
           <MessageSquare size={10} className="mr-1 inline" />
@@ -239,7 +244,7 @@ function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySess
           className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
             tab === 'timeline'
               ? 'bg-trident-accent/20 text-trident-accent'
-              : 'text-trident-muted hover:text-white'
+              : 'text-trident-muted hover:text-trident-text'
           }`}
         >
           Timeline ({entries.length})
@@ -287,7 +292,7 @@ function HostPanel({ host, stream, timelineMessages }: { host: string; stream: R
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Cpu size={18} className="text-trident-accent" />
-          <h3 className="font-heading text-lg font-bold text-white capitalize">{host}</h3>
+          <h3 className="font-heading text-lg font-bold text-trident-text capitalize">{host}</h3>
         </div>
         <div className="flex items-center gap-2">
           <span className={`badge ${connected ? 'badge-success' : 'badge-danger'}`}>
@@ -297,15 +302,15 @@ function HostPanel({ host, stream, timelineMessages }: { host: string; stream: R
       </div>
 
       <div className="mb-3 grid grid-cols-3 gap-3">
-        <div className="rounded-lg bg-black/30 p-3 text-center">
-          <p className="text-2xl font-bold text-white">{sessionEntries.length}</p>
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+          <p className="text-2xl font-bold text-trident-text">{sessionEntries.length}</p>
           <p className="text-[10px] uppercase tracking-wider text-trident-muted">Sessions</p>
         </div>
-        <div className="rounded-lg bg-black/30 p-3 text-center">
-          <p className="text-2xl font-bold text-green-400">{activeCount}</p>
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+          <p className="text-2xl font-bold text-green-700 dark:text-green-400">{activeCount}</p>
           <p className="text-[10px] uppercase tracking-wider text-trident-muted">Active</p>
         </div>
-        <div className="rounded-lg bg-black/30 p-3 text-center">
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
           <p className="text-2xl font-bold text-trident-muted">
             {Object.values(messagesBySession).reduce((a, b) => a + b.length, 0)}
           </p>
@@ -408,7 +413,7 @@ export function AgentsPage() {
       {/* ── Header with replay indicator ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-heading text-2xl font-bold text-white">Agents</h2>
+          <h2 className="font-heading text-2xl font-bold text-trident-text">Agents</h2>
           <p className="text-sm text-trident-muted">
             {isReplayActive
               ? `Replaying data from ${replay.replayId}`
@@ -439,6 +444,7 @@ export function AgentsPage() {
               sessionSources={streamByHost[a.host]?.sessionSources ?? {}}
               timelineMessages={timelineMessages}
               timelineStream={timelineStreamsByAgent[a.key]}
+              isReplayActive={isReplayActive}
             />
           ))}
         </div>
@@ -446,7 +452,7 @@ export function AgentsPage() {
 
       {/* ── OpenCode sessions (compromised / server) ── */}
       <div>
-        <h2 className="font-heading text-xl font-bold text-white">OpenCode Sessions</h2>
+        <h2 className="font-heading text-xl font-bold text-trident-text">OpenCode Sessions</h2>
         <p className="mb-4 text-sm text-trident-muted">
           Live OpenCode sessions across compromised host and server
         </p>
