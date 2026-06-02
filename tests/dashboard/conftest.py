@@ -115,7 +115,7 @@ def outputs_with_data(outputs_dir: Path) -> Path:
 
     # Sample timeline
     timeline_entry = {"ts": "2026-03-04T12:00:01", "level": "INFO", "msg": "Session started"}
-    (run / "coder56" / "auto_responder_timeline.jsonl").write_text(
+    (run / "coder56" / "coder56_timeline.jsonl").write_text(
         json.dumps(timeline_entry) + "\n"
     )
     # db_admin timeline

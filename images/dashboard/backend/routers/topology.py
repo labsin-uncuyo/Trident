@@ -103,7 +103,7 @@ _AGENT_NODES: dict[str, str] = {
 }
 
 _TIMELINE_PATHS: dict[str, str] = {
-    "coder56": "coder56/auto_responder_timeline.jsonl",
+    "coder56": "coder56/coder56_timeline.jsonl",
     "db_admin": "benign_agent/db_admin_timeline.jsonl",
     "soc_god_server": "defender/server/auto_responder_timeline.jsonl",
     "soc_god_compromised": "defender/compromised/auto_responder_timeline.jsonl",

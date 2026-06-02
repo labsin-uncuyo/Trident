@@ -71,7 +71,7 @@ class TestTimelineAgentEndpoint:
     def test_multi_entry_timeline(self, client, outputs_dir, monkeypatch):
         import backend.routers.timeline as timeline_module
         monkeypatch.setattr(timeline_module, "OUTPUTS_DIR", outputs_dir)
-        tl_file = outputs_dir / RUN_ID / "coder56" / "auto_responder_timeline.jsonl"
+        tl_file = outputs_dir / RUN_ID / "coder56" / "coder56_timeline.jsonl"
         entries = [
             {"ts": f"2026-03-04T12:00:0{i}", "level": "INFO", "msg": f"event {i}"}
             for i in range(3)
@@ -83,7 +83,7 @@ class TestTimelineAgentEndpoint:
     def test_skips_invalid_json_lines(self, client, outputs_dir, monkeypatch):
         import backend.routers.timeline as timeline_module
         monkeypatch.setattr(timeline_module, "OUTPUTS_DIR", outputs_dir)
-        tl_file = outputs_dir / RUN_ID / "coder56" / "auto_responder_timeline.jsonl"
+        tl_file = outputs_dir / RUN_ID / "coder56" / "coder56_timeline.jsonl"
         tl_file.write_text(
             "NOT JSON\n"
             + json.dumps({"ts": "2026-03-04T12:00:00", "level": "INFO", "msg": "ok"}) + "\n"
@@ -100,7 +100,7 @@ class TestTimelineAgentEndpoint:
     def test_limit_parameter(self, client, outputs_dir, monkeypatch):
         import backend.routers.timeline as timeline_module
         monkeypatch.setattr(timeline_module, "OUTPUTS_DIR", outputs_dir)
-        tl_file = outputs_dir / RUN_ID / "coder56" / "auto_responder_timeline.jsonl"
+        tl_file = outputs_dir / RUN_ID / "coder56" / "coder56_timeline.jsonl"
         entries = [json.dumps({"ts": "t", "level": "INFO", "msg": f"e{i}"}) for i in range(20)]
         tl_file.write_text("\n".join(entries) + "\n")
         data = client.get("/api/timeline/coder56?limit=5").json()

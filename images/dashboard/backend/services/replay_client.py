@@ -17,7 +17,7 @@ logger = logging.getLogger("dashboard.replay")
 
 # Timeline file paths within a run directory
 _TIMELINE_PATHS = [
-    "coder56/auto_responder_timeline.jsonl",
+    "coder56/coder56_timeline.jsonl",
     "benign_agent/db_admin_timeline.jsonl",
     "benign_agent/opencode_api_messages.json",
     "defender/server/auto_responder_timeline.jsonl",

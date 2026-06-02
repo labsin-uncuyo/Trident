@@ -20,7 +20,7 @@ OUTPUTS_DIR = Path("/outputs")
 # Mapping of agent name → relative path(s) within a run directory
 _TIMELINE_PATHS: dict[str, list[str]] = {
     "coder56": [
-        "coder56/auto_responder_timeline.jsonl",
+        "coder56/coder56_timeline.jsonl",
     ],
     "db_admin": [
         "benign_agent/db_admin_timeline.jsonl",
