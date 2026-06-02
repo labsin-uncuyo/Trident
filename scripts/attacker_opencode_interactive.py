@@ -7,8 +7,24 @@ import selectors
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+# Add shared types path for imports
+SHARED_TYPES_PATH = Path(__file__).parent.parent / "images" / "shared" / "types.py"
+if SHARED_TYPES_PATH.exists():
+    import sys
+    sys.path.insert(0, str(SHARED_TYPES_PATH.parent))
+    from types import AgentMetrics, ensure_full_metrics
+    from opencode_utils import RETRY_DELAYS, ModelAvailabilityError, check_for_model_error
+else:
+    # Fallback if types.py not available
+    AgentMetrics = Dict[str, Any]
+    def ensure_full_metrics(m): return m  # type: ignore
+    RETRY_DELAYS = [1, 5, 10]  # fallback
+    ModelAvailabilityError = Exception  # type: ignore
+    def check_for_model_error(messages): return None  # type: ignore
 
 HAS_PEXPECT = False
 try:
@@ -92,17 +108,23 @@ def write_timeline_entry(path: str, level: str, message: str, data: Optional[dic
     }
     if data:
         entry["data"] = data
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+        handle.flush()
 
 
-def _init_opencode_metrics() -> dict:
+def _init_opencode_metrics() -> Dict[str, Any]:
     return {
         "tool_calls": [],
         "llm_calls": 0,
         "errors": [],
         "text_outputs": [],
         "final_output": None,
+        "total_tokens": None,
+        "total_cost": None,
+        "api_messages": None,
+        "messages": None,
     }
 
 
@@ -186,8 +208,10 @@ def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: s
             "exec": execution_id[:8],
             "data": event,
         }
+        Path(timeline_path).parent.mkdir(parents=True, exist_ok=True)
         with open(timeline_path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
+            handle.flush()
 
     if not final_output and text_outputs:
         final_output = " ".join(text_outputs)[-500:]
@@ -197,6 +221,10 @@ def append_opencode_events(timeline_path: str, execution_id: str, stdout_text: s
         "llm_calls": llm_calls,
         "tool_calls": tool_calls,
         "errors": errors,
+        "total_tokens": None,
+        "total_cost": None,
+        "api_messages": None,
+        "messages": None,
     }
 
 
@@ -296,6 +324,7 @@ def write_coder56_api_messages(
     goal_text: str,
 ) -> str:
     api_path = os.path.join(output_dir, "opencode_api_messages.json")
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     wrapped = build_coder56_api_messages(
         execution_id=execution_id,
         stdout_path=stdout_path,
@@ -304,6 +333,7 @@ def write_coder56_api_messages(
     )
     with open(api_path, "w", encoding="utf-8") as handle:
         json.dump(wrapped, handle, indent=2)
+        handle.flush()
     return api_path
 
 
@@ -377,6 +407,10 @@ def main() -> int:
                     "llm_calls": 0,
                     "tool_calls": [],
                     "errors": None,
+                    "total_tokens": None,
+                    "total_cost": None,
+                    "api_messages": None,
+                    "messages": None,
                 }
             except pexpect.exceptions.TIMEOUT:
                 if child.isalive():
@@ -389,6 +423,10 @@ def main() -> int:
                     "llm_calls": 0,
                     "tool_calls": [],
                     "errors": ["tui_timeout"],
+                    "total_tokens": None,
+                    "total_cost": None,
+                    "api_messages": None,
+                    "messages": None,
                 }
                 exit_code = 124
         else:
@@ -545,6 +583,29 @@ def main() -> int:
                 "exit_code": exit_code,
                 "exec": execution_id[:8],
             })
+
+        # Check for model availability errors in the output
+        # The attacker script uses docker exec mode, so we check stderr for model errors
+        model_error = None
+        try:
+            if os.path.exists(stderr_path):
+                with open(stderr_path, "r", encoding="utf-8") as f:
+                    stderr_content = f.read()
+                # Check stderr for model error patterns
+                if any(pattern in stderr_content.lower() for pattern in [
+                    "model not found",
+                    "vllm engine is sleeping",
+                    "not found or vllm",
+                    "badrequesterror"
+                ]):
+                    model_error = "Model availability error detected in stderr"
+                    write_timeline_entry(timeline_path, "MODEL_ERROR", "Model availability error - retry recommended", data={
+                        "error": model_error,
+                        "retry_delays": RETRY_DELAYS,
+                        "exec": execution_id[:8],
+                    })
+        except Exception:
+            pass  # Best-effort check
 
         print("[coder56_tui] Completed.")
         return 0

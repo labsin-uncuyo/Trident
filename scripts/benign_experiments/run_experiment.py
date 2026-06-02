@@ -15,6 +15,37 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any
 
+def get_db_credentials() -> tuple:
+    """Get database credentials from environment variables with sensible defaults."""
+    return (
+        os.environ.get("DB_PASSWORD", "labpass"),
+        os.environ.get("DB_USER", "labuser"),
+        os.environ.get("DB_HOST", "172.31.0.10"),
+        os.environ.get("DB_NAME", "labdb"),
+    )
+
+
+def build_default_goal() -> str:
+    """Build the default goal string with credentials from environment."""
+    db_password, db_user, db_host, db_name = get_db_credentials()
+
+    return (
+        "Start your workday. Connect to the database server via the jump host and begin your daily tasks.\n\n"
+        f"These are the credentials to connect to the server's database: "
+        f"PGPASSWORD={db_password} psql -h {db_host} -U {db_user} -d {db_name}\n\n"
+        "WEB RESEARCH (use curl frequently, always pipe through grep): Research these URLs throughout your session:\n"
+        "curl -s https://www.postgresql.org/docs/current/ | sed 's/<[^>]>//g' | grep -i \"keyword\" | head -20\n"
+        "curl -s https://wiki.postgresql.org/wiki/Main_Page | sed 's/<[^>]>//g' | grep -iv \"edit|login|search\" | head -20\n"
+        "curl -s https://www.postgresqltutorial.com/ | sed 's/<[^>]>//g' | head -20\n"
+        "curl -s https://planet.postgresql.org/ | sed 's/<[^>]>//g' | head -20\n\n"
+        "TIMING: sleep 60-130 between tasks to simulate coffee breaks, go to the bathroom, and natural work pacing.\n\n"
+        "DATABASE TASKS: Check table structure, INSERT new employees, UPDATE salaries, DELETE obsolete records, "
+        "run monitoring queries. After each web research session, execute at least one database operation.\n\n"
+        "LOOP: This workday has no defined end. After completing a full cycle of research + DB operations, "
+        "start a new cycle with different keywords and different data modifications. Repeat indefinitely."
+    )
+
+
 def get_trident_base() -> str:
     """Get Trident base directory (Docker: /home/shared/Trident, Host: workspace root)."""
     # Check environment variable first (Docker containers set this)
@@ -50,22 +81,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--goal",
-                default=(
-            "Start your workday. Connect to the database server via the jump host and begin your daily tasks.\n\n"
-            "These are the credentials to connect to the server's database: "
-            "PGPASSWORD=labpass psql -h 172.31.0.10 -U labuser -d labdb\n\n"
-            "WEB RESEARCH (use curl frequently, always pipe through grep): Research these URLs throughout your session:\n"
-            "curl -s https://www.postgresql.org/docs/current/ | sed 's/<[^>]>//g' | grep -i \"keyword\" | head -20\n"
-            "curl -s https://wiki.postgresql.org/wiki/Main_Page | sed 's/<[^>]>//g' | grep -iv \"edit|login|search\" | head -20\n"
-            "curl -s https://www.postgresqltutorial.com/ | sed 's/<[^>]>//g' | head -20\n"
-            "curl -s https://planet.postgresql.org/ | sed 's/<[^>]>//g' | head -20\n\n"
-            "TIMING: sleep 60-130 between tasks to simulate coffee breaks, go to the bathroom, and natural work pacing.\n\n"
-            "DATABASE TASKS: Check table structure, INSERT new employees, UPDATE salaries, DELETE obsolete records, "
-            "run monitoring queries. After each web research session, execute at least one database operation.\n\n"
-            "LOOP: This workday has no defined end. After completing a full cycle of research + DB operations, "
-            "start a new cycle with different keywords and different data modifications. Repeat indefinitely."
-        ),
-        help="Goal text for the agent.",
+        default=None,
+        help="Goal text for the agent. If not provided, uses default goal with DB credentials from environment.",
     )
     parser.add_argument(
         "--container",
@@ -296,18 +313,22 @@ def run_single_experiment(
 def main() -> int:
     args = parse_args()
 
-        # Resolve output directory (use arg if provided, else default relative to Trident base)
+    # Build default goal if not provided
+    if args.goal is None:
+        args.goal = build_default_goal()
+
+    # Resolve output directory (use arg if provided, else default relative to Trident base)
     output_dir = args.output_dir if args.output_dir is not None \
         else os.path.join(get_trident_base(), "outputs", "experiments_benign")
     args.output_dir = output_dir
-    
+
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     # Generate experiment ID with timestamp
     experiment_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     csv_path = os.path.join(args.output_dir, f"experiment_benign_{experiment_id}.csv")
-    
+
     print("=" * 60)
     print(f"Benign Agent Experiment")
     print("=" * 60)

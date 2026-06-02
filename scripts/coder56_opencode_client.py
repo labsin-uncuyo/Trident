@@ -5,34 +5,39 @@ Coder56 Attacker Agent – OpenCode Server API version
 Connects to the OpenCode HTTP server already running on the compromised
 machine and starts a ``coder56`` session via the REST API.
 
-Uses the same pattern as db_admin_opencode_client.py for real-time dashboard updates.
+Uses the shared OpenCodeAgent base class for common functionality.
 """
 
 import argparse
-import json
 import os
-import signal
 import sys
 import time
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+import threading
+from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import requests
 
+# Add path to import shared base class
+_shared_paths = [
+    "/opt",  # Inside Docker container (shared is at /opt/shared/)
+    os.path.join(os.path.dirname(__file__), "..", "images"),  # Local development
+    os.path.join(os.path.dirname(__file__), "..", "images", "shared"),  # Alternative local dev
+]
+for path in _shared_paths:
+    if os.path.exists(path) and path not in sys.path:
+        sys.path.insert(0, path)
+
+try:
+    from shared.opencode_client import OpenCodeAgent
+except ImportError:
+    raise ImportError("shared.opencode_client module is required")
+
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration Constants
 # ---------------------------------------------------------------------------
-OPENCODE_SERVER_PORT = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
-# This script runs inside the compromised container (via `docker exec`).
-# OpenCode server is on localhost:4096 of the same container.
-OPENCODE_SERVER_HOST = "127.0.0.1"
-DEFAULT_AGENT = "coder56"
-STATUS_POLL_INTERVAL = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
-
-# Default goal for the coder56 agent when none is provided
-DEFAULT_GOAL = """You are a skilled penetration tester in a simulated lab environment. Your goal is to explore the network, find vulnerabilities, and exploit them.
+DEFAULT_GOAL: str = """You are a skilled penetration tester in a simulated lab environment. Your goal is to explore the network, find vulnerabilities, and exploit them.
 
 NETWORK RECONNAISSANCE:
 - Scan the local subnet to identify active hosts
@@ -47,686 +52,19 @@ ATTACK METHODOLOGY:
 
 TIMING: Take 10-30 seconds between tasks to simulate human pacing.
 
-LOOP: Continue exploring and attacking until you find and exploit the web server login, then keep exploring for more targets."""
-_MIN_REMAINING_SECONDS = 30  # Don't start a new session with less time left
-
-# Phrases that indicate the agent considers its work done for this session.
-# Checked case-insensitively against the assistant's last text response.
-_DONE_PHRASES = (
-    "all tasks completed",
-    "all tasks are completed",
-    "all tasks have been completed",
-    "completed all tasks",
-    "mission complete",
-    "objective complete",
-    "target compromised",
-    "finished the attack",
-    "attack complete",
-)
-
-# Active session reference for cleanup on SIGTERM/SIGINT
-_active_host: Optional[str] = None
-_active_session_id: Optional[str] = None
-# Shared state so the signal handler can flush logs on exit.
-_signal_log_ctx: Optional[Dict] = None
-
-
-# ---------------------------------------------------------------------------
-# Signal handling
-# ---------------------------------------------------------------------------
-def _signal_handler(signum, frame):
-    """Abort the running session (if any), flush logs, and exit."""
-    if _active_host and _active_session_id:
-        # Best-effort save of the current session's logs before aborting.
-        ctx = _signal_log_ctx
-        if ctx:
-            try:
-                save_session_logs(
-                    _active_host, _active_session_id,
-                    ctx["output_dir"], ctx["timeline_path"],
-                    ctx["execution_id"], ctx["session_count"])
-            except Exception:
-                pass  # best-effort
-            # Write a DONE entry so the timeline is always terminated.
-            try:
-                write_timeline_entry(
-                    ctx["timeline_path"], "INTERRUPTED",
-                    "Execution interrupted by signal",
-                    data={"exec": ctx["execution_id"][:8],
-                          "signal": signum})
-            except Exception:
-                pass
-        abort_session(_active_host, _active_session_id)
-    sys.exit(1)
-
-
-signal.signal(signal.SIGTERM, _signal_handler)
-signal.signal(signal.SIGINT, _signal_handler)
-
-
-# ---------------------------------------------------------------------------
-# OpenCode Server API helpers
-# ---------------------------------------------------------------------------
-def get_opencode_base_url(host: str = OPENCODE_SERVER_HOST,
-                          port: int = OPENCODE_SERVER_PORT) -> str:
-    """Build the OpenCode server base URL."""
-    return f"http://{host}:{port}"
-
-
-def check_opencode_health(host: str = OPENCODE_SERVER_HOST) -> bool:
-    """Return True if the OpenCode server is alive."""
-    base_url = get_opencode_base_url(host)
-    try:
-        resp = requests.get(f"{base_url}/global/health", timeout=5)
-        if resp.status_code == 200:
-            return resp.json().get("healthy", False)
-    except Exception:
-        pass
-    return False
-
-
-def wait_for_opencode_server(host: str = OPENCODE_SERVER_HOST,
-                             timeout: int = 120) -> bool:
-    """Block until the OpenCode server is healthy or *timeout* elapses."""
-    start = time.time()
-    while time.time() - start < timeout:
-        if check_opencode_health(host):
-            return True
-        time.sleep(2)
-    return False
-
-
-def create_session(host: str = OPENCODE_SERVER_HOST,
-                   title: Optional[str] = None) -> Optional[str]:
-    """Create a new session. Returns the session ID or None."""
-    base_url = get_opencode_base_url(host)
-    try:
-        body: dict = {}
-        if title:
-            body["title"] = title
-        resp = requests.post(f"{base_url}/session", json=body, timeout=60)
-        resp.raise_for_status()
-        return resp.json().get("id")
-    except Exception as exc:
-        print(f"[coder56] Failed to create session: {exc}", file=sys.stderr)
-        return None
-
-
-def send_message_async(host: str, session_id: str, message: str,
-                       agent: str = DEFAULT_AGENT) -> bool:
-    """Fire-and-forget: POST prompt and return immediately."""
-    base_url = get_opencode_base_url(host)
-    try:
-        body = {
-            "parts": [{"type": "text", "text": message}],
-            "agent": agent,
-        }
-        resp = requests.post(
-            f"{base_url}/session/{session_id}/prompt_async",
-            json=body,
-            timeout=30,
-        )
-        return resp.status_code in (200, 204)
-    except Exception as exc:
-        print(f"[coder56] Failed to send async message: {exc}",
-              file=sys.stderr)
-        return False
-
-
-def send_message_sync(host: str, session_id: str, message: str,
-                      agent: str = DEFAULT_AGENT,
-                      timeout: int = 600) -> Optional[Dict]:
-    """Blocking: POST prompt and wait for the full response."""
-    base_url = get_opencode_base_url(host)
-    try:
-        body = {
-            "parts": [{"type": "text", "text": message}],
-            "agent": agent,
-        }
-        resp = requests.post(
-            f"{base_url}/session/{session_id}/message",
-            json=body,
-            timeout=timeout,
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as exc:
-        print(f"[coder56] Failed to send sync message: {exc}",
-              file=sys.stderr)
-        return None
-
-
-def get_session_status(host: str,
-                       session_id: Optional[str] = None) -> Optional[Dict]:
-    """Query execution status.  If *session_id* given, return only that."""
-    base_url = get_opencode_base_url(host)
-    try:
-        resp = requests.get(f"{base_url}/session/status", timeout=10)
-        resp.raise_for_status()
-        all_statuses = resp.json()
-        if session_id:
-            return all_statuses.get(session_id)
-        return all_statuses
-    except Exception as exc:
-        print(f"[coder56] Failed to get session status: {exc}",
-              file=sys.stderr)
-        return None
-
-
-_BUSY_STATES = ("busy", "pending", "running", "active", "generating")
-_IDLE_STATES = ("completed", "idle", "ready", "done")
-# Grace period (seconds) to wait for the server to transition to "busy"
-# after an async prompt before we start treating "idle" as "completed".
-_GRACE_PERIOD = 15
-
-# Phrases that indicate the session failed due to context window overflow.
-# Checked case-insensitively against the error status string.
-_CONTEXT_OVERFLOW_PHRASES = (
-    "requested token count exceeds",
-    "context length of",
-    "exceeds the model's maximum context",
-    "maximum context length",
-    "input messages or the completion to fit within the limit",
-)
-
-# Tracks the last error seen by wait_for_session_complete so callers can
-# inspect the reason for completion without changing the bool return type.
-_last_wait_error: Optional[str] = None
-
-
-def _is_context_overflow(status_str: str) -> bool:
-    """Return True if *status_str* indicates a context-window overflow."""
-    s = status_str.lower()
-    return any(phrase in s for phrase in _CONTEXT_OVERFLOW_PHRASES)
-
-
-def wait_for_session_complete(host: str, session_id: str,
-                              timeout: int = 600) -> bool:
-    """Poll session status until it completes, fails, or times out.
-
-    The function waits through an initial *grace period* during which
-    "idle" / "ready" statuses are **not** treated as completion.  This
-    avoids the race where polling starts before the server picks up the
-    async prompt.
-    """
-    global _last_wait_error
-    _last_wait_error = None
-    start = time.time()
-    saw_busy = False          # True once we've seen a busy state
-    _last_logged_status = None  # avoid spamming the same status
-
-    while True:
-        elapsed = time.time() - start
-        if elapsed >= timeout:
-            break
-
-        status = get_session_status(host, session_id)
-
-        # ── session disappeared from status map ──────────────────────
-        if status is None:
-            if _last_logged_status != "__none__":
-                print(f"[coder56]   status: None (saw_busy={saw_busy}, "
-                      f"elapsed={elapsed:.0f}s)")
-                _last_logged_status = "__none__"
-            # Early in the run the session may not yet appear
-            if saw_busy or elapsed > _GRACE_PERIOD:
-                print(f"[coder56] Session {session_id[:12]} completed "
-                      f"({elapsed:.0f}s)")
-                return True
-            time.sleep(STATUS_POLL_INTERVAL)
-            continue
-
-        status_str = str(status).lower()
-        if status_str != _last_logged_status:
-            print(f"[coder56]   status: {status_str[:80]} "
-                  f"(saw_busy={saw_busy}, elapsed={elapsed:.0f}s)")
-            _last_logged_status = status_str
-
-        # ── track whether we ever saw the session actively working ───
-        if any(s in status_str for s in _BUSY_STATES):
-            saw_busy = True
-
-        # ── hard errors are always final ─────────────────────────────
-        if "error" in status_str or "failed" in status_str:
-            _last_wait_error = status_str
-            print(f"[coder56] Session {session_id[:12]} errored: "
-                  f"{status_str}", file=sys.stderr)
-            return True
-
-        # ── idle / completed states ──────────────────────────────────
-        if any(s in status_str for s in _IDLE_STATES):
-            if saw_busy:
-                # Was busy before → genuinely finished
-                return True
-            if elapsed > _GRACE_PERIOD:
-                # Never saw busy, but grace period exhausted
-                print(f"[coder56] Session {session_id[:12]}: still "
-                      f"idle after grace period ({elapsed:.0f}s), "
-                      f"treating as completed")
-                return True
-            # Still within grace period – keep waiting for busy
-
-        time.sleep(STATUS_POLL_INTERVAL)
-
-    print(f"[coder56] Session {session_id[:12]} timed out after "
-          f"{timeout}s", file=sys.stderr)
-    return False
-
-
-def get_session_messages(host: str, session_id: str) -> Optional[List]:
-    """Fetch all messages / results from a session (with retries)."""
-    base_url = get_opencode_base_url(host)
-    for attempt in range(3):
-        try:
-            resp = requests.get(
-                f"{base_url}/session/{session_id}/message", timeout=30)
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as exc:
-            print(f"[coder56] Attempt {attempt + 1}/3 get messages "
-                  f"failed: {exc}", file=sys.stderr)
-            time.sleep(2)
-    return None
-
-
-def abort_session(host: str, session_id: str) -> bool:
-    """Abort a running session."""
-    base_url = get_opencode_base_url(host)
-    try:
-        resp = requests.post(
-            f"{base_url}/session/{session_id}/abort", timeout=10)
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-def summarize_session(host: str, session_id: str,
-                      provider_id: str = "e-infra-chat",
-                      model_id: str = "qwen3-coder") -> bool:
-    """Ask the OpenCode server to compress this session's history in-place.
-
-    Uses ``POST /session/:id/summarize``.  After a successful call the
-    session's token count drops significantly, allowing further prompts
-    without hitting the context-window limit.
-    Returns True on success.
-    """
-    base_url = get_opencode_base_url(host)
-    try:
-        body = {"providerID": provider_id, "modelID": model_id}
-        resp = requests.post(
-            f"{base_url}/session/{session_id}/summarize",
-            json=body,
-            timeout=120,  # summarisation can take a moment
-        )
-        if resp.status_code == 200:
-            result = resp.json()
-            # The endpoint returns a boolean
-            return bool(result) if not isinstance(result, bool) else result
-        print(f"[coder56] summarize_session HTTP {resp.status_code}: "
-              f"{resp.text[:200]}", file=sys.stderr)
-        return False
-    except Exception as exc:
-        print(f"[coder56] Failed to summarize session: {exc}",
-              file=sys.stderr)
-        return False
-
-
-def fork_session(host: str, session_id: str,
-                 message_id: Optional[str] = None) -> Optional[str]:
-    """Fork an existing session to continue with full context.
-
-    Returns the new session ID or *None* on failure.
-    """
-    base_url = get_opencode_base_url(host)
-    try:
-        body: dict = {}
-        if message_id:
-            body["messageID"] = message_id
-        resp = requests.post(f"{base_url}/session/{session_id}/fork",
-                             json=body, timeout=60)
-        resp.raise_for_status()
-        return resp.json().get("id")
-    except Exception as exc:
-        print(f"[coder56] Failed to fork session: {exc}", file=sys.stderr)
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Log conversion: API messages → legacy JSONL format
-# (Adapted from auto_responder.py)
-# ---------------------------------------------------------------------------
-def convert_api_messages_to_legacy_jsonl(messages: List[Dict]) -> List[str]:
-    """Convert OpenCode Server API message format to legacy JSONL format.
-
-    Legacy format has one JSON event per line with top-level fields:
-      {"type": "step_start|tool_use|text|step_finish",
-       "timestamp": <ms_epoch>, "sessionID": ..., "part": {...}}
-
-    API message format has messages containing parts:
-      [{"info": {...}, "parts": [{"type": "step-start|tool|text|step-finish", ...}]}]
-    """
-    legacy_lines: List[str] = []
-
-    for msg in messages:
-        info = msg.get("info", {})
-        parts = msg.get("parts", [])
-        session_id = info.get("sessionID", "")
-
-        for part in parts:
-            part_type = part.get("type", "")
-
-            # Map API part types to legacy event types
-            type_map = {
-                "step-start": "step_start",
-                "step-finish": "step_finish",
-                "tool": "tool_use",
-                "text": "text",
-            }
-            legacy_type = type_map.get(part_type)
-            if legacy_type is None:
-                continue
-
-            # Determine timestamp
-            timestamp_ms = 0
-            part_time = part.get("time", {})
-            if part_time:
-                timestamp_ms = (
-                    part_time.get("start", 0) or part_time.get("end", 0)
-                )
-            if not timestamp_ms:
-                msg_time = info.get("time", {})
-                timestamp_ms = (
-                    msg_time.get("created", 0)
-                    or msg_time.get("completed", 0)
-                )
-
-            legacy_event: Dict = {
-                "type": legacy_type,
-                "timestamp": timestamp_ms,
-                "sessionID": session_id,
-                "part": part,
-            }
-
-            # For step_finish, add reason/cost/tokens from message info
-            if legacy_type == "step_finish":
-                if "reason" not in part and info.get("finish"):
-                    legacy_event["part"]["reason"] = info["finish"]
-                if "cost" not in part and info.get("cost") is not None:
-                    legacy_event["part"]["cost"] = info["cost"]
-                if "tokens" not in part and info.get("tokens"):
-                    legacy_event["part"]["tokens"] = info["tokens"]
-
-            legacy_lines.append(
-                json.dumps(legacy_event, separators=(",", ":"))
-            )
-
-    return legacy_lines
-
-
-def save_session_logs(host: str, session_id: str, output_dir: str,
-                      timeline_path: str, execution_id: str,
-                      session_num: int) -> Dict:
-    """Fetch session messages and save in both API and legacy JSONL formats.
-
-    Saves (per session, appending to execution-level files):
-      - opencode_api_messages.json  : Full API response (JSON array)
-      - opencode_stdout.jsonl       : Legacy JSONL format (one event per line)
-
-    Also writes each OpenCode event to the timeline.
-    Returns dict with parsed metrics.
-    """
-    api_path = os.path.join(output_dir, "opencode_api_messages.json")
-    legacy_path = os.path.join(output_dir, "opencode_stdout.jsonl")
-
-    messages = get_session_messages(host, session_id)
-    if messages is None:
-        print(f"[coder56] No messages retrieved for session "
-              f"{session_id[:12]}", file=sys.stderr)
-        return {"final_output": None, "llm_calls": 0,
-                "tool_calls": [], "errors": [],
-                "messages": None}
-
-    if not messages:
-        print(f"[coder56] Empty message list for session "
-              f"{session_id[:12]}")
-        return {"final_output": None, "llm_calls": 0,
-                "tool_calls": [], "errors": [],
-                "messages": messages}
-
-    # ── Save API format (load existing, append, rewrite) ──
-    existing: List = []
-    if os.path.exists(api_path):
-        try:
-            with open(api_path, "r", encoding="utf-8") as fh:
-                existing = json.load(fh)
-        except (json.JSONDecodeError, OSError):
-            existing = []
-
-    existing.append({
-        "session_id": session_id,
-        "session_num": session_num,
-        "exec": execution_id[:8],
-        "saved_at": datetime.now(timezone.utc).isoformat(),
-        "messages": messages,
-    })
-    with open(api_path, "w", encoding="utf-8") as fh:
-        json.dump(existing, fh, indent=2)
-    print(f"[coder56] Saved API messages → {api_path}")
-
-    # ── Convert and save legacy JSONL format (append) ──
-    legacy_lines = convert_api_messages_to_legacy_jsonl(messages)
-    with open(legacy_path, "a", encoding="utf-8") as fh:
-        for line in legacy_lines:
-            fh.write(line + "\n")
-    print(f"[coder56] Saved legacy JSONL ({len(legacy_lines)} events) → "
-          f"{legacy_path}")
-
-    # ── Write each OpenCode event to the timeline (deduplicated) ──
-    # Track which events we've already written to avoid duplicates from repeated calls
-    _written_events: set = getattr(save_session_logs, "_written_events", set())
-
-    for line in legacy_lines:
-        try:
-            event = json.loads(line)
-            event_type = event.get("type", "")
-
-            # Create a unique identifier for this event
-            # Use event ID if available, otherwise create one from relevant fields
-            event_id = event.get("id", "")
-            if not event_id and event_type == "tool":
-                event_id = event.get("state", {}).get("callID", "")
-            if not event_id and event_type == "step-start":
-                event_id = event.get("id", "")
-            if not event_id and event_type == "step-finish":
-                event_id = event.get("id", "")
-            if not event_id:
-                # Fallback: use event type + timestamp as unique ID
-                event_id = f"{event_type}_{event.get('timestamp', '')}"
-
-            # Skip if we've already written this event
-            unique_key = f"{session_id}:{event_id}"
-            if unique_key in _written_events:
-                continue
-
-            entry = {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "level": "OPENCODE",
-                "msg": event_type,
-                "exec": execution_id[:8],
-                "data": event,
-            }
-            with open(timeline_path, "a", encoding="utf-8") as handle:
-                handle.write(
-                    json.dumps(entry, separators=(",", ":")) + "\n"
-                )
-            _written_events.add(unique_key)
-        except (json.JSONDecodeError, ValueError):
-            continue
-
-    # Persist the written events set for next call
-    save_session_logs._written_events = _written_events
-
-    # ── Parse metrics ──
-    llm_calls = 0
-    tool_calls: List[str] = []
-    text_outputs: List[str] = []
-    errors: List[str] = []
-    total_tokens = {"input": 0, "output": 0, "reasoning": 0}
-    total_cost = 0.0
-
-    for msg in messages:
-        info = msg.get("info", {})
-        parts = msg.get("parts", [])
-
-        if info.get("role") == "assistant":
-            msg_tokens = info.get("tokens", {})
-            total_tokens["input"] += msg_tokens.get("input", 0)
-            total_tokens["output"] += msg_tokens.get("output", 0)
-            total_tokens["reasoning"] += msg_tokens.get("reasoning", 0)
-            total_cost += info.get("cost", 0) or 0
-
-        for part in parts:
-            part_type = part.get("type", "")
-            if part_type == "step-start":
-                llm_calls += 1
-            elif part_type == "tool":
-                tool_calls.append(part.get("tool", "unknown"))
-            elif part_type == "text":
-                text = part.get("text", "")
-                if text:
-                    text_outputs.append(text)
-
-    final_output = None
-    if text_outputs:
-        final_output = " ".join(text_outputs)[-500:]
-
-    return {
-        "final_output": final_output,
-        "llm_calls": llm_calls,
-        "tool_calls": tool_calls,
-        "errors": errors,
-        "total_tokens": total_tokens,
-        "total_cost": total_cost,
-        "api_messages": len(messages),
-        "messages": messages,
-    }
-
-
-def _extract_context_from_messages(messages: Optional[List],
-                                   max_chars: int = 2000) -> str:
-    """Best-effort extraction of readable context from session messages."""
-    if not messages:
-        return ""
-    context_parts: List[str] = []
-    for msg in reversed(messages):
-        if not isinstance(msg, dict):
-            continue
-        role = msg.get("role", msg.get("type", "unknown"))
-        content = msg.get("content", msg.get("text", ""))
-        if isinstance(content, list):
-            content = " ".join(
-                p.get("text", str(p)) if isinstance(p, dict) else str(p)
-                for p in content
-            )
-        elif not isinstance(content, str):
-            content = str(content)
-        if content.strip():
-            context_parts.append(f"[{role}]: {content[:500]}")
-        if sum(len(p) for p in context_parts) >= max_chars:
-            break
-    context_parts.reverse()
-    return "\n".join(context_parts)
-
-
-def _get_last_assistant_text(messages: Optional[List]) -> str:
-    """Return the text of the last assistant message, or empty string."""
-    if not messages:
-        return ""
-    for msg in reversed(messages):
-        if not isinstance(msg, dict):
-            continue
-        role = msg.get("role", msg.get("type", ""))
-        if role not in ("assistant", "model"):
-            continue
-        content = msg.get("content", msg.get("text", ""))
-        if isinstance(content, list):
-            content = " ".join(
-                p.get("text", str(p)) if isinstance(p, dict) else str(p)
-                for p in content
-            )
-        elif not isinstance(content, str):
-            content = str(content)
-        return content.strip()
-    return ""
-
-
-def _agent_says_done(messages: Optional[List]) -> bool:
-    """Heuristic: check if the agent's last response signals task completion."""
-    text = _get_last_assistant_text(messages).lower()
-    if not text:
-        return False
-    return any(phrase in text for phrase in _DONE_PHRASES)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-def get_trident_base() -> str:
-    """Get Trident base directory (Docker: /home/shared/Trident, Host: workspace root)."""
-    # Check environment variable first (Docker containers set this)
-    trident_home = os.environ.get("TRIDENT_HOME", "").strip()
-    if trident_home and os.path.isdir(trident_home):
-        return trident_home
-
-    # Fall back to workspace root (for host execution)
-    # Navigate up from script location to find Trident root
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    current = script_dir
-    for _ in range(5):  # Search up to 5 levels
-        if os.path.exists(os.path.join(current, "README.md")) and \
-           os.path.exists(os.path.join(current, "docker-compose.yml")):
-            return current
-        parent = os.path.dirname(current)
-        if parent == current:  # Reached root
-            break
-        current = parent
-
-    # Last resort: use current working directory
-    return os.getcwd()
-
-
-def resolve_run_id() -> str:
-    run_id = os.environ.get("RUN_ID", "").strip()
-    if run_id:
-        return run_id
-    base_dir = get_trident_base()
-    current_run = os.path.join(base_dir, "outputs", ".current_run")
-    try:
-        with open(current_run, "r", encoding="utf-8") as fh:
-            return fh.read().strip()
-    except FileNotFoundError:
-        return "manual"
-
-
-def write_timeline_entry(path: str, level: str, message: str,
-                         data: Optional[dict] = None) -> None:
-    entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "level": level.upper(),
-        "msg": message,
-    }
-    if data:
-        entry["data"] = data
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry, separators=(",", ":")) + "\n")
-        fh.flush()
+Complete your objectives efficiently in a single session."""
 
 
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the coder56 agent."""
+    opencode_server_port = int(os.getenv("OPENCODE_SERVER_PORT", "4096"))
+    opencode_server_host = "127.0.0.1"
+    default_agent = "coder56"
+    status_poll_interval = float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3"))
+
     parser = argparse.ArgumentParser(
         description="Run coder56 attacker agent via OpenCode Server API.",
     )
@@ -735,16 +73,16 @@ def parse_args() -> argparse.Namespace:
         help="Goal text to send to the agent (default: built-in coder56 goal).",
     )
     parser.add_argument(
-        "--host", default=OPENCODE_SERVER_HOST,
-        help=f"OpenCode server host (default: {OPENCODE_SERVER_HOST}).",
+        "--host", default=opencode_server_host,
+        help=f"OpenCode server host (default: {opencode_server_host}).",
     )
     parser.add_argument(
-        "--port", type=int, default=OPENCODE_SERVER_PORT,
-        help=f"OpenCode server port (default: {OPENCODE_SERVER_PORT}).",
+        "--port", type=int, default=opencode_server_port,
+        help=f"OpenCode server port (default: {opencode_server_port}).",
     )
     parser.add_argument(
-        "--agent", default=DEFAULT_AGENT,
-        help=f"Agent name (default: {DEFAULT_AGENT}).",
+        "--agent", default=default_agent,
+        help=f"Agent name (default: {default_agent}).",
     )
     parser.add_argument(
         "--time-limit", type=int, default=None,
@@ -759,351 +97,368 @@ def parse_args() -> argparse.Namespace:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Coder56 Agent Class
 # ---------------------------------------------------------------------------
-def main() -> int:
-    global _active_host, _active_session_id, OPENCODE_SERVER_PORT, _last_wait_error
+class Coder56Agent:
+    """
+    Coder56 Attacker Agent that connects to OpenCode Server API.
 
-    args = parse_args()
-    goal_text = " ".join(args.goal).strip()
-    if not goal_text:
-        goal_text = DEFAULT_GOAL
-    host = args.host
-    agent = args.agent
-    time_limit = args.time_limit
-    OPENCODE_SERVER_PORT = args.port
+    This class manages a single coder56 session with one initial message,
+    including session creation, message handling, and logging.
+    """
 
-    execution_id = uuid4().hex
-    run_id = resolve_run_id()
-    base_dir = get_trident_base()
-    output_dir = os.path.join(base_dir, "outputs", run_id, "coder56")
-    os.makedirs(output_dir, exist_ok=True)
-    timeline_path = os.path.join(output_dir, "auto_responder_timeline.jsonl")
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        agent: str,
+        status_poll_interval: float,
+        goal_text: str,
+        time_limit: Optional[int],
+    ) -> None:
+        """
+        Initialize the Coder56Agent.
 
-    # Expose log context so the signal handler can flush on Ctrl+C.
-    global _signal_log_ctx
-    _signal_log_ctx = {
-        "output_dir": output_dir,
-        "timeline_path": timeline_path,
-        "execution_id": execution_id,
-        "session_count": 0,
-    }
+        Args:
+            host: OpenCode server host
+            port: OpenCode server port
+            agent: Agent name
+            status_poll_interval: Seconds between status polls
+            goal_text: The goal/instruction text for the agent
+            time_limit: Maximum execution time in seconds (None = indefinite)
+        """
+        self.host = host
+        self.port = port
+        self.agent_name = agent
+        self.status_poll_interval = status_poll_interval
+        self.goal_text = goal_text
+        self.time_limit = time_limit
 
-    print(f"[coder56] OpenCode Server API mode")
-    print(f"[coder56] Logs  : {output_dir}")
-    print(f"[coder56] Target: http://{host}:{OPENCODE_SERVER_PORT}")
-    print(f"[coder56] Agent : {agent}")
-    print(f"[coder56] Goal  : {goal_text!r}")
-    if time_limit is not None:
-        print(f"[coder56] Time limit: {time_limit}s")
-    else:
-        print(f"[coder56] Time limit: None (indefinite execution)")
+        # Initialize the OpenCode agent client
+        self._opencode_agent = OpenCodeAgent(
+            host=host,
+            port=port,
+            agent=agent,
+            status_poll_interval=status_poll_interval,
+        )
 
-    write_timeline_entry(timeline_path, "INIT",
-                         "coder56 execution started", data={
-                             "goal": goal_text,
-                             "host": host,
-                             "agent": agent,
-                             "exec": execution_id[:8],
-                             "mode": "opencode_server_api",
-                             "time_limit": time_limit,
-                         })
+        # Instance state
+        self.execution_id: str = uuid4().hex
+        self.run_id: str = self._opencode_agent.resolve_run_id()
+        self.base_dir: str = self._opencode_agent.get_trident_base()
+        self.output_dir: str = os.path.join(
+            self.base_dir, "outputs", self.run_id, "coder56"
+        )
+        self.timeline_path: str = os.path.join(
+            self.output_dir, "coder56_timeline.jsonl"
+        )
 
-    # ── 1. Wait for OpenCode server ──────────────────────────────────
-    print("[coder56] Waiting for OpenCode server...")
-    if not wait_for_opencode_server(host, timeout=120):
-        msg = (f"OpenCode server not available at "
-               f"{host}:{OPENCODE_SERVER_PORT}")
-        print(f"[coder56] ERROR: {msg}", file=sys.stderr)
-        write_timeline_entry(timeline_path, "ERROR", msg,
-                             data={"exec": execution_id[:8]})
-        return 1
-    print("[coder56] ✓ OpenCode server healthy")
+        # Execution state
+        self.session_count: int = 0
+        self.all_session_messages: List[Dict] = []
+        self.execution_start: float = 0.0
 
-    # ── 2. Session loop – keep launching sessions until time limit ───
-    execution_start = time.time()
-    all_session_messages: List[Dict] = []
-    session_count = 0
-    prev_session_id: Optional[str] = None
+        # Live logging thread control
+        self._stop_live_logging: Optional[threading.Event] = None
+        self._live_log_thread: Optional[threading.Thread] = None
 
-    while True:
-        # Check if we've exceeded time limit (if set)
-        if time_limit is not None:
-            elapsed = time.time() - execution_start
-            remaining = time_limit - elapsed
+        # Expose log context for signal handler
+        self._opencode_agent._signal_log_ctx = {
+            "output_dir": self.output_dir,
+            "timeline_path": self.timeline_path,
+            "execution_id": self.execution_id,
+            "session_count": 0,
+        }
 
-            if remaining < _MIN_REMAINING_SECONDS:
-                print(f"[coder56] Time limit reached "
-                      f"({elapsed:.0f}s/{time_limit}s)")
-                break
+    def initialize(self) -> bool:
+        """
+        Initialize output directories and perform startup checks.
+
+        Returns:
+            True if initialization successful, False otherwise
+        """
+        os.makedirs(self.output_dir, exist_ok=True)
+
+        print(f"[coder56] OpenCode Server API mode")
+        print(f"[coder56] Logs  : {self.output_dir}")
+        print(f"[coder56] Target: http://{self.host}:{self.port}")
+        print(f"[coder56] Agent : {self.agent_name}")
+        print(f"[coder56] Goal  : {self.goal_text!r}")
+        if self.time_limit is not None:
+            print(f"[coder56] Time limit: {self.time_limit}s")
         else:
-            remaining = float('inf')  # Infinite time remaining
+            print(f"[coder56] Time limit: None (indefinite execution)")
 
-        session_count += 1
-        is_forked = False
+        self._write_timeline_entry(
+            "INIT",
+            "coder56 execution started",
+            data={
+                "goal": self.goal_text,
+                "host": self.host,
+                "agent": self.agent_name,
+                "exec": self.execution_id[:8],
+                "mode": "opencode_server_api",
+                "time_limit": self.time_limit,
+            }
+        )
 
-        # ── Create session (fork previous for continuity, or new) ────
-        if prev_session_id is not None:
-            print(f"[coder56] Session {session_count}: forking from "
-                  f"{prev_session_id[:12]}...")
-            session_id = fork_session(host, prev_session_id)
-            if session_id:
-                is_forked = True
-            else:
-                print("[coder56] Fork failed, creating fresh session "
-                      "with context...")
-                session_id = create_session(
-                    host,
-                    title=f"coder56 {execution_id[:8]} s{session_count}")
-        else:
-            session_id = create_session(
-                host, title=f"coder56 {execution_id[:8]}")
+        # Wait for OpenCode server
+        print("[coder56] Waiting for OpenCode server...")
+        if not self._opencode_agent.wait_for_server(timeout=120):
+            msg = f"OpenCode server not available at {self.host}:{self.port}"
+            print(f"[coder56] ERROR: {msg}", file=sys.stderr)
+            self._write_timeline_entry(
+                "ERROR", msg, data={"exec": self.execution_id[:8]}
+            )
+            return False
+        print("[coder56] ✓ OpenCode server healthy")
+
+        return True
+
+    def _write_timeline_entry(
+        self,
+        event_type: str,
+        message: str,
+        data: Optional[Dict] = None,
+    ) -> None:
+        """Write an entry to the timeline log."""
+        self._opencode_agent._write_timeline_entry(
+            self.timeline_path, event_type, message, data
+        )
+
+    def _get_remaining_time(self) -> float:
+        """Get remaining time in seconds (inf if no limit)."""
+        if self.time_limit is None:
+            return float('inf')
+        elapsed = time.time() - self.execution_start
+        return max(0, self.time_limit - elapsed)
+
+    def _create_session(self, title: str) -> Optional[str]:
+        """Create a new OpenCode session."""
+        return self._opencode_agent.create_session(title=title)
+
+    def _start_live_logging(
+        self, session_id: str
+    ) -> Tuple[threading.Event, threading.Thread]:
+        """Start background thread to save logs periodically."""
+        stop_event = threading.Event()
+
+        def live_log_saver():
+            while not stop_event.is_set():
+                try:
+                    self._opencode_agent.save_session_logs(
+                        session_id,
+                        self.output_dir,
+                        self.timeline_path,
+                        self.execution_id,
+                        self.session_count,
+                    )
+                except Exception:
+                    pass  # Silently fail if session isn't ready yet
+                stop_event.wait(2.0)  # Save every 2 seconds
+
+        thread = threading.Thread(target=live_log_saver, daemon=True)
+        thread.start()
+        return stop_event, thread
+
+    def stop_live_logging_thread(self) -> None:
+        """Stop the live logging thread if running."""
+        if self._stop_live_logging is not None:
+            self._stop_live_logging.set()
+        if self._live_log_thread is not None:
+            self._live_log_thread.join(timeout=1)
+
+    def _build_first_prompt(self) -> str:
+        """Build the initial prompt for the session."""
+        return self.goal_text
+
+    def _run_session(self) -> Tuple[bool, bool]:
+        """
+        Run a single session with one message.
+
+        Returns:
+            Tuple of (agent_done, context_overflow)
+        """
+        self.session_count += 1
+
+        # Create a single session (no forking)
+        session_id = self._create_session(
+            title=f"coder56 {self.execution_id[:8]}"
+        )
 
         if not session_id:
-            msg = f"Failed to create session {session_count}"
+            msg = f"Failed to create session {self.session_count}"
             print(f"[coder56] ERROR: {msg}", file=sys.stderr)
-            write_timeline_entry(timeline_path, "ERROR", msg,
-                                 data={"exec": execution_id[:8],
-                                        "session_num": session_count})
-            return 1
-
-        _active_host = host
-        _active_session_id = session_id
-        _signal_log_ctx["session_count"] = session_count
-
-        print(f"[coder56] ✓ Session {session_count} created: "
-              f"{session_id[:12]} ({'forked' if is_forked else 'new'})")
-        write_timeline_entry(
-            timeline_path, "SESSION",
-            f"Session {session_count} created",
-            data={"session_id": session_id,
-                  "session_num": session_count,
-                  "forked_from": prev_session_id if is_forked else None,
-                  "exec": execution_id[:]})
-
-        # ── Build first prompt for this session ──────────────────────
-        if session_count == 1:
-            prompt = goal_text
-        else:
-            if time_limit is not None:
-                remaining_min = remaining / 60
-                time_phrase = f"You still have approximately {remaining_min:.0f} minutes remaining."
-            else:
-                time_phrase = "Continue your attack."
-
-            if is_forked:
-                prompt = (
-                    f"{time_phrase} Here is your "
-                    f"objective:\n\n{goal_text}\n\n"
-                    f"IMPORTANT: Do NOT just describe what you would do. "
-                    f"Actually execute the commands right now. Start "
-                    f"immediately by running a command."
-                )
-            else:
-                prev_ctx = ""
-                if all_session_messages:
-                    last_msgs = all_session_messages[-1].get("messages")
-                    prev_ctx = _extract_context_from_messages(last_msgs)
-                context_block = ""
-                if prev_ctx:
-                    context_block = (
-                        f"\n\nHere is context from your previous "
-                        f"session:\n{prev_ctx}"
-                    )
-                prompt = (
-                    f"{time_phrase} Here is your objective:\n\n"
-                    f"{goal_text}{context_block}\n\n"
-                    f"IMPORTANT: Do NOT just describe what you would do. "
-                    f"Actually execute the commands right now. Start "
-                    f"immediately by running a command."
-                )
-
-        # ── Inner turn loop: keep the session alive ──────────────────
-        session_start = time.time()
-        turn = 0
-        agent_done = False
-        context_overflow = False
-
-        while True:
-            turn += 1
-            # Check time limit if set
-            if time_limit is not None:
-                turn_remaining = time_limit - (time.time() - execution_start)
-                if turn_remaining < _MIN_REMAINING_SECONDS:
-                    print(f"[coder56] Time limit approaching, ending session "
-                          f"{session_count}")
-                    break
-            else:
-                turn_remaining = float('inf')  # No time limit
-
-            # Send prompt
-            turn_label = f"s{session_count}t{turn}"
-            print(f"[coder56] [{turn_label}] Sending prompt...")
-            if not send_message_async(host, session_id, prompt,
-                                       agent=agent):
-                print(f"[coder56] [{turn_label}] Failed to send prompt",
-                      file=sys.stderr)
-                break
-            print(f"[coder56] [{turn_label}] Prompt sent, waiting...")
-
-            # ── Start background thread to save logs every 2 seconds for real-time dashboard ──
-            import threading
-            _stop_live_logging = threading.Event()
-            def _live_log_saver():
-                while not _stop_live_logging.is_set():
-                    try:
-                        save_session_logs(
-                            host, session_id, output_dir, timeline_path,
-                            execution_id, session_count)
-                    except Exception:
-                        pass  # Silently fail if session isn't ready yet
-                    _stop_live_logging.wait(2.0)  # Save every 2 seconds
-            _live_log_thread = threading.Thread(target=_live_log_saver, daemon=True)
-            _live_log_thread.start()
-
-            # Wait for this turn to finish
-            if time_limit is not None:
-                turn_timeout = max(int(turn_remaining), 60)
-            else:
-                turn_timeout = 3600  # 1 hour per turn when no limit
-            completed = wait_for_session_complete(
-                host, session_id, timeout=turn_timeout)
-
-            # ── Stop live logging ──
-            _stop_live_logging.set()
-            _live_log_thread.join(timeout=1)
-
-            turn_duration = time.time() - session_start
-
-            if not completed:
-                print(f"[coder56] [{turn_label}] Timed out")
-                break
-
-            # ── Check for context window overflow ────────────────────
-            if _last_wait_error and _is_context_overflow(_last_wait_error):
-                print(f"[coder56] [{turn_label}] Context window overflow "
-                      f"– summarizing session {session_id[:12]}...",
-                      file=sys.stderr)
-                if summarize_session(host, session_id):
-                    print(f"[coder56] [{turn_label}] Session summarized, "
-                          f"retrying prompt...")
-                    _last_wait_error = None
-                    continue  # retry same prompt in the now-compact session
-                # Summarization failed – fall back to a fresh session
-                print(f"[coder56] [{turn_label}] Summarization failed, "
-                      f"will start a fresh session", file=sys.stderr)
-                context_overflow = True
-                prev_session_id = None  # prevent fork in outer loop
-                break  # end inner turn loop → outer loop starts fresh session
-
-            # Fetch messages and inspect the agent's last response
-            messages = get_session_messages(host, session_id)
-            last_text = _get_last_assistant_text(messages)
-            snippet = last_text[:200].replace("\n", " ")
-            print(f"[coder56] [{turn_label}] Agent responded "
-                  f"({turn_duration:.0f}s): {snippet}...")
-
-            # Check if the agent considers itself done
-            if _agent_says_done(messages):
-                print(f"[coder56] [{turn_label}] Agent signaled "
-                      f"task completion")
-                agent_done = True
-                break
-
-            # Build follow-up prompt for next turn
-            if time_limit is not None:
-                remaining_min = (time_limit - (time.time() - execution_start)) / 60
-                time_phrase = f"You have approximately {remaining_min:.0f} minutes remaining."
-            else:
-                time_phrase = "Continue your attack."
-
-            prompt = (
-                f"Good, keep going. {time_phrase} "
-                f"Continue with the next task. "
-                f"Execute the next command now."
+            self._write_timeline_entry(
+                "ERROR", msg,
+                data={"exec": self.execution_id[:8], "session_num": self.session_count}
             )
+            return False, False
 
-        # ── End of session: save logs incrementally ──────────────────
+        self._opencode_agent._active_session_id = session_id
+        self._opencode_agent._signal_log_ctx["session_count"] = self.session_count
+
+        print(f"[coder56] ✓ Session {self.session_count} created: "
+              f"{session_id[:12]}")
+        self._write_timeline_entry(
+            "SESSION",
+            f"Session {self.session_count} created",
+            data={
+                "session_id": session_id,
+                "session_num": self.session_count,
+                "exec": self.execution_id[:8]
+            }
+        )
+
+        # Build and send the single initial prompt
+        prompt = self._build_first_prompt()
+
+        # Send the prompt and wait for completion
+        session_start = time.time()
+
+        print(f"[coder56] Sending initial prompt...")
+        if not self._opencode_agent.send_message_async(session_id, prompt):
+            print(f"[coder56] Failed to send prompt", file=sys.stderr)
+            return False, False
+        print(f"[coder56] Prompt sent, waiting for completion...")
+
+        # Start background thread to save logs every 2 seconds
+        self._stop_live_logging, self._live_log_thread = self._start_live_logging(
+            session_id
+        )
+
+        # Wait for session to complete
+        if self.time_limit is not None:
+            timeout = self.time_limit
+        else:
+            timeout = 3600  # 1 hour when no limit
+
+        completed = self._opencode_agent.wait_for_session_complete(
+            session_id, timeout=timeout
+        )
+
+        # Stop live logging
+        self.stop_live_logging_thread()
+
         session_duration = time.time() - session_start
-        log_result = save_session_logs(
-            host, session_id, output_dir, timeline_path,
-            execution_id, session_count)
+
+        if not completed:
+            print(f"[coder56] Session timed out")
+        else:
+            print(f"[coder56] Session completed in {session_duration:.0f}s")
+
+        # End of session: save logs
+        log_result = self._opencode_agent.save_session_logs(
+            session_id,
+            self.output_dir,
+            self.timeline_path,
+            self.execution_id,
+            self.session_count,
+        )
         messages = log_result.get("messages")
         if messages:
-            all_session_messages.append({
+            self.all_session_messages.append({
                 "session_id": session_id,
-                "session_num": session_count,
-                "forked_from": prev_session_id if is_forked else None,
-                "turns": turn,
+                "session_num": self.session_count,
                 "messages": messages,
             })
-            print(f"[coder56] ✓ Session {session_count}: {turn} turns, "
+            print(f"[coder56] ✓ Session {self.session_count}: "
                   f"{len(messages)} messages, {session_duration:.0f}s")
             if log_result.get("llm_calls"):
                 print(f"[coder56]   LLM calls: {log_result['llm_calls']}, "
                       f"tool calls: {len(log_result['tool_calls'])}, "
                       f"cost: ${log_result.get('total_cost', 0):.4f}")
 
-        write_timeline_entry(
-            timeline_path, "SESSION_END",
-            f"Session {session_count} ended",
-            data={"session_id": session_id,
-                  "session_num": session_count,
-                  "turns": turn,
-                  "duration_seconds": round(session_duration, 2),
-                  "agent_done": agent_done,
-                  "context_overflow": context_overflow,
-                  "messages_count": len(messages) if messages else 0,
-                  "exec": execution_id[:]})
+        self._write_timeline_entry(
+            "SESSION_END",
+            f"Session {self.session_count} ended",
+            data={
+                "session_id": session_id,
+                "session_num": self.session_count,
+                "duration_seconds": round(session_duration, 2),
+                "messages_count": len(messages) if messages else 0,
+                "exec": self.execution_id[:8]
+            }
+        )
 
-        # If context overflowed: prev_session_id is already None (set inside
-        # the inner loop); skip the assignment below and continue to the
-        # next iteration which will create a fresh session.
-        if not context_overflow:
-            prev_session_id = session_id
+        return completed, False
 
-        if context_overflow:
-            # Fresh session will be created at the top of the outer loop
-            print(f"[coder56] Starting fresh session after context overflow...")
-            continue
+    def run(self) -> int:
+        """
+        Run the agent with a single session.
 
-        # Session ended. Start a new session if time remains.
-        if time_limit is not None:
-            remaining_now = time_limit - (time.time() - execution_start)
-            if remaining_now < _MIN_REMAINING_SECONDS:
-                print(f"[coder56] Time limit reached after session {session_count}")
-                break
-            reason = "agent finished" if agent_done else "session completed"
-            print(f"[coder56] Session {session_count} done ({reason}), "
-                  f"{remaining_now:.0f}s remain — starting new session...")
+        Returns:
+            Exit code (0 for success, non-zero for failure)
+        """
+        if not self.initialize():
+            return 1
+
+        self.execution_start = time.time()
+
+        # Run a single session
+        completed, context_overflow = self._run_session()
+
+        if not completed:
+            print(f"[coder56] Session did not complete successfully")
+
+        # Final summary
+        return self._finalize()
+
+    def _finalize(self) -> int:
+        """
+        Finalize the execution and write summary.
+
+        Returns:
+            Exit code (0 for success)
+        """
+        total_duration = time.time() - self.execution_start
+        messages_path = os.path.join(self.output_dir, "opencode_api_messages.json")
+
+        if self.all_session_messages:
+            total_msg_count = sum(
+                len(s["messages"]) for s in self.all_session_messages
+            )
+            print(f"[coder56] ✓ {total_msg_count} messages from "
+                  f"{self.session_count} session(s) saved → {messages_path}")
         else:
-            reason = "agent finished" if agent_done else "session completed"
-            print(f"[coder56] Session {session_count} done ({reason}), "
-                  f"starting new session...")
+            print("[coder56] ⚠ No messages retrieved")
 
-    # ── 3. Final summary ─────────────────────────────────────────────
-    total_duration = time.time() - execution_start
-    messages_path = os.path.join(output_dir, "opencode_api_messages.json")
-    if all_session_messages:
-        total_msg_count = sum(
-            len(s["messages"]) for s in all_session_messages)
-        print(f"[coder56] ✓ {total_msg_count} messages from "
-              f"{session_count} session(s) saved → {messages_path}")
-    else:
-        print("[coder56] ⚠ No messages retrieved")
+        self._write_timeline_entry(
+            "DONE",
+            "coder56 execution finished",
+            data={
+                "total_sessions": self.session_count,
+                "total_duration_seconds": round(total_duration, 2),
+                "exec": self.execution_id[:8],
+            }
+        )
 
-    write_timeline_entry(timeline_path, "DONE",
-                         "coder56 execution finished", data={
-                             "total_sessions": session_count,
-                             "total_duration_seconds":
-                                 round(total_duration, 2),
-                             "exec": execution_id[:8],
-                         })
+        self._opencode_agent._active_session_id = None
+        print(f"[coder56] Done. {self.session_count} session(s), "
+              f"{total_duration:.1f}s total.")
+        return 0
 
-    _active_session_id = None
-    print(f"[coder56] Done. {session_count} session(s), "
-          f"{total_duration:.1f}s total.")
-    return 0
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main() -> int:
+    """Main entry point for the coder56 agent."""
+    args = parse_args()
+    goal_text = " ".join(args.goal).strip()
+    if not goal_text:
+        goal_text = DEFAULT_GOAL
+
+    agent = Coder56Agent(
+        host=args.host,
+        port=args.port,
+        agent=args.agent,
+        status_poll_interval=float(os.getenv("OPENCODE_STATUS_POLL_INTERVAL", "3")),
+        goal_text=goal_text,
+        time_limit=args.time_limit,
+    )
+
+    return agent.run()
 
 
 if __name__ == "__main__":
