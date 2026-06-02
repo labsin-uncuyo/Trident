@@ -28,7 +28,7 @@ def _is_truthy(value: Optional[str], default: bool = False) -> bool:
 
 @dataclass
 class PlannerConfig:
-    model: str = os.getenv("LLM_MODEL", "")
+    model: str = os.getenv("PLANNER_MODEL", "gpt-oss-120b")
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
     max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1200"))
     # OpenAI-compatible endpoint values

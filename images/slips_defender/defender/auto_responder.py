@@ -19,9 +19,37 @@ import threading
 import hashlib
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple, Any
 import requests
 import logging
+import sys
+
+# Import shared types
+SHARED_TYPES_PATH = Path("/images/shared/types.py")
+if not SHARED_TYPES_PATH.exists():
+    SHARED_TYPES_PATH = Path(__file__).parent.parent.parent.parent / "images" / "shared" / "types.py"
+if SHARED_TYPES_PATH.exists():
+    sys.path.insert(0, str(SHARED_TYPES_PATH.parent))
+    from types import AgentMetrics, ensure_full_metrics
+else:
+    # Fallback if types.py not available
+    AgentMetrics = Dict[str, Any]  # type: ignore
+    def ensure_full_metrics(m): return m  # type: ignore
+
+# Import shared constants and utilities
+try:
+    from constants import GRACE_PERIOD_SECONDS
+    from opencode_utils import (
+        RETRY_DELAYS, check_for_model_error, ModelAvailabilityError,
+        convert_api_messages_to_legacy_jsonl
+    )
+except ImportError:
+    # Fallback if shared modules not available
+    GRACE_PERIOD_SECONDS = 15
+    RETRY_DELAYS = [1, 5, 10]
+    ModelAvailabilityError = Exception  # type: ignore
+    def check_for_model_error(messages): return None  # type: ignore
+    def convert_api_messages_to_legacy_jsonl(messages): return []  # type: ignore
 
 # Configuration
 RUN_ID = os.getenv("RUN_ID", "run_local")
@@ -34,7 +62,7 @@ OPENCODE_TIMEOUT = int(os.getenv("OPENCODE_TIMEOUT", "1200"))
 POLL_INTERVAL = float(os.getenv("AUTO_RESPONDER_INTERVAL", "5"))
 MAX_EXECUTION_RETRIES = int(os.getenv("MAX_EXECUTION_RETRIES", "3"))
 DUPLICATE_DETECTION_WINDOW = int(os.getenv("DUPLICATE_DETECTION_WINDOW", "300"))  # 5 minutes
-RETRY_DELAYS = [1, 5, 10]  # Seconds to wait between retries (1s, 5s, 10s)
+# RETRY_DELAYS is now imported from opencode_utils
 
 # Planner-only mode: skip OpenCode execution
 PLANNER_ONLY = os.getenv("PLANNER_ONLY", "").lower() in ("true", "1", "yes", "on")
@@ -107,6 +135,7 @@ class AutoResponder:
             entry["data"] = data
         with open(timeline_path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, separators=(",", ":")) + "\n")
+            handle.flush()
 
     def get_machine_output_dir(self, machine_name: str) -> Path:
         output_dir = Path("/outputs") / RUN_ID / "defender" / machine_name
@@ -648,7 +677,7 @@ class AutoResponder:
                         pass
                 # Only treat as completed if we've been polling for at least a few seconds
                 # (to avoid false positives from race conditions at startup)
-                if elapsed > 5:
+                if elapsed > GRACE_PERIOD_SECONDS:
                     self.log("POLL", f"Session {session_id[:8]} no longer in status response → completed ({elapsed:.0f}s)", machine_name)
                     return True
                 time.sleep(OPENCODE_STATUS_POLL_INTERVAL)
@@ -758,6 +787,7 @@ class AutoResponder:
                                 # Write immediately to log file
                                 with open(sse_log_path, "a", encoding="utf-8") as f:
                                     f.write(json.dumps(event, separators=(",", ":")) + "\n")
+                                    f.flush()
 
                         except (json.JSONDecodeError, ValueError):
                             # Skip malformed JSON
@@ -776,70 +806,8 @@ class AutoResponder:
         return events
 
     # ──────────────────────────────────────────────────────────────────
-    # Log conversion: API messages → legacy JSONL format
+    # Log saving functions (uses shared convert_api_messages_to_legacy_jsonl)
     # ──────────────────────────────────────────────────────────────────
-
-    def convert_api_messages_to_legacy_jsonl(self, messages: List[Dict]) -> List[str]:
-        """Convert OpenCode Server API message format to legacy opencode_stdout.jsonl format.
-
-        Legacy format has one JSON event per line with top-level fields:
-          {"type": "step_start|tool_use|text|step_finish", "timestamp": <ms_epoch>, "sessionID": ..., "part": {...}}
-
-        API message format has messages containing parts:
-          [{"info": {...}, "parts": [{"type": "step-start|tool|text|step-finish", ...}]}]
-        """
-        legacy_lines = []
-
-        for msg in messages:
-            info = msg.get("info", {})
-            parts = msg.get("parts", [])
-            session_id = info.get("sessionID", "")
-
-            for part in parts:
-                part_type = part.get("type", "")
-
-                # Map API part types to legacy event types
-                if part_type == "step-start":
-                    legacy_type = "step_start"
-                elif part_type == "step-finish":
-                    legacy_type = "step_finish"
-                elif part_type == "tool":
-                    legacy_type = "tool_use"
-                elif part_type == "text":
-                    legacy_type = "text"
-                else:
-                    # Skip unknown types
-                    continue
-
-                # Determine timestamp: use part time if available, else message time
-                timestamp_ms = 0
-                part_time = part.get("time", {})
-                if part_time:
-                    timestamp_ms = part_time.get("start", 0) or part_time.get("end", 0)
-                if not timestamp_ms:
-                    msg_time = info.get("time", {})
-                    timestamp_ms = msg_time.get("created", 0) or msg_time.get("completed", 0)
-
-                # Build legacy event
-                legacy_event = {
-                    "type": legacy_type,
-                    "timestamp": timestamp_ms,
-                    "sessionID": session_id,
-                    "part": part,
-                }
-
-                # For step_finish, add reason/cost/tokens from the part or message info
-                if legacy_type == "step_finish":
-                    if "reason" not in part and info.get("finish"):
-                        legacy_event["part"]["reason"] = info["finish"]
-                    if "cost" not in part and info.get("cost") is not None:
-                        legacy_event["part"]["cost"] = info["cost"]
-                    if "tokens" not in part and info.get("tokens"):
-                        legacy_event["part"]["tokens"] = info["tokens"]
-
-                legacy_lines.append(json.dumps(legacy_event, separators=(",", ":")))
-
-        return legacy_lines
 
     def save_session_logs(self, target_ip: str, session_id: str, machine_name: str,
                           execution_id: str = None, alert_hash: str = None) -> Dict:
@@ -859,7 +827,16 @@ class AutoResponder:
         if messages is None:
             self.log("WARN", f"No messages retrieved for session {session_id[:8]}",
                      machine_name, alert_hash, execution_id)
-            return {"final_output": None, "llm_calls": 0, "tool_calls": [], "errors": []}
+            return {
+                "final_output": None,
+                "llm_calls": 0,
+                "tool_calls": [],
+                "errors": [],
+                "total_tokens": None,
+                "total_cost": None,
+                "api_messages": None,
+                "messages": None,
+            }
 
         if not messages:
             # Empty list — session had no messages (possibly early completion)
@@ -871,7 +848,16 @@ class AutoResponder:
                 status="completed",
                 messages=[],
             )
-            return {"final_output": None, "llm_calls": 0, "tool_calls": [], "errors": []}
+            return {
+                "final_output": None,
+                "llm_calls": 0,
+                "tool_calls": [],
+                "errors": [],
+                "total_tokens": None,
+                "total_cost": None,
+                "api_messages": None,
+                "messages": None,
+            }
 
         # ── Save canonical API format (atomic) ──
         self.update_canonical_opencode_state(
@@ -888,6 +874,7 @@ class AutoResponder:
         with open(legacy_path, "w", encoding="utf-8") as f:
             for line in legacy_lines:
                 f.write(line + "\n")
+            f.flush()
         self.log("LOG", f"Saved legacy JSONL ({len(legacy_lines)} events) to {legacy_path}",
                  machine_name, alert_hash, execution_id)
 
@@ -907,6 +894,7 @@ class AutoResponder:
                 timeline_entry["data"] = event
                 with open(timeline_path, "a", encoding="utf-8") as handle:
                     handle.write(json.dumps(timeline_entry, separators=(",", ":")) + "\n")
+                    handle.flush()
             except (json.JSONDecodeError, ValueError):
                 continue
 
@@ -954,35 +942,13 @@ class AutoResponder:
             "total_tokens": total_tokens,
             "total_cost": total_cost,
             "api_messages": len(messages),
+            "messages": len(messages),
         }
 
     # ──────────────────────────────────────────────────────────────────
     # Execution via OpenCode Server API
     # ──────────────────────────────────────────────────────────────────
-
-
-    def check_for_model_error(self, messages: List[Dict]) -> Optional[str]:
-        """Check if OpenCode session failed due to model availability error.
-
-        Returns error message if found, None otherwise.
-        """
-        if not messages:
-            return None
-
-        for msg in messages:
-            info = msg.get("info", {})
-            error = info.get("error")
-            if error:
-                error_msg = error.get("data", {}).get("message", "")
-                # Check for model availability errors
-                if any(pattern in error_msg.lower() for pattern in [
-                    "model not found",
-                    "vllm engine is sleeping",
-                    "not found or vllm",
-                    "badrequesterror"
-                ]):
-                    return error_msg
-        return None
+    # Note: check_for_model_error() is now imported from opencode_utils
 
     def execute_plan_via_server_api(self, plan: str, target_name: str, target_ip: str,
                                     alert: Dict, alert_hash: str = None,
@@ -1150,10 +1116,13 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
 
                 duration = time.time() - start_time
 
-                # Check for model availability errors
-                model_error = self.check_for_model_error(
-                    self.get_session_messages(target_ip, session_id) or []
-                )
+                # Check for model availability errors using shared utility
+                try:
+                    messages = self.get_session_messages(target_ip, session_id) or []
+                    raise_for_model_error(messages)
+                    model_error = None
+                except ModelAvailabilityError as e:
+                    model_error = str(e)
 
                 if model_error:
                     self.log("ERROR", f"Model availability error detected: {model_error[:100]}",
@@ -1196,6 +1165,7 @@ Execute all containment and remediation steps immediately. Be decisive and thoro
                 duration = time.time() - start_time
                 with open(stderr_path, "a", encoding="utf-8") as handle:
                     handle.write(f"Exception: {str(exc)}\n")
+                    handle.flush()
                 self.log("ERROR", f"OpenCode execution exception on {target_name}: {exc}", target_name, alert_hash, execution_id, extra_data={
                     "error": str(exc),
                     "duration_seconds": round(duration, 2),
