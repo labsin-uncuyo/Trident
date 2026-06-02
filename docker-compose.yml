@@ -104,7 +104,11 @@ services:
       - ./outputs:/outputs
       - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro
       - auto_responder_ssh_keys:/root/.ssh_auto_responder:ro
-      - ./scripts:/scripts:ro
+      - ./scripts:/scripts:rw
+      - ./images/shared:/opt/shared:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host-internal:${HOST_INTERNAL_IP:-host-gateway}"
     networks:
       lab_net_a:
         ipv4_address: 172.30.0.10
@@ -145,6 +149,9 @@ services:
       - postgres_data:/var/lib/postgresql
       - ./.env:/etc/default/lab-env:ro
       - auto_responder_ssh_keys:/root/.ssh_auto_responder:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "host-internal:${HOST_INTERNAL_IP:-host-gateway}"
     networks:
       lab_net_b:
         ipv4_address: 172.31.0.10
