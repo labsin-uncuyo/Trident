@@ -99,6 +99,6 @@
   }
 
   .terminal-output {
-    @apply whitespace-pre-wrap break-all rounded-lg bg-gray-950 p-3 font-mono text-sm text-green-400 dark:bg-black dark:text-green-400;
+    @apply whitespace-pre-wrap break-all rounded-lg bg-white p-4 font-mono text-base text-trident-text border border-trident-border dark:bg-black dark:text-green-400;
   }
 }

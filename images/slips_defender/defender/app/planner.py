@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import sys
 import uuid
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -38,6 +40,8 @@ class PlannerConfig:
     langfuse_secret_key: Optional[str] = os.getenv("LANGFUSE_SECRET_KEY")
     langfuse_host: Optional[str] = os.getenv("LANGFUSE_HOST")
     langfuse_trace_name: str = os.getenv("LANGFUSE_TRACE_NAME", "incident_planner")
+    # Async Langfuse flush (non-blocking) - default enabled for performance
+    langfuse_async_flush: bool = _is_truthy(os.getenv("LANGFUSE_ASYNC_FLUSH"), default=True)
 
 
 import yaml
@@ -60,6 +64,8 @@ class IncidentPlanner:
             os.environ.setdefault("OPENAI_API_KEY", self.config.openai_api_key)
 
         # Build the model
+        # NOTE: timeout is set to 30s to accommodate gpt-oss-120b cold starts (4-5s) and network conditions
+        # LangChain's default timeout is 10s which can cause empty responses on slow LLM responses
         self.llm = ChatOpenAI(
             model=self.config.model,
             temperature=self.config.temperature,
@@ -67,6 +73,7 @@ class IncidentPlanner:
             # ChatOpenAI reads LLM_URL and OPENAI_API_KEY from env; base_url can also be passed explicitly
             base_url=self.config.openai_base_url,
             api_key=self.config.openai_api_key,
+            timeout=30.0,
                     )
 
         # Load prompts from YAML (one-shot prompt)
@@ -277,19 +284,40 @@ class IncidentPlanner:
         )
 
     def _flush_langfuse(self) -> None:
-        if self.langfuse_client is not None:
-            client_flush_fn = getattr(self.langfuse_client, "flush", None)
-            if callable(client_flush_fn):
-                client_flush_fn()
-        if self.langfuse_callback is None:
-            return
-        flush_fn = getattr(self.langfuse_callback, "flush", None)
-        if callable(flush_fn):
-            flush_fn()
-            return
-        langfuse_client = getattr(self.langfuse_callback, "langfuse", None)
-        if langfuse_client is None:
-            return
-        client_flush_fn = getattr(langfuse_client, "flush", None)
-        if callable(client_flush_fn):
-            client_flush_fn()
+        """Flush Langfuse telemetry.
+
+        If langfuse_async_flush is enabled (default), uses a background daemon
+        thread to avoid blocking the response. Errors during background flush are
+        logged but do not affect the response.
+        """
+        def _do_flush():
+            """Internal flush function that runs in background thread."""
+            try:
+                if self.langfuse_client is not None:
+                    client_flush_fn = getattr(self.langfuse_client, "flush", None)
+                    if callable(client_flush_fn):
+                        client_flush_fn()
+                if self.langfuse_callback is not None:
+                    flush_fn = getattr(self.langfuse_callback, "flush", None)
+                    if callable(flush_fn):
+                        flush_fn()
+                        return
+                    langfuse_client = getattr(self.langfuse_callback, "langfuse", None)
+                    if langfuse_client is not None:
+                        client_flush_fn = getattr(langfuse_client, "flush", None)
+                        if callable(client_flush_fn):
+                            client_flush_fn()
+            except Exception as e:
+                # Log but don't fail - telemetry is non-critical
+                print(f"[LANGFUSE] Background flush error (non-critical): {e}",
+                      file=sys.stderr, flush=True)
+
+        # Check if async flush is enabled (default)
+        if self.config.langfuse_async_flush:
+            # Start background flush - daemon=True allows thread to be killed on exit
+            flush_thread = threading.Thread(target=_do_flush, daemon=True)
+            flush_thread.start()
+            # Return immediately without waiting
+        else:
+            # Synchronous flush (legacy behavior)
+            _do_flush()

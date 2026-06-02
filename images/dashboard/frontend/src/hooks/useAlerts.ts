@@ -32,6 +32,9 @@ export function useAlerts() {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const isReplayActive = replay.replayId !== null;
+  // Ref so onclose always sees the *current* replayId, avoiding stale-closure reconnects
+  const replayIdRef = useRef<string | null>(replay.replayId);
+  replayIdRef.current = replay.replayId;
 
   // Convert replay events to alerts when replay is active
   const replayAlerts = useMemo(() => {
@@ -75,7 +78,10 @@ export function useAlerts() {
       } catch {}
     };
     ws.onclose = () => {
-      if (replay.replayId === null) {
+      // Use ref (not closure) so we always read the *current* replayId.
+      // Without this, loading a replay after the WS connected would cause a
+      // spurious reconnect that overwrites replay alerts with live data.
+      if (replayIdRef.current === null) {
         setConnected(false);
         reconnectTimer.current = setTimeout(connect, 3000);
       }

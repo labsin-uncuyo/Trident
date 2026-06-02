@@ -50,6 +50,29 @@ export DEFENDER_URL
 
 cd /opt/lab
 
+if [[ "${DNS_ONLY_DEFENSE:-}" =~ ^(true|1|yes|on)$ ]]; then
+    echo "✅ DNS_ONLY_DEFENSE enabled: tuning SLIPS for DNS-only analysis"
+    python3 - <<'PY'
+import re
+from pathlib import Path
+
+path = Path("/StratosphereLinuxIPS/config/slips.yaml")
+text = path.read_text(encoding="utf-8")
+
+replacements = {
+    r"^(\s*time_window_width:)\s*.*$": "\\1 60",
+    r"^(\s*analysis_direction:)\s*.*$": "\\1 out",
+    r"^(\s*pcapfilter:)\s*.*$": "\\1 'port 53'",
+    r"^(\s*disable:)\s*.*$": "\\1 [template, rnn_cc_detection, flowmldetection, threat_intelligence, update_manager, virustotal, timeline, blocking, networkdiscovery]",
+}
+
+for pattern, replacement in replacements.items():
+    text = re.sub(pattern, replacement, text, flags=re.MULTILINE)
+
+path.write_text(text, encoding="utf-8")
+PY
+fi
+
 # Ensure SSH keys are generated and authorized on target hosts
 if ! bash /opt/lab/setup_ssh_keys.sh; then
     echo "⚠️ SSH key setup encountered issues; continuing startup. Check logs above."

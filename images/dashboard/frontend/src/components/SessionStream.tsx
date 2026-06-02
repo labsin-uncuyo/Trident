@@ -79,7 +79,7 @@ function PartRenderer({ part }: { part: MessagePart }) {
               {typeof input === 'object' && Object.keys(input).length > 0 && (
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-trident-muted">Input</span>
-                  <pre className="terminal-output mt-1 max-h-60 overflow-auto text-yellow-400 dark:text-yellow-300">
+                  <pre className="mt-1 max-h-60 overflow-auto rounded-lg bg-white p-4 font-mono text-base text-trident-text border border-trident-border dark:bg-black dark:text-yellow-300">
                     {JSON.stringify(input, null, 2)}
                   </pre>
                 </div>
@@ -87,7 +87,7 @@ function PartRenderer({ part }: { part: MessagePart }) {
               {output && (
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-trident-muted">Output</span>
-                  <pre className="terminal-output mt-1 max-h-60 overflow-auto">
+                  <pre className="mt-1 max-h-60 overflow-auto rounded-lg bg-white p-4 font-mono text-base text-trident-text border border-trident-border dark:bg-black dark:text-green-400">
                     {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
                   </pre>
                 </div>
@@ -198,7 +198,7 @@ function MessageFullscreenModal({ message, onClose }: { message: SessionMessage;
                             {typeof toolPart.state.input === 'object' && Object.keys(toolPart.state.input).length > 0 && (
                               <div>
                                 <span className="text-xs uppercase tracking-wider text-trident-muted mb-3 block">Input</span>
-                                <pre className="terminal-output text-base text-yellow-700 dark:text-yellow-300 rounded-lg bg-gray-200 dark:bg-black/30 p-4">
+                                <pre className="whitespace-pre-wrap break-words text-base rounded-lg bg-white p-4 font-mono text-trident-text border border-trident-border dark:bg-black dark:text-yellow-300">
                                   {JSON.stringify(toolPart.state.input, null, 2)}
                                 </pre>
                               </div>
@@ -206,7 +206,7 @@ function MessageFullscreenModal({ message, onClose }: { message: SessionMessage;
                             {toolPart.state.output && (
                               <div>
                                 <span className="text-xs uppercase tracking-wider text-trident-muted mb-3 block">Output</span>
-                                <pre className="terminal-output text-base rounded-lg bg-gray-200 dark:bg-black/30 p-4">
+                                <pre className="whitespace-pre-wrap break-words text-base rounded-lg bg-white p-4 font-mono text-trident-text border border-trident-border dark:bg-black dark:text-green-400">
                                   {typeof toolPart.state.output === 'string' ? toolPart.state.output : JSON.stringify(toolPart.state.output, null, 2)}
                                 </pre>
                               </div>
