@@ -108,6 +108,11 @@ services:
       - DB_ADMIN_MODEL=${DB_ADMIN_MODEL:-}
       - SOC_GOD_MODEL=${SOC_GOD_MODEL:-}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY:-${LLM_API_KEY:-}}
+      - OLLAMA_ENABLED=${OLLAMA_ENABLED:-false}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-mistral-nemo}
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-ollama}
+      - BENIGN_USE_OLLAMA=${BENIGN_USE_OLLAMA:-false}
     volumes:
       - ./outputs:/outputs
       - ./images/compromised/secrets/authorized_keys:/secrets/authorized_keys:ro

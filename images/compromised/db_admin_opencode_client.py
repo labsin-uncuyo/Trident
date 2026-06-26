@@ -370,6 +370,16 @@ def main() -> int:
             print(f"[db_admin] [{turn_label}] Agent responded "
                   f"({turn_duration:.0f}s): {snippet}...")
 
+            # Prevent tight-loop flooding: if the agent responded too quickly
+            # (under 3s), it likely returned text without executing a tool.
+            # Add a delay so we don't send hundreds of "keep going" nudges
+            # per second. This also gives the model time to unload/reload
+            # between turns on GPU-constrained setups.
+            if turn_duration < 3.0:
+                print(f"[db_admin] [{turn_label}] Fast response (likely no "
+                      f"tool call) – pausing 5s before next nudge")
+                time.sleep(5.0)
+
             # Check if the agent considers itself done
             if agent.agent_says_done(messages):
                 print(f"[db_admin] [{turn_label}] Agent signaled "

@@ -76,6 +76,16 @@ RUN chmod +x /entrypoint.sh
 
 COPY db_admin_opencode_client.py /opt/db_admin_opencode_client.py
 
+# Natural-completion variant: lets the agent finish on its own without a
+# time limit or forced "keep going" nudges.
+COPY db_admin_natural.py /opt/db_admin_natural.py
+
+# Ollama native-API proxy: injects bash/edit/write tool definitions and
+# forwards to Ollama's /api/chat so local models (e.g. mistral-nemo) return
+# structured tool_calls instead of emitting commands as plain text.
+COPY ollama_proxy.py /opt/ollama_proxy.py
+RUN chmod +x /opt/ollama_proxy.py
+
 EXPOSE 22
 
 # --------------------------------------------------------------------

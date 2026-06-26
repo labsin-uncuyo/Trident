@@ -58,3 +58,4 @@ external/
 
 # Build markers
 .*_build_marker
+.venv/

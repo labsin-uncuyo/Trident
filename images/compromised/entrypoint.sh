@@ -37,7 +37,21 @@ chmod 440 /etc/sudoers.d/opencode_env
 # ── Generate OpenCode auth.json from env ───────────────────────────
 # The provider key in auth.json MUST match the provider key in opencode.json.
 _auth_json() {
-    cat <<EOF
+    if [ "${OLLAMA_ENABLED:-false}" = "true" ]; then
+        cat <<EOF
+{
+    "${PROVIDER_NAME}": {
+        "type": "api",
+        "key": "${LLM_API_KEY}"
+    },
+    "ollama": {
+        "type": "api",
+        "key": "${OLLAMA_API_KEY:-ollama}"
+    }
+}
+EOF
+    else
+        cat <<EOF
 {
     "${PROVIDER_NAME}": {
         "type": "api",
@@ -45,6 +59,7 @@ _auth_json() {
     }
 }
 EOF
+    fi
 }
 
 mkdir -p /root/.local/share/opencode
@@ -87,6 +102,65 @@ if [ -f /root/.config/opencode/opencode.json.template ]; then
     envsubst '${PROVIDER_NAME} ${LLM_BASE_URL} ${LLM_API_KEY} ${LLM_MODEL} ${CODER56_MODEL} ${DB_ADMIN_MODEL} ${SOC_GOD_MODEL}' \
         </root/.config/opencode/opencode.json.template \
         >/root/.config/opencode/opencode.json
+
+    # Optionally route the benign agent through the built-in Ollama provider.
+    # OpenCode auto-configures a built-in "ollama" provider from OLLAMA_BASE_URL
+    # / OLLAMA_API_KEY. We simply point db_admin at it.
+    #
+    # Tool calling notes:
+    #   * mistral-nemo needs a large num_ctx or Ollama truncates the system
+    #     prompt to 4096 tokens and the agent stops following instructions.
+    #     The mistral-nemo model is pre-configured with num_ctx=32768 on the
+    #     host Ollama instance (see AGENTS.md).
+    #   * The built-in ollama provider sends opencode's tool definitions
+    #     (including bash) to Ollama's native /api/chat endpoint, so the model
+    #     can call bash directly.
+    if [ "${OLLAMA_ENABLED:-false}" = "true" ]; then
+        python3 - <<PY
+import json
+import os
+
+config_path = "/root/.config/opencode/opencode.json"
+with open(config_path, "r", encoding="utf-8") as f:
+    cfg = json.load(f)
+
+ollama_model = os.getenv("OLLAMA_MODEL", "mistral-nemo")
+
+# Route the benign db_admin agent through the built-in ollama provider.
+if os.getenv("BENIGN_USE_OLLAMA", "false").lower() == "true":
+    agents = cfg.setdefault("agent", {})
+    db_admin = agents.setdefault("db_admin", {})
+    db_admin["model"] = f"ollama/{ollama_model}"
+
+# Override the built-in ollama provider to route through the local
+# ollama_proxy.py (127.0.0.1:11435). The proxy injects bash/edit/write
+# tool definitions (which @ai-sdk/openai-compatible does not send to a
+# custom baseURL by default) and sets num_ctx=32768 so Ollama does not
+# truncate the ~6k-token db_admin system prompt to the 4096 default.
+providers = cfg.setdefault("provider", {})
+ollama_provider = providers.setdefault("ollama", {})
+# Force the OpenAI-compatible adapter (chat/completions) instead of the
+# built-in @ai-sdk/ollama native adapter (api/chat). This lets us route
+# through ollama_proxy.py which injects bash/edit/write tool definitions.
+ollama_provider["npm"] = "@ai-sdk/openai-compatible"
+ollama_provider["name"] = "Ollama Local"
+_proxy_port = os.getenv("OLLAMA_PROXY_PORT", "11434")
+ollama_provider.setdefault("options", {}).setdefault(
+    "baseURL", f"http://127.0.0.1:{_proxy_port}/v1"
+)
+ollama_provider.setdefault("options", {}).setdefault(
+    "apiKey", os.getenv("OLLAMA_API_KEY", "ollama")
+)
+ollama_models = ollama_provider.setdefault("models", {})
+model_cfg = ollama_models.setdefault(ollama_model, {})
+model_cfg.setdefault("name", ollama_model)
+model_cfg.setdefault("limit", {}).setdefault("context", 128000)
+model_cfg["limit"].setdefault("output", 16384)
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, indent=2)
+PY
+    fi
 
     install -m 600 -o labuser -g labuser /root/.config/opencode/opencode.json /home/labuser/.config/opencode/opencode.json
 fi
@@ -147,6 +221,80 @@ chmod 600 /home/labuser/.ssh/config
 # Re-assert default route in case container networking reset it.
 ip route replace default via 172.30.0.1 dev eth0 || true
 
+# ── Start Ollama native-API proxy (when enabled) ───────────────────
+# ollama_proxy.py listens on 127.0.0.1:11435 and translates OpenCode's
+# OpenAI-compatible /v1/chat/completions requests into Ollama's native
+# /api/chat format. It injects bash/edit/write tool definitions (which
+# @ai-sdk/openai-compatible does not send to a custom baseURL by default)
+# and sets num_ctx=32768 so Ollama does not truncate the system prompt.
+if [ "${OLLAMA_ENABLED:-false}" = "true" ]; then
+    # Parse OLLAMA_BASE_URL (e.g. http://host.docker.internal:11434/v1)
+    # into host/port for the proxy's native target. Resolve the hostname
+    # to an IP NOW, before we repoint host.docker.internal at 127.0.0.1
+    # (otherwise the proxy would connect to itself).
+    _obu="${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}"
+    _obu="${_obu#http://}"; _obu="${_obu#https://}"
+    _obu="${_obu%%/*}"            # strip path -> host[:port]
+    _proxy_host="${_obu%%:*}"
+    _proxy_port="${_obu##*:}"
+    [ "${_proxy_host}" = "${_proxy_port}" ] && _proxy_port="11434"
+    [ -z "${_proxy_port}" ] && _proxy_port="11434"
+    # Resolve to IP so the proxy isn't affected by the /etc/hosts change
+    _resolved_ip=$(getent hosts "${_proxy_host}" | awk '{print $1}' | head -1)
+    [ -n "${_resolved_ip}" ] && _proxy_host="${_resolved_ip}"
+
+    export OLLAMA_PROXY_TARGET_HOST="${_proxy_host}"
+    export OLLAMA_PROXY_TARGET_PORT="${_proxy_port}"
+    # Run the proxy on Ollama's standard port (11434) so OpenCode's
+    # built-in ollama provider (which connects to host.docker.internal:11434)
+    # hits the proxy. The proxy forwards to the real Ollama.
+    export OLLAMA_PROXY_PORT="11434"
+    export OLLAMA_NUM_CTX="${OLLAMA_NUM_CTX:-32768}"
+
+    proxy_log="/var/log/ollama_proxy.log"
+    touch "${proxy_log}"
+    echo "Starting Ollama proxy on 127.0.0.1:${OLLAMA_PROXY_PORT} -> ${_proxy_host}:${_proxy_port}..."
+    python3 /opt/ollama_proxy.py >>"${proxy_log}" 2>&1 &
+    PROXY_PID=$!
+
+    _waits=0
+    until curl -sf "http://127.0.0.1:${OLLAMA_PROXY_PORT}/health" >/dev/null 2>&1; do
+        _waits=$((_waits + 1))
+        if [ "${_waits}" -gt 30 ]; then
+            echo "⚠ Ollama proxy did not become healthy in 30s; continuing anyway" >&2
+            break
+        fi
+        sleep 1
+    done
+    if [ "${_waits}" -le 30 ]; then
+        echo "✅ Ollama proxy ready (PID ${PROXY_PID})"
+    fi
+
+    # Transparent intercept: repoint host.docker.internal at 127.0.0.1 so
+    # OpenCode's built-in ollama provider (which hardcodes
+    # host.docker.internal:11434 and ignores OLLAMA_BASE_URL / config
+    # baseURL overrides) connects to the proxy. The proxy forwards to the
+    # real Ollama via OLLAMA_PROXY_TARGET_HOST/PORT (the original IP).
+    # Use Python (truncate+write) because `sed -i` cannot rename the
+    # Docker bind-mounted /etc/hosts.
+    _real_ip="${_proxy_host}"
+    python3 - <<'PYEOF' || true
+hosts = open("/etc/hosts").readlines()
+out = []
+for line in hosts:
+    if "host.docker.internal" in line:
+        out.append("127.0.0.1 host.docker.internal\n")
+    elif "host-internal" in line:
+        out.append("127.0.0.1 host-internal\n")
+    else:
+        out.append(line)
+open("/etc/hosts", "w").write("".join(out))
+PYEOF
+    echo "  Repointed host.docker.internal -> 127.0.0.1 (real Ollama at ${_real_ip}:${_proxy_port})"
+    export OLLAMA_BASE_URL="http://127.0.0.1:${OLLAMA_PROXY_PORT}/v1"
+    export OLLAMA_HOST="http://127.0.0.1:${OLLAMA_PROXY_PORT}"
+fi
+
 # Start OpenCode HTTP server for remote API access (used by auto_responder)
 opencode_log="/var/log/opencode-serve.log"
 touch "${opencode_log}"
@@ -157,6 +305,9 @@ echo "  Default model: ${LLM_MODEL}"
 echo "  coder56 model: ${CODER56_MODEL}"
 echo "  db_admin model: ${DB_ADMIN_MODEL}"
 echo "  soc_god model: ${SOC_GOD_MODEL}"
+if [ "${OLLAMA_ENABLED:-false}" = "true" ]; then
+    echo "  Ollama enabled: model=${OLLAMA_MODEL:-mistral-nemo} benign_use_ollama=${BENIGN_USE_OLLAMA:-false} num_ctx=${OLLAMA_NUM_CTX:-32768}"
+fi
 cd /tmp && opencode serve --hostname 0.0.0.0 --port 4096 >>"${opencode_log}" 2>&1 &
 OPENCODE_PID=$!
 echo "✅ OpenCode serve started (PID ${OPENCODE_PID})"

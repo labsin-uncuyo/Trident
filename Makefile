@@ -11,7 +11,8 @@ build:
 	$(COMPOSE) --profile core --profile defender build --pull --no-cache
 
 up:
-	@RUN_ID_VALUE=$${RUN_ID:-logs_$$(date +%Y%m%d_%H%M%S)}; \
+	@mkdir -p ./outputs; \
+	RUN_ID_VALUE=$${RUN_ID:-logs_$$(date +%Y%m%d_%H%M%S)}; \
 	echo $$RUN_ID_VALUE > $(RUN_ID_FILE); \
 	mkdir -p ./outputs/$$RUN_ID_VALUE/pcaps ./outputs/$$RUN_ID_VALUE/slips ./outputs/$$RUN_ID_VALUE/aracne ./outputs/$$RUN_ID_VALUE/benign_agent; \
 	export RUN_ID=$$RUN_ID_VALUE; \
@@ -165,12 +166,13 @@ coder56:
 		sh -c "python3 /scripts/coder56_opencode_client.py \"$$goal\""
 
 # Usage:
-#   make benign                          # default goal, no time limit
-#   make benign TIME_LIMIT=900           # default goal, 900s limit
-#   make benign GOAL="my goal"           # custom goal, no time limit
-#   make benign GOAL="my goal" TIME_LIMIT=900
+#   make benign                          # default goal, natural completion (no time limit)
+#   make benign MAX_WAIT=1800            # natural completion, 30min safety backstop
+#   make benign GOAL="my goal"           # custom goal, natural completion
+#   make benign GOAL="my goal" MAX_WAIT=600
+#   make benign-timed TIME_LIMIT=900     # old behavior: forced time limit
 GOAL ?=
-TIME_LIMIT ?=
+MAX_WAIT ?= 3600
 
 benign:
 	@if [ ! -f $(RUN_ID_FILE) ]; then \
@@ -178,16 +180,43 @@ benign:
 		exit 1; \
 	fi; \
 	RUN_ID_VALUE=$$(cat $(RUN_ID_FILE)); \
-	echo "[benign] Starting db_admin agent with RUN_ID=$$RUN_ID_VALUE"; \
+	echo "[benign] Starting db_admin agent (natural completion) with RUN_ID=$$RUN_ID_VALUE"; \
 	if [ -n "$(GOAL)" ]; then \
 		echo "[benign] Goal: $(GOAL)"; \
 	else \
 		echo "[benign] Using default goal"; \
 	fi; \
-	if [ -n "$(TIME_LIMIT)" ]; then \
-		echo "[benign] Time limit: $(TIME_LIMIT) seconds"; \
+	echo "[benign] Max wait (safety backstop): $(MAX_WAIT)s"; \
+	mkdir -p ./outputs/$$RUN_ID_VALUE/benign_agent; \
+	cmd="python3 /opt/db_admin_natural.py --max-wait $(MAX_WAIT)"; \
+	if [ -n "$(GOAL)" ]; then \
+		cmd="$$cmd \"$(GOAL)\""; \
+	fi; \
+	docker exec \
+		-e RUN_ID=$$RUN_ID_VALUE \
+		-e TRIDENT_HOME=/ \
+		lab_compromised \
+		sh -c "$$cmd"
+
+# Legacy time-limited benign agent (kept for backward compatibility)
+TIME_LIMIT ?=
+
+benign-timed:
+	@if [ ! -f $(RUN_ID_FILE) ]; then \
+		echo "✗ Error: RUN_ID not found. Please run 'make up' first to initialize the infrastructure."; \
+		exit 1; \
+	fi; \
+	RUN_ID_VALUE=$$(cat $(RUN_ID_FILE)); \
+	echo "[benign-timed] Starting db_admin agent (time-limited) with RUN_ID=$$RUN_ID_VALUE"; \
+	if [ -n "$(GOAL)" ]; then \
+		echo "[benign-timed] Goal: $(GOAL)"; \
 	else \
-		echo "[benign] Time limit: None (run until manually stopped)"; \
+		echo "[benign-timed] Using default goal"; \
+	fi; \
+	if [ -n "$(TIME_LIMIT)" ]; then \
+		echo "[benign-timed] Time limit: $(TIME_LIMIT) seconds"; \
+	else \
+		echo "[benign-timed] Time limit: None (run until manually stopped)"; \
 	fi; \
 	mkdir -p ./outputs/$$RUN_ID_VALUE/benign_agent; \
 	cmd="python3 /opt/db_admin_opencode_client.py"; \
@@ -203,9 +232,12 @@ benign:
 		lab_compromised \
 		sh -c "$$cmd"
 
-.PHONY: benign-run
+.PHONY: benign-run benign-natural benign-timed
 benign-run:
 	@:
+
+# Alias for backward compatibility
+benign-natural: benign
 
 %:
 	@:
