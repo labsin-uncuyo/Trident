@@ -30,10 +30,21 @@ def _is_truthy(value: Optional[str], default: bool = False) -> bool:
 class PlannerConfig:
     model: str = os.getenv("PLANNER_MODEL", "gpt-4o")
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.2"))
-    max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1200"))
+    # Reasoning models can spend a substantial portion of the completion
+    # budget before emitting the JSON plan.  A 1200-token cap caused Qwen to
+    # return empty content after using the entire budget for reasoning.
+    max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
     # OpenAI-compatible endpoint values (accept both old and new var names)
-    openai_base_url: Optional[str] = os.getenv("LLM_BASE_URL", os.getenv("LLM_URL"))
-    openai_api_key: Optional[str] = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY"))
+    openai_base_url: Optional[str] = (
+        os.getenv("PLANNER_BASE_URL")
+        or os.getenv("LLM_BASE_URL")
+        or os.getenv("LLM_URL")
+    )
+    openai_api_key: Optional[str] = (
+        os.getenv("PLANNER_API_KEY")
+        or os.getenv("LLM_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+    )
     # Optional Langfuse tracing
     langfuse_enabled: bool = _is_truthy(os.getenv("LANGFUSE_ENABLED"), default=False)
     langfuse_public_key: Optional[str] = os.getenv("LANGFUSE_PUBLIC_KEY")
@@ -63,6 +74,17 @@ class IncidentPlanner:
         if self.config.openai_api_key:
             os.environ.setdefault("OPENAI_API_KEY", self.config.openai_api_key)
 
+        # Qwen reasoning can consume the entire completion budget before it
+        # emits the strict JSON required by the planner.  e-INFRA's vLLM
+        # endpoint supports this chat-template flag, which keeps reasoning
+        # enabled for the OpenCode agents but disables it for this structured
+        # one-shot planner response.
+        self._model_kwargs: Dict[str, Any] = {}
+        if self.config.model.lower().startswith("qwen"):
+            self._model_kwargs["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
+
         # Build the model
         # NOTE: timeout is set to 30s to accommodate gpt-oss-120b cold starts (4-5s) and network conditions
         # LangChain's default timeout is 10s which can cause empty responses on slow LLM responses
@@ -74,7 +96,8 @@ class IncidentPlanner:
             base_url=self.config.openai_base_url,
             api_key=self.config.openai_api_key,
             timeout=30.0,
-                    )
+            **self._model_kwargs,
+        )
 
         # Load prompts from YAML (one-shot prompt)
         sys_tmpl, human_tmpl = self._load_prompts(self.prompts_path)
@@ -145,7 +168,8 @@ class IncidentPlanner:
                     max_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
                     base_url=self.config.openai_base_url,
                     api_key=self.config.openai_api_key,
-                                )
+                    **self._model_kwargs,
+                )
                 result_message = llm.invoke(formatted_messages, config=invoke_config)
                 result_text = self._extract_result_text(result_message)
             else:

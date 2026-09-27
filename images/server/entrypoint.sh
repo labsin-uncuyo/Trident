@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+if [ -z "${RUN_ID:-}" ] && [ -s /outputs/.current_run ]; then
+    RUN_ID="$(tr -d '\r\n' </outputs/.current_run)"
+fi
 : "${RUN_ID:=run_local}"
 : "${LOGIN_USER:=admin}"
 : "${LOGIN_PASSWORD:=admin}"
@@ -25,7 +28,7 @@ mkdir -p "${pcap_dir}"
 mkdir -p /root/.local/share/opencode
 cat >/root/.local/share/opencode/auth.json <<EOF
 {
-    "e-infra-chat": {
+    "openai": {
         "type": "api",
         "key": "${OPENCODE_API_KEY:-}"
     }
@@ -35,6 +38,48 @@ EOF
 # Copy OpenCode configuration (already has {env:OPENCODE_API_KEY} placeholder)
 if [ -f /root/.config/opencode/opencode.json.template ]; then
     cp /root/.config/opencode/opencode.json.template /root/.config/opencode/opencode.json
+
+    # Replace the legacy custom compatibility provider with OpenCode's built-in
+    # OpenAI provider. The former no longer expands {env:LLM_URL} reliably and
+    # can produce a relative "/chat/completions" URL. The built-in provider
+    # accepts an OpenAI-compatible base URL and supports the Responses API used
+    # by the current OpenCode release.
+    python3 - <<'PY'
+import json
+import os
+
+config_path = "/root/.config/opencode/opencode.json"
+with open(config_path, "r", encoding="utf-8") as f:
+    config = json.load(f)
+
+model = os.getenv("LLM_MODEL", "gpt-4o")
+legacy = config.get("provider", {}).get("e-infra-chat", {})
+model_config = {
+    "name": model,
+    "limit": {"context": 128000, "output": 16384},
+}
+if legacy.get("models"):
+    first_model = next(iter(legacy["models"].values()))
+    model_config["limit"] = first_model.get("limit", model_config["limit"])
+
+config["provider"] = {
+    "openai": {
+        "name": "OpenAI-compatible API",
+        "options": {
+            "baseURL": os.getenv("LLM_BASE_URL") or os.getenv("LLM_URL", ""),
+            "apiKey": os.getenv("OPENCODE_API_KEY", ""),
+        },
+        "models": {model: model_config},
+    }
+}
+config["model"] = f"openai/{model}"
+for agent in config.get("agent", {}).values():
+    agent["model"] = f"openai/{model}"
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+PY
 fi
 
 # Setup SSH authorized_keys for auto_responder from shared volume

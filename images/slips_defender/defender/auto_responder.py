@@ -870,7 +870,7 @@ class AutoResponder:
                  machine_name, alert_hash, execution_id)
 
         # ── Convert and save legacy JSONL format ──
-        legacy_lines = self.convert_api_messages_to_legacy_jsonl(messages)
+        legacy_lines = convert_api_messages_to_legacy_jsonl(messages)
         with open(legacy_path, "w", encoding="utf-8") as f:
             for line in legacy_lines:
                 f.write(line + "\n")

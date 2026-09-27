@@ -103,6 +103,28 @@ if [ -f /root/.config/opencode/opencode.json.template ]; then
         </root/.config/opencode/opencode.json.template \
         >/root/.config/opencode/opencode.json
 
+    # `openai` is a built-in OpenCode provider.  Do not replace it with the
+    # generic OpenAI-compatible SDK adapter: current OpenCode releases call
+    # the adapter's unsupported `responses()` API before making a request.
+    # The built-in provider accepts the configured baseURL, so this also
+    # supports OpenAI-compatible endpoints such as e-INFRA when
+    # PROVIDER_NAME=openai.
+    if [ "${PROVIDER_NAME}" = "openai" ]; then
+        python3 - <<'PY'
+import json
+
+config_path = "/root/.config/opencode/opencode.json"
+with open(config_path, "r", encoding="utf-8") as f:
+    config = json.load(f)
+
+config.get("provider", {}).get("openai", {}).pop("npm", None)
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+PY
+    fi
+
     # Optionally route the benign agent through the built-in Ollama provider.
     # OpenCode auto-configures a built-in "ollama" provider from OLLAMA_BASE_URL
     # / OLLAMA_API_KEY. We simply point db_admin at it.
